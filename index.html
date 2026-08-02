@@ -7620,10 +7620,11 @@ document.addEventListener('keydown', function(e){
 </script>
 
 <!-- ================= MODO VR (Meta Quest 3, pelo navegador) =================
-     Cria uma "tela grande" dentro de uma sessao WebXR imersiva que mostra o
-     jogo (capturado ao vivo via html2canvas) e permite clicar apontando o
-     controle do Quest e apertando o gatilho (o clique e reenviado para o
-     elemento real por baixo, entao toda a logica do jogo continua igual).
+     Cria um ambiente WebXR imersivo (chao, horizonte) com uma tela grande e
+     nitida mostrando o jogo ao vivo (capturado via html2canvas). Aponte o
+     controle do Quest para a tela e aperte o gatilho para clicar - o clique e
+     reenviado para o elemento real por baixo, entao toda a logica do jogo
+     (territorios, cartas, fabricas de aviao etc.) continua funcionando igual.
 ============================================================================ -->
 <style id="vrModeStyle">
 #vrEnterBtn{position:fixed;bottom:14px;right:14px;z-index:999998;background:#0d47a1;color:#fff;border:2px solid #64b5f6;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important}
@@ -7646,6 +7647,7 @@ document.addEventListener('keydown', function(e){
     vrStatus.textContent = msg;
     vrStatus.style.display = 'block';
     if(ms) setTimeout(function(){ vrStatus.style.display = 'none'; }, ms);
+    updateVrPanelText(msg);
   }
 
   function init(){
@@ -7664,37 +7666,91 @@ document.addEventListener('keydown', function(e){
     });
   }
 
-  var renderer, scene, camera, screenMesh, screenTex, screenCanvas, screenCtx;
-  var SCREEN_W = 2200, SCREEN_H = 1300;
-  var PLANE_W = 3.6, PLANE_H = PLANE_W * (SCREEN_H/SCREEN_W);
+  var renderer, scene, camera, screenMesh, screenTex;
+  var panelMesh, panelCanvas, panelCtx, panelTex;
   var capturing = false, captureTimer = null;
   var raycaster, tempMatrix;
   var pendingPoint = null;
+  var CAPTURE_SCALE = 2; // nitidez: 2x a resolucao logica da janela
+
+  function makeFloor(){
+    var grid = new THREE.GridHelper(20, 40, 0x2266aa, 0x123);
+    grid.position.y = 0;
+    scene.add(grid);
+    var floorGeo = new THREE.CircleGeometry(10, 48);
+    var floorMat = new THREE.MeshBasicMaterial({ color:0x0a1628, transparent:true, opacity:0.9 });
+    var floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI/2;
+    floor.position.y = -0.001;
+    scene.add(floor);
+    // ceu/horizonte simples para dar sensacao de profundidade e ambiente
+    var skyGeo = new THREE.SphereGeometry(15, 24, 16);
+    var skyMat = new THREE.MeshBasicMaterial({ color:0x0d2138, side:THREE.BackSide });
+    scene.add(new THREE.Mesh(skyGeo, skyMat));
+  }
+
+  function makeStatusPanel(){
+    panelCanvas = document.createElement('canvas');
+    panelCanvas.width = 1024; panelCanvas.height = 128;
+    panelCtx = panelCanvas.getContext('2d');
+    panelTex = new THREE.CanvasTexture(panelCanvas);
+    var geo = new THREE.PlaneGeometry(1.6, 0.2);
+    var mat = new THREE.MeshBasicMaterial({ map:panelTex, transparent:true });
+    panelMesh = new THREE.Mesh(geo, mat);
+    panelMesh.position.set(0, 0.55, -2.28);
+    panelMesh.visible = false;
+    scene.add(panelMesh);
+  }
+
+  function updateVrPanelText(msg){
+    if(!panelCtx) return;
+    panelCtx.clearRect(0,0,panelCanvas.width,panelCanvas.height);
+    panelCtx.fillStyle = 'rgba(0,0,0,0.75)';
+    panelCtx.fillRect(0,0,panelCanvas.width,panelCanvas.height);
+    panelCtx.fillStyle = '#fff';
+    panelCtx.font = 'bold 34px Arial';
+    panelCtx.textAlign = 'center';
+    panelCtx.textBaseline = 'middle';
+    wrapText(msg.toUpperCase(), panelCanvas.width/2, panelCanvas.height/2, panelCanvas.width-40, 38);
+    panelTex.needsUpdate = true;
+    if(panelMesh){ panelMesh.visible = true; }
+  }
+
+  function wrapText(text, x, y, maxWidth, lineHeight){
+    var words = text.split(' ');
+    var line = '';
+    var lines = [];
+    for(var n=0;n<words.length;n++){
+      var testLine = line + words[n] + ' ';
+      if(panelCtx.measureText(testLine).width > maxWidth && n > 0){
+        lines.push(line); line = words[n] + ' ';
+      } else { line = testLine; }
+    }
+    lines.push(line);
+    var startY = y - ((lines.length-1)*lineHeight)/2;
+    for(var i=0;i<lines.length;i++){
+      panelCtx.fillText(lines[i].trim(), x, startY + i*lineHeight);
+    }
+  }
 
   function buildScene(){
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.05, 100);
-    renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+    renderer = new THREE.WebGLRenderer({ antialias:true });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     renderer.domElement.id = 'vrCanvas';
     document.body.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+    makeFloor();
+    makeStatusPanel();
 
-    screenCanvas = document.createElement('canvas');
-    screenCanvas.width = SCREEN_W; screenCanvas.height = SCREEN_H;
-    screenCtx = screenCanvas.getContext('2d');
-    screenCtx.fillStyle = '#0a1628';
-    screenCtx.fillRect(0,0,SCREEN_W,SCREEN_H);
-
-    screenTex = new THREE.CanvasTexture(screenCanvas);
-    screenTex.minFilter = THREE.LinearFilter;
-    screenTex.magFilter = THREE.LinearFilter;
-
+    var winAspect = window.innerWidth / window.innerHeight;
+    var PLANE_W = 3.8;
+    var PLANE_H = PLANE_W / winAspect;
     var geo = new THREE.PlaneGeometry(PLANE_W, PLANE_H);
-    var mat = new THREE.MeshBasicMaterial({ map:screenTex });
+    var mat = new THREE.MeshBasicMaterial({ color:0x0a1628 });
     screenMesh = new THREE.Mesh(geo, mat);
     screenMesh.position.set(0, 1.5, -2.3);
     scene.add(screenMesh);
@@ -7749,26 +7805,39 @@ document.addEventListener('keydown', function(e){
     pendingPoint = null;
   }
 
+  function applyCapturedCanvas(canvas){
+    if(!screenTex){
+      screenTex = new THREE.CanvasTexture(canvas);
+      screenTex.minFilter = THREE.LinearFilter;
+      screenTex.magFilter = THREE.LinearFilter;
+      if(renderer) screenTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      screenMesh.material.map = screenTex;
+      screenMesh.material.color.set(0xffffff);
+      screenMesh.material.needsUpdate = true;
+    } else {
+      screenTex.image = canvas;
+      screenTex.needsUpdate = true;
+    }
+  }
+
   function captureFrame(){
     if(!capturing) return;
     html2canvas(document.body, {
       backgroundColor:'#0a1628',
       logging:false,
       useCORS:true,
+      scale: CAPTURE_SCALE,
       width: window.innerWidth,
       height: window.innerHeight,
       windowWidth: window.innerWidth,
       windowHeight: window.innerHeight,
-      scale: 1,
       ignoreElements: function(el){ return el.classList && el.classList.contains('vr-ui-ignore'); }
     }).then(function(canvas){
-      screenCtx.fillStyle = '#0a1628';
-      screenCtx.fillRect(0,0,SCREEN_W,SCREEN_H);
-      var scale = Math.min(SCREEN_W/canvas.width, SCREEN_H/canvas.height);
-      var dw = canvas.width*scale, dh = canvas.height*scale;
-      screenCtx.drawImage(canvas, (SCREEN_W-dw)/2, (SCREEN_H-dh)/2, dw, dh);
-      screenTex.needsUpdate = true;
-    }).catch(function(){ /* ignora falha pontual de captura */ }).finally(function(){
+      applyCapturedCanvas(canvas);
+      if(panelMesh && panelMesh.visible && vrStatus.style.display === 'none'){ panelMesh.visible = false; }
+    }).catch(function(err){
+      showStatus('FALHA AO CAPTURAR A TELA DO JOGO: ' + (err && err.message ? err.message : err));
+    }).finally(function(){
       if(capturing) captureTimer = setTimeout(captureFrame, 200);
     });
   }
@@ -7780,7 +7849,7 @@ document.addEventListener('keydown', function(e){
       capturing = true;
       captureFrame();
       renderer.setAnimationLoop(function(){ renderer.render(scene, camera); });
-      showStatus('VR ATIVO - APONTE O CONTROLE PARA A TELA E APERTE O GATILHO PARA CLICAR', 7000);
+      showStatus('VR ATIVO - APONTE O CONTROLE PARA A TELA E APERTE O GATILHO PARA CLICAR', 6000);
       session.addEventListener('end', function(){
         capturing = false;
         if(captureTimer) clearTimeout(captureTimer);
@@ -7788,7 +7857,7 @@ document.addEventListener('keydown', function(e){
         showStatus('VR ENCERRADO', 2500);
       });
     }).catch(function(err){
-      showStatus('NAO FOI POSSIVEL ENTRAR EM VR: ' + (err && err.message ? err.message : err), 6000);
+      showStatus('NAO FOI POSSIVEL ENTRAR EM VR: ' + (err && err.message ? err.message : err));
     });
   }
 
