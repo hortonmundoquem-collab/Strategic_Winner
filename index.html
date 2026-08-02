@@ -8344,6 +8344,7 @@ document.addEventListener('keydown', function(e){
   var pendingHit = null;
   var hoverT = null;
   var hoverUI = null;
+  var hoverUIuv = null;
   var lastAim = null;
   var prevHoverUI = null;
 
@@ -8413,11 +8414,15 @@ document.addEventListener('keydown', function(e){
       }
     } else if(pendingHit.type === 'ui'){
       if(hoverUI === pendingHit.ui){
-        var uv = pendingHit.uv;
-        var rect = pendingHit.ui.userData.rect;
-        var cx = rect.left + uv.x * rect.width;
-        var cy = rect.top + (1 - uv.y) * rect.height;
-        dispatchAt(cx, cy, 'click');
+        try{
+          var uv = pendingHit.uv;
+          var rect = pendingHit.ui.userData.rect;
+          if(uv && rect){
+            var cx = rect.left + uv.x * rect.width;
+            var cy = rect.top + (1 - uv.y) * rect.height;
+            dispatchAt(cx, cy, 'click');
+          }
+        }catch(e){ console.error('vr3d: dispatchAt', e); }
       }
     } else if(pendingHit.type === 'exit'){
       try{ var s = renderer.xr.getSession && renderer.xr.getSession(); if(s) s.end(); }catch(e){}
