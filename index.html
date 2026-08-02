@@ -8239,6 +8239,7 @@ document.addEventListener('keydown', function(e){
     var UX = UI_SCREEN_W / UI_VW;
     var els = topFixedEls();
     for(var j=0;j<els.length;j++){
+      try{
       var el = els[j];
       var r = el.getBoundingClientRect();
       var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
@@ -8269,6 +8270,7 @@ document.addEventListener('keydown', function(e){
       uiRoot.add(plane);
       uiPlanes.push(plane);
       clickTargets.push(plane);
+      }catch(e2){}
     }
     lastPanelCount = uiPlanes.length;
   }
@@ -8521,15 +8523,31 @@ document.addEventListener('keydown', function(e){
     updateTanks();
   }
 
+  var uiDirty = false;
   function markDirty(){ dirty = true; }
-  document.addEventListener('scroll', function(){ markDirty(); }, true);
+  function _inMapwrap(el){
+    var n = el && el.parentElement;
+    while(n){
+      if(n.id === 'mapwrap') return true;
+      n = n.parentElement;
+    }
+    return false;
+  }
+  document.addEventListener('scroll', function(ev){
+    dirty = true;
+    var t = ev.target;
+    if(t && t.id === 'setup') uiDirty = true;
+  }, true);
   var mo = null;
   try{ mo = new MutationObserver(function(muts){
-    var relevant = false;
+    var relevant = false, uiRel = false;
     for(var mi = 0; mi < muts.length; mi++){
       var m = muts[mi];
-      if(m.type !== 'attributes' || m.attributeName !== 'transform' || !m.target || !m.target.id || m.target.id.indexOf('tankVeh-') !== 0){ relevant = true; break; }
+      if(m.target && !_inMapwrap(m.target)) uiRel = true;
+      if(m.type !== 'attributes' || m.attributeName !== 'transform' || !m.target || !m.target.id || m.target.id.indexOf('tankVeh-') !== 0) relevant = true;
+      if(uiRel && relevant) break;
     }
+    if(uiRel) uiDirty = true;
     if(relevant) markDirty();
   }); }catch(e){}
   if(mo){ mo.observe(document.body, {subtree:true, childList:true, attributes:true, characterData:true}); }
@@ -8538,14 +8556,14 @@ document.addEventListener('keydown', function(e){
   var presenting = false;
   var lastUIBuild = 0;
   function animate(time, frame){
+    if(!renderer) return;
+    presenting = !!(renderer.xr && renderer.xr.isPresenting);
+    if(!presenting){
+      for(var hh in lasers){ lasers[hh].visible = false; if(reticles[hh]) reticles[hh].visible = false; }
+      lastAim = null;
+      return;
+    }
     try{
-      if(!renderer) return;
-      presenting = !!(renderer.xr && renderer.xr.isPresenting);
-      if(!presenting){
-        for(var hh in lasers){ lasers[hh].visible = false; if(reticles[hh]) reticles[hh].visible = false; }
-        lastAim = null;
-        return;
-      }
       var session = renderer.xr.getSession && renderer.xr.getSession();
       var now = Date.now();
       var seen = {};
@@ -8615,20 +8633,16 @@ document.addEventListener('keydown', function(e){
 
       /* build inicial / rebuild de UI quando muda */
       if(renderer && !boardGroupBuilt){ buildBoard(); buildBoardBuilt = true; }
-      if(dirty){
-        dirty = false;
-        if(presenting){
-          if(now - lastUIBuild >= 250){ lastUIBuild = now; buildPanels(); }
-          syncBoard();
-        }
-      } else if(presenting && now - lastUIBuild >= 3000){
-        lastUIBuild = now;
-        buildPanels();
-        syncBoard();
+      if(dirty){ dirty = false; if(presenting) syncBoard(); }
+      if(presenting){
+        if(uiDirty && now - lastUIBuild >= 500){ lastUIBuild = now; uiDirty = false; buildPanels(); }
+        else if(now - lastUIBuild >= 3000){ lastUIBuild = now; buildPanels(); }
       }
 
-      renderer.render(scene, camera);
-    }catch(e){}
+    }catch(e){
+      try{ if(typeof console !== 'undefined' && console.error) console.error('vr3d:', (e && (e.stack || e.message)) || e); }catch(_){}
+    }
+    renderer.render(scene, camera);
   }
   var boardGroupBuilt = false;
   var buildBoardBuilt = false;
@@ -8656,13 +8670,16 @@ document.addEventListener('keydown', function(e){
         vrButton.textContent = 'Entrar em VR';
         boardGroup.visible = false;
         uiRoot.visible = false;
+        if(renderer) renderer.setAnimationLoop(null);
       });
       setupVrControllers();
+      if(renderer) renderer.setAnimationLoop(animate);
       await renderer.xr.setSession(session);
       vrButton.textContent = 'Sair do VR';
       boardGroup.visible = true;
       uiRoot.visible = true;
       dirty = true;
+      uiDirty = true;
       lastUIBuild = 0;
     }catch(err){
       alert('Não foi possível iniciar a sessão VR: ' + err.message);
