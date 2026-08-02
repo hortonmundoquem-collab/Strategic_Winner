@@ -1290,6 +1290,14 @@ body.chooserActive #actionButtonGroup{opacity:0!important;visibility:hidden!impo
 </style>
 </head>
 <body>
+<style id="vrCss">
+#vr-button{position:fixed;left:10px;top:10px;z-index:5000;font-family:Arial,sans-serif!important;text-transform:uppercase!important;background:#1a8f3a;color:#fff;border:3px solid #ffffff;outline:3px solid #000000;padding:10px 18px;font-size:16px;border-radius:8px;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(0,0,0,0.6)}
+#vr-button:disabled{background:#555;cursor:not-allowed}
+#vr-help{position:fixed;left:10px;bottom:8px;z-index:5000;font-family:Arial,sans-serif!important;color:#9fd0ff;font-size:12px;background:rgba(0,10,25,0.75);padding:6px 10px;border-radius:6px;border:1px solid #1a3a5a;pointer-events:none;white-space:pre;line-height:1.5}
+@media (max-width:900px){#vr-help{display:none}}
+</style>
+<button id="vr-button">Entrar em VR</button>
+<div id="vr-help">VR (Quest 3): apontar=gatilho clica  |  analógico direito: zoom  |  analógico esquerdo: arrastar mapa</div>
 
 <div id="setup">
   <h2>Strategic Winner</h2>
@@ -7619,240 +7627,119 @@ document.addEventListener('keydown', function(e){
 })();
 </script>
 
-<!-- ================= MODO VR (Meta Quest 3, pelo navegador) =================
-     Cria um ambiente WebXR imersivo (chao, horizonte) com uma tela grande e
-     nitida mostrando o jogo ao vivo (capturado via html2canvas). Aponte o
-     controle do Quest para a tela e aperte o gatilho para clicar - o clique e
-     reenviado para o elemento real por baixo, entao toda a logica do jogo
-     (territorios, cartas, fabricas de aviao etc.) continua funcionando igual.
-============================================================================ -->
-<style id="vrModeStyle">
-#vrEnterBtn{position:fixed;bottom:14px;right:14px;z-index:999998;background:#0d47a1;color:#fff;border:2px solid #64b5f6;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important}
-#vrEnterBtn:hover{background:#1565c0}
-#vrEnterBtn:disabled{opacity:.45;cursor:not-allowed}
-#vrStatusMsg{position:fixed;bottom:62px;right:14px;z-index:999998;background:rgba(0,0,0,.8);color:#fff;padding:8px 12px;border-radius:8px;font-size:11px;max-width:260px;display:none;line-height:1.4}
-#vrCanvas{position:fixed;top:0;left:0;z-index:999997}
-/* Durante a captura pro VR, desliga animacoes/filtros/sombras pesadas do tabuleiro.
-   Isso acelera MUITO o html2canvas (que e lento e as vezes falha com CSS filter/animation
-   complexos) sem afetar a jogabilidade normal fora do VR. */
-html.vr-capturing *{animation:none!important;transition:none!important}
-html.vr-capturing .terr-path,
-html.vr-capturing .terr-path:hover,
-html.vr-capturing .terr-trail,
-html.vr-capturing .boom-core,
-html.vr-capturing .boom-ring,
-html.vr-capturing .boom-ring2,
-html.vr-capturing .boom-spark,
-html.vr-capturing .boom-debris,
-html.vr-capturing .flying-debris{filter:none!important}
-</style>
-<button id="vrEnterBtn" class="vr-ui-ignore" disabled>VR CARREGANDO...</button>
-<div id="vrStatusMsg" class="vr-ui-ignore"></div>
-
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
+/* =====================================================================
+   MODO VR (Meta Quest 3)
+   ---------------------------------------------------------------------
+   O jogo inteiro é DOM/SVG, e o navegador do Quest NÃO suporta
+   dom-overlay em immersive-vr. Então a página é "fotografada" a cada
+   mudança (mapa SVG + painéis HTML) e virada numa textura numa tela 3D
+   flutuante. O laser do controle é transformado em coordenada da página
+   (elementFromPoint) e o gatilho gera o clique. Pan/zoom usam os
+   analógicos, como no outro jogo que já roda em VR.
+   ===================================================================== */
 (function(){
-  var vrBtn = document.getElementById('vrEnterBtn');
-  var vrStatus = document.getElementById('vrStatusMsg');
+  "use strict";
+  if(typeof THREE === 'undefined') return;
+  var vrButton = document.getElementById('vr-button');
+  if(!vrButton) return;
+  var ready = true;
 
-  function showStatus(msg, ms){
-    vrStatus.textContent = msg;
-    vrStatus.style.display = 'block';
-    if(ms) setTimeout(function(){ vrStatus.style.display = 'none'; }, ms);
-    updateVrPanelText(msg);
-  }
+  /* ---------------------- CENA THREE.JS ---------------------- */
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0e1a);
+  scene.fog = new THREE.Fog(0x0a0e1a, 7, 30);
 
-  // Muitos erros do WebXR (ex: sessao nao ficar "XR compatible", falha ao criar
-  // a camada base) acontecem dentro de promises internas do Three.js e nunca
-  // aparecem em lugar nenhum visivel no navegador do Quest. Aqui capturamos
-  // esses erros e mostramos direto no painel 3D (independente do html2canvas),
-  // pra nao ficar so com tela preta sem nenhuma pista do que deu errado.
-  window.addEventListener('unhandledrejection', function(ev){
-    console.error('[VR unhandledrejection]', ev.reason);
-    showStatus('ERRO INTERNO VR: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
-  });
-  window.addEventListener('error', function(ev){
-    console.error('[VR window error]', ev.error || ev.message);
-  });
+  var camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 120);
 
-  function init(){
-    if(typeof THREE === 'undefined' || typeof html2canvas === 'undefined'){ setTimeout(init, 200); return; }
-    if(!navigator.xr){
-      vrBtn.textContent = 'VR INDISPONIVEL NESTE NAVEGADOR';
-      vrBtn.disabled = true;
-      return;
-    }
-    navigator.xr.isSessionSupported('immersive-vr').then(function(ok){
-      if(ok){ vrBtn.disabled = false; vrBtn.textContent = 'ENTRAR EM VR'; }
-      else { vrBtn.textContent = 'VR NAO SUPORTADO NESTE NAVEGADOR'; vrBtn.disabled = true; }
-    }).catch(function(){
-      vrBtn.textContent = 'VR NAO SUPORTADO NESTE NAVEGADOR';
-      vrBtn.disabled = true;
-    });
-  }
+  var renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  var rc = renderer.domElement.style;
+  rc.position='fixed'; rc.left='0'; rc.top='0'; rc.width='100%'; rc.height='100%';
+  rc.zIndex='-1'; rc.pointerEvents='none';
+  document.body.appendChild(renderer.domElement);
 
-  var renderer, scene, camera, screenMesh, screenTex;
-  var panelMesh, panelCanvas, panelCtx, panelTex;
-  var capturing = false, captureTimer = null;
-  var raycaster, tempMatrix;
-  var pendingPoint = null;
-  var CAPTURE_SCALE = 1; // Quest 3: escala 1x. Escala 2x sobrecarrega a CPU do headset (4x mais pixels pra renderizar a cada captura)
-  var CAPTURE_INTERVAL = 350; // ms entre capturas (~2.8 fps). No Quest 3, 200ms era pesado demais junto com o mapa SVG cheio de filtros/sombras
-  var captureFailCount = 0;
-  var captureOkOnce = false;
-
-  function makeFloor(){
-    var grid = new THREE.GridHelper(20, 40, 0x2266aa, 0x123);
-    grid.position.y = 0;
-    scene.add(grid);
-    var floorGeo = new THREE.CircleGeometry(10, 48);
-    var floorMat = new THREE.MeshBasicMaterial({ color:0x0a1628, transparent:true, opacity:0.9 });
-    var floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI/2;
-    floor.position.y = -0.001;
-    scene.add(floor);
-    // ceu/horizonte simples para dar sensacao de profundidade e ambiente
-    var skyGeo = new THREE.SphereGeometry(15, 24, 16);
-    var skyMat = new THREE.MeshBasicMaterial({ color:0x0d2138, side:THREE.BackSide });
-    scene.add(new THREE.Mesh(skyGeo, skyMat));
-  }
-
-  function makeStatusPanel(){
-    panelCanvas = document.createElement('canvas');
-    panelCanvas.width = 1024; panelCanvas.height = 128;
-    panelCtx = panelCanvas.getContext('2d');
-    panelTex = new THREE.CanvasTexture(panelCanvas);
-    var geo = new THREE.PlaneGeometry(1.6, 0.2);
-    var mat = new THREE.MeshBasicMaterial({ map:panelTex, transparent:true });
-    panelMesh = new THREE.Mesh(geo, mat);
-    panelMesh.position.set(0, 0.55, -2.28);
-    panelMesh.visible = false;
-    scene.add(panelMesh);
-  }
-
-  function updateVrPanelText(msg){
-    if(!panelCtx) return;
-    panelCtx.clearRect(0,0,panelCanvas.width,panelCanvas.height);
-    panelCtx.fillStyle = 'rgba(0,0,0,0.75)';
-    panelCtx.fillRect(0,0,panelCanvas.width,panelCanvas.height);
-    panelCtx.fillStyle = '#fff';
-    panelCtx.font = 'bold 34px Arial';
-    panelCtx.textAlign = 'center';
-    panelCtx.textBaseline = 'middle';
-    wrapText(msg.toUpperCase(), panelCanvas.width/2, panelCanvas.height/2, panelCanvas.width-40, 38);
-    panelTex.needsUpdate = true;
-    if(panelMesh){ panelMesh.visible = true; }
-  }
-
-  function wrapText(text, x, y, maxWidth, lineHeight){
-    var words = text.split(' ');
-    var line = '';
-    var lines = [];
-    for(var n=0;n<words.length;n++){
-      var testLine = line + words[n] + ' ';
-      if(panelCtx.measureText(testLine).width > maxWidth && n > 0){
-        lines.push(line); line = words[n] + ' ';
-      } else { line = testLine; }
-    }
-    lines.push(line);
-    var startY = y - ((lines.length-1)*lineHeight)/2;
-    for(var i=0;i<lines.length;i++){
-      panelCtx.fillText(lines[i].trim(), x, startY + i*lineHeight);
-    }
-  }
-
-  function buildScene(){
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.05, 100);
-    renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
+  window.addEventListener('resize', function(){
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
-    try{ renderer.xr.setReferenceSpaceType('local-floor'); }catch(e){ console.error('[VR] setReferenceSpaceType falhou', e); }
-    renderer.domElement.id = 'vrCanvas';
-    document.body.appendChild(renderer.domElement);
+  });
 
-    makeFloor();
-    makeStatusPanel();
+  scene.add(new THREE.HemisphereLight(0x8899bb, 0x111122, 0.7));
+  var dirl = new THREE.DirectionalLight(0xffffff, 0.5);
+  dirl.position.set(3, 6, 4);
+  scene.add(dirl);
 
-    var winAspect = window.innerWidth / window.innerHeight;
-    var PLANE_W = 3.8;
-    var PLANE_H = PLANE_W / winAspect;
-    var geo = new THREE.PlaneGeometry(PLANE_W, PLANE_H);
-    var mat = new THREE.MeshBasicMaterial({ color:0x445566 });
-    screenMesh = new THREE.Mesh(geo, mat);
-    screenMesh.position.set(0, 1.5, -2.3);
-    scene.add(screenMesh);
+  var grid = new THREE.GridHelper(22, 22, 0x1c2c44, 0x16233a);
+  grid.position.y = -0.02;
+  scene.add(grid);
+  var floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshStandardMaterial({color:0x0d1220, roughness:0.95, metalness:0})
+  );
+  floor.rotation.x = -Math.PI/2;
+  floor.position.y = -0.03;
+  scene.add(floor);
 
-    raycaster = new THREE.Raycaster();
-    tempMatrix = new THREE.Matrix4();
-
-    for(var i=0;i<2;i++){
-      var controller = renderer.xr.getController(i);
-      controller.addEventListener('selectstart', onSelectStart);
-      controller.addEventListener('selectend', onSelectEnd);
-      scene.add(controller);
-      var lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-6)]);
-      var line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color:0x33ff88 }));
-      controller.add(line);
-    }
-
-    window.addEventListener('resize', function(){
-      camera.aspect = window.innerWidth/window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+  /* ------------------- TELA COM A TEXTURA ------------------- */
+  var SCREEN_W = 4.4;
+  var boardTexture = new THREE.CanvasTexture(document.createElement('canvas'));
+  boardTexture.minFilter = THREE.LinearFilter;
+  boardTexture.magFilter = THREE.LinearFilter;
+  var screen, backing;
+  function buildScreen(){
+    var aspect = texH > 0 ? (texH/texW) : (9/16);
+    if(screen){ scene.remove(screen); }
+    if(backing){ scene.remove(backing); }
+    var sh = SCREEN_W * Math.max(0.15, Math.min(1.6, aspect));
+    backing = new THREE.Mesh(
+      new THREE.PlaneGeometry(SCREEN_W + 0.16, sh + 0.16),
+      new THREE.MeshBasicMaterial({color:0x0f1626})
+    );
+    backing.position.set(0, 1.4, -2.9);
+    backing.rotation.x = -0.14;
+    scene.add(backing);
+    screen = new THREE.Mesh(
+      new THREE.PlaneGeometry(SCREEN_W, sh),
+      new THREE.MeshBasicMaterial({map: boardTexture})
+    );
+    screen.position.copy(backing.position);
+    screen.position.z += 0.015;
+    screen.rotation.x = -0.14;
+    scene.add(screen);
   }
 
-  function getUVFromController(controller){
-    tempMatrix.identity().extractRotation(controller.matrixWorld);
-    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-    raycaster.ray.direction.set(0,0,-1).applyMatrix4(tempMatrix);
-    var hits = raycaster.intersectObject(screenMesh);
-    if(hits.length > 0 && hits[0].uv) return hits[0].uv;
-    return null;
+  /* ---------------- CAPTURA DA PÁGINA -> TEXTURA ---------------- */
+  var captureCanvas = null, captureCtx = null;
+  var texW = 0, texH = 0;
+  var dirty = true, captureBusy = false, lastCapture = 0;
+  var CAPTURE_MIN_MS = 260;
+  var vw = 1, vh = 1;
+
+  function initCapture(){
+    vw = document.documentElement.clientWidth || window.innerWidth;
+    vh = document.documentElement.clientHeight || window.innerHeight;
+    texW = Math.max(2, Math.round(vw));
+    texH = Math.max(2, Math.round(vh));
+    if(!captureCanvas){ captureCanvas = document.createElement('canvas'); }
+    if(captureCanvas.width !== texW){ captureCanvas.width = texW; }
+    if(captureCanvas.height !== texH){ captureCanvas.height = texH; }
+    captureCtx = captureCanvas.getContext('2d');
+    boardTexture.image = captureCanvas;
+    boardTexture.needsUpdate = true;
+    buildScreen();
   }
 
-  function dispatchAt(x, y, type){
-    var el = document.elementFromPoint(x, y);
-    if(!el) return;
-    el.dispatchEvent(new MouseEvent(type, { bubbles:true, cancelable:true, clientX:x, clientY:y, view:window, button:0 }));
-  }
+  var CAPTURE_SCALE = 2; // nitidez: 2x a resolucao logica da janela
 
-  function onSelectStart(e){
-    var uv = getUVFromController(e.target);
-    if(!uv) return;
-    var x = uv.x * window.innerWidth;
-    var y = (1 - uv.y) * window.innerHeight;
-    pendingPoint = { x:x, y:y };
-    dispatchAt(x, y, 'mousedown');
-  }
-  function onSelectEnd(){
-    if(!pendingPoint) return;
-    dispatchAt(pendingPoint.x, pendingPoint.y, 'mouseup');
-    dispatchAt(pendingPoint.x, pendingPoint.y, 'click');
-    pendingPoint = null;
-  }
-
-  function applyCapturedCanvas(canvas){
-    if(!screenTex){
-      screenTex = new THREE.CanvasTexture(canvas);
-      screenTex.minFilter = THREE.LinearFilter;
-      screenTex.magFilter = THREE.LinearFilter;
-      if(renderer) screenTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      screenMesh.material.map = screenTex;
-      screenMesh.material.color.set(0xffffff);
-      screenMesh.material.needsUpdate = true;
-    } else {
-      screenTex.image = canvas;
-      screenTex.needsUpdate = true;
-    }
-  }
-
-  function captureFrame(){
-    if(!capturing) return;
-    document.documentElement.classList.add('vr-capturing');
+  function captureNow(){
+    if(captureBusy) return;
+    if(typeof html2canvas === 'undefined'){ captureBusy = false; lastCapture = Date.now(); return; }
+    captureBusy = true;
     html2canvas(document.body, {
       backgroundColor:'#0a1628',
       logging:false,
@@ -7862,61 +7749,319 @@ html.vr-capturing .flying-debris{filter:none!important}
       height: window.innerHeight,
       windowWidth: window.innerWidth,
       windowHeight: window.innerHeight,
-      removeContainer: true,
-      imageTimeout: 3000,
-      ignoreElements: function(el){ return el.classList && el.classList.contains('vr-ui-ignore'); }
+      ignoreElements: function(el){
+        if(el.id === 'vr-button' || el.id === 'vr-help') return true;
+        if(el === renderer.domElement) return true;
+        return false;
+      }
     }).then(function(canvas){
-      document.documentElement.classList.remove('vr-capturing');
-      applyCapturedCanvas(canvas);
-      captureFailCount = 0;
-      if(!captureOkOnce){ captureOkOnce = true; showStatus('TELA DO JOGO CARREGADA', 2000); }
-      if(panelMesh && panelMesh.visible && vrStatus.style.display === 'none'){ panelMesh.visible = false; }
+      try{
+        captureCtx.clearRect(0,0,texW,texH);
+        captureCtx.drawImage(canvas,0,0,texW,texH);
+        boardTexture.needsUpdate = true;
+      }catch(e){}
+      captureBusy = false;
+      lastCapture = Date.now();
     }).catch(function(err){
-      document.documentElement.classList.remove('vr-capturing');
-      captureFailCount++;
-      // Loga o erro real no console (visivel via chrome://inspect ligado ao Quest) para diagnostico,
-      // e mostra no painel do VR pra nao ficar so com tela preta sem explicacao.
-      console.error('[VR captureFrame]', err);
-      showStatus('FALHA AO CAPTURAR A TELA (' + captureFailCount + '): ' + (err && err.message ? err.message : err), 4000);
-    }).finally(function(){
-      if(capturing) captureTimer = setTimeout(captureFrame, CAPTURE_INTERVAL);
+      captureBusy = false;
+      lastCapture = Date.now();
     });
   }
 
-  function enterVR(){
-    if(!renderer) buildScene();
-    navigator.xr.requestSession('immersive-vr', { optionalFeatures:['local-floor','bounded-floor'] }).then(function(session){
-      showStatus('SESSAO VR INICIADA...', 3000);
-      renderer.xr.setSession(session);
-      capturing = true;
-      captureFrame();
-      var renderErrCount = 0;
-      renderer.setAnimationLoop(function(){
-        try{
-          renderer.render(scene, camera);
-        }catch(err){
-          renderErrCount++;
-          console.error('[VR render loop]', err);
-          if(renderErrCount <= 3){
-            showStatus('ERRO AO RENDERIZAR VR: ' + (err && err.message ? err.message : err));
+  function markDirty(){ dirty = true; }
+
+  /* observa o jogo inteiro: renderAll mexe no SVG, painéis/cartas/botões
+     mudam o HTML — qualquer alteração marca para re-fotografar. */
+  var mo = null;
+  try{ mo = new MutationObserver(function(){ markDirty(); }); }catch(e){}
+  if(mo){ mo.observe(document.body, {subtree:true, childList:true, attributes:true, characterData:true}); }
+
+  /* ----------------------- APONTAR + CLICAR ----------------------- */
+  var raycaster = new THREE.Raycaster();
+  var tmpVec = new THREE.Vector3();
+  var tmpDir = new THREE.Vector3();
+  var tmpQuat = new THREE.Quaternion();
+  var tmpMatrix = new THREE.Matrix4();
+  var hitInfo = {};
+  var lasers = {}, reticles = {};
+  var lastAim = null;
+
+  function ensureVisuals(hand){
+    if(lasers[hand]) return;
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+    var line = new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x66ff88, transparent:true, opacity:0.55}));
+    line.frustumCulled = false;
+    scene.add(line);
+    lasers[hand] = line;
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.012, 0.02, 32),
+      new THREE.MeshBasicMaterial({color:0x66ff88, transparent:true, opacity:0.95, side:THREE.DoubleSide})
+    );
+    ring.frustumCulled = false;
+    scene.add(ring);
+    reticles[hand] = ring;
+  }
+
+  function setLaser(hand, origin, dir, len, hit){
+    var line = lasers[hand]; if(!line) return;
+    var pos = line.geometry.attributes.position.array;
+    pos[0]=origin.x; pos[1]=origin.y; pos[2]=origin.z;
+    if(hit){ pos[3]=hit.x; pos[4]=hit.y; pos[5]=hit.z; }
+    else { var e = origin.clone().addScaledVector(dir, len); pos[3]=e.x; pos[4]=e.y; pos[5]=e.z; }
+    line.geometry.attributes.position.needsUpdate = true;
+    line.visible = true;
+    var ring = reticles[hand];
+    if(hit){ ring.visible = true; ring.position.copy(hit); ring.lookAt(camera.position); }
+    else { ring.visible = false; }
+  }
+
+  /* Controllers do three.js (funcionam no r128): o WebXRManager mantém
+     matrixWorld atualizado e despacha selectstart/selectend neles. */
+  var vrControllers = [];
+  var pendingPoint = null;
+  var cachedGamepads = {};
+
+  function cacheGamepad(src){
+    if(!src || !src.handedness || !src.gamepad) return;
+    cachedGamepads[src.handedness] = src.gamepad;
+  }
+
+  function setupVrControllers(){
+    if(vrControllers.length) return;
+    for(var i=0;i<2;i++){
+      var c = renderer.xr.getController(i);
+      c.addEventListener('selectstart', onSelectStart);
+      c.addEventListener('selectend', onSelectEnd);
+      scene.add(c);
+      vrControllers.push(c);
+    }
+  }
+
+  function getUVFromController(controller){
+    tmpMatrix.identity().extractRotation(controller.matrixWorld);
+    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+    raycaster.ray.direction.set(0,0,-1).applyMatrix4(tmpMatrix);
+    var hits = raycaster.intersectObject(screen);
+    if(hits.length > 0 && hits[0].uv) return hits[0].uv;
+    return null;
+  }
+
+  function dispatchAt(x, y, type){
+    var el = document.elementFromPoint(x, y);
+    if(!el) return;
+    var hit = el;
+    while(hit && hit.nodeType === 1){
+      if(hit.id === 'vr-button' || hit.id === 'vr-help') return;
+      hit = hit.parentElement;
+    }
+    var opts = { bubbles:true, cancelable:true, clientX:x, clientY:y, view:window, button:0 };
+    if(type.indexOf('pointer') === 0){
+      el.dispatchEvent(new PointerEvent(type, opts));
+    } else {
+      el.dispatchEvent(new MouseEvent(type, opts));
+    }
+  }
+
+  function onSelectStart(e){
+    cacheGamepad(e.data || (e.target && e.target.userData));
+    var uv = getUVFromController(e.target);
+    if(!uv) return;
+    var x = uv.x * vw;
+    var y = (1 - uv.y) * vh;
+    pendingPoint = { x:x, y:y };
+    dispatchAt(x, y, 'pointerdown');
+    dispatchAt(x, y, 'mousedown');
+  }
+
+  function onSelectEnd(e){
+    if(e && e.data) cacheGamepad(e.data);
+    if(!pendingPoint) return;
+    dispatchAt(pendingPoint.x, pendingPoint.y, 'pointerup');
+    dispatchAt(pendingPoint.x, pendingPoint.y, 'mouseup');
+    dispatchAt(pendingPoint.x, pendingPoint.y, 'click');
+    pendingPoint = null;
+  }
+
+  /* ------------------- PAN / ZOOM (analógicos) ------------------- */
+  var ZOOM_STEP_MS = 150;
+  var lastZoomAt = 0;
+
+  function readGamepad(){
+    var out = {lx:0,ly:0,rx:0,ry:0,gripL:false,gripR:false};
+    var session = renderer.xr.getSession && renderer.xr.getSession();
+    if(!session) return out;
+    var srcs = session.inputSources || [];
+    for(var i=0;i<srcs.length;i++){
+      var gp = srcs[i].gamepad || cachedGamepads[srcs[i].handedness];
+      if(!gp) continue;
+      var ax = gp.axes || [];
+      var x = ax.length>=2 ? ax[0] : 0, y = ax.length>=2 ? ax[1] : 0;
+      if(srcs[i].handedness==='right'){
+        out.rx = x; out.ry = y;
+        if(gp.buttons[1] && gp.buttons[1].pressed) out.gripR = true;
+      } else {
+        out.lx = x; out.ly = y;
+        if(gp.buttons[1] && gp.buttons[1].pressed) out.gripL = true;
+      }
+    }
+    return out;
+  }
+
+  function vrZoomStep(dir, cx, cy){
+    try{
+      var svg = document.getElementById('mapsvg');
+      if(!svg || typeof _clientToSvg !== 'function') return;
+      var p = _clientToSvg(svg, cx, cy);
+      var newLevel = Math.max(ZOOM_MIN_LEVEL, Math.min(ZOOM_MAX_LEVEL, _zoomLevel + dir));
+      if(newLevel === _zoomLevel) return;
+      _zoomLevel = newLevel;
+      var newW = _widthForLevel(_zoomLevel);
+      var ratio = newW / _vb.w;
+      _vb.x = p.x - (p.x - _vb.x) * ratio;
+      _vb.y = p.y - (p.y - _vb.y) * ratio;
+      _vb.w = newW;
+      _vb.h = newW * (VB_FULL.h / VB_FULL.w);
+      _clampVB(); _applyVB(); renderAll();
+    }catch(e){}
+  }
+
+  function vrPan(dx, dy){
+    try{
+      _vb.x -= dx;
+      _vb.y -= dy;
+      _clampVB(); _applyVB(); renderAll();
+    }catch(e){}
+  }
+
+  var setupEl = document.getElementById('setup');
+
+  function handlePanZoom(gp){
+    var now = Date.now();
+    /* zoom: analógico direito (Y) ou grips */
+    if(Math.abs(gp.ry) > 0.35 || gp.gripR || gp.gripL){
+      if(now - lastZoomAt >= ZOOM_STEP_MS){
+        lastZoomAt = now;
+        var dir = gp.gripL ? -1 : (gp.gripR ? 1 : (gp.ry < 0 ? 1 : -1));
+        var aim = lastAim || {x: vw/2, y: vh/2};
+        vrZoomStep(dir, aim.x, aim.y);
+      }
+    }
+    /* pan: analógico esquerdo (arrasta o mapa / rola a tela inicial) */
+    if(Math.abs(gp.lx) > 0.18 || Math.abs(gp.ly) > 0.18){
+      var setupVis = setupEl && setupEl.getBoundingClientRect().height > 0 &&
+                     window.getComputedStyle(setupEl).display !== 'none';
+      if(setupVis && setupEl){
+        setupEl.scrollTop = Math.max(0, setupEl.scrollTop - Math.round(gp.ly * 30));
+        setupEl.scrollLeft = Math.max(0, setupEl.scrollLeft + Math.round(gp.lx * 30));
+      } else {
+        vrPan(gp.lx * 6, gp.ly * 6);
+      }
+    }
+  }
+
+  /* ------------------------- LOOP PRINCIPAL ------------------------- */
+  function animate(time, frame){
+    try{
+      var presenting = !!(renderer.xr && renderer.xr.isPresenting);
+      var session = renderer.xr.getSession && renderer.xr.getSession();
+      var now = Date.now();
+      var seen = {};
+
+      if(presenting && session){
+        var ref = renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
+        lastAim = null;
+        if(frame && ref){
+          var srcs = session.inputSources || [];
+          for(var i=0;i<srcs.length;i++){
+            var src = srcs[i];
+            if(!src || !src.targetRaySpace) continue;
+            var pose = frame.getPose(src.targetRaySpace, ref);
+            if(!pose) continue;
+            var hand = src.handedness || 'right';
+            seen[hand] = true;
+            ensureVisuals(hand);
+            tmpVec.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
+            tmpQuat.set(pose.transform.orientation.x, pose.transform.orientation.y,
+                        pose.transform.orientation.z, pose.transform.orientation.w);
+            tmpDir.set(0,0,-1).applyQuaternion(tmpQuat);
+            raycaster.set(tmpVec, tmpDir);
+            raycaster.far = 20;
+            var hits = raycaster.intersectObject(screen, false);
+            if(hits.length){
+              var lp = screen.worldToLocal(hits[0].point.clone());
+              var sh = screen.geometry.parameters.height;
+              var u = (lp.x + SCREEN_W/2) / SCREEN_W;
+              var v = (lp.y + sh/2) / sh;
+              var cX = Math.min(vw-1, Math.max(0, u*vw));
+              var cY = Math.min(vh-1, Math.max(0, (1-v)*vh));
+              hitInfo[hand] = {clientX:cX, clientY:cY};
+              lastAim = {x:cX, y:cY};
+              setLaser(hand, tmpVec, tmpDir, 8, hits[0].point.clone());
+            } else {
+              setLaser(hand, tmpVec, tmpDir, 8, null);
+            }
           }
         }
-      });
-      showStatus('VR ATIVO - APONTE O CONTROLE PARA A TELA E APERTE O GATILHO PARA CLICAR', 6000);
-      session.addEventListener('end', function(){
-        capturing = false;
-        if(captureTimer) clearTimeout(captureTimer);
-        renderer.setAnimationLoop(null);
-        showStatus('VR ENCERRADO', 2500);
-      });
-    }).catch(function(err){
-      console.error('[VR requestSession]', err);
-      showStatus('NAO FOI POSSIVEL ENTRAR EM VR: ' + (err && err.message ? err.message : err));
-    });
+        handlePanZoom(readGamepad());
+
+        /* faz o tanque atacante "mirar" no laser */
+        if(lastAim && typeof _clientToSvg === 'function' && typeof updateTankFacingLive === 'function'){
+          var svgEl = document.getElementById('mapsvg');
+          if(svgEl){
+            _mouseSvgPos = _clientToSvg(svgEl, lastAim.x, lastAim.y);
+            updateTankFacingLive();
+          }
+        }
+      } else {
+        for(var h in lasers){ lasers[h].visible = false; if(reticles[h]) reticles[h].visible = false; }
+        lastAim = null;
+      }
+
+      /* re-fotografa quando o jogo muda (limitado p/ não pesar) */
+      if(presenting && !captureBusy && now - lastCapture >= CAPTURE_MIN_MS){
+        if(dirty){ dirty = false; captureNow(); }
+        else if(now - lastCapture >= 900){ captureNow(); }
+      }
+
+      renderer.render(scene, camera);
+    }catch(e){}
+  }
+  renderer.setAnimationLoop(animate);
+
+  /* ------------------------- BOTÃO / SESSÃO ------------------------- */
+  if(navigator.xr){
+    navigator.xr.isSessionSupported('immersive-vr').then(function(supported){
+      if(!supported){ vrButton.textContent = 'VR não suportado'; vrButton.disabled = true; }
+    }).catch(function(){ vrButton.textContent = 'VR indisponível'; vrButton.disabled = true; });
+  } else {
+    vrButton.textContent = 'WebXR não disponível (use o navegador do Quest)';
+    vrButton.disabled = true;
   }
 
-  vrBtn.addEventListener('click', enterVR);
-  init();
+  vrButton.addEventListener('click', async function(){
+    if(!ready) return;
+    var cur = renderer.xr.getSession && renderer.xr.getSession();
+    if(cur){ try{ cur.end(); }catch(e){} return; }
+    if(!navigator.xr) return;
+    try{
+      var session = await navigator.xr.requestSession('immersive-vr', {
+        optionalFeatures: ['local-floor', 'bounded-floor']
+      });
+      session.addEventListener('end', function(){
+        vrButton.textContent = 'Entrar em VR';
+      });
+      setupVrControllers();
+      await renderer.xr.setSession(session);
+      vrButton.textContent = 'Sair do VR';
+      initCapture();
+      dirty = true;
+    }catch(err){
+      alert('Não foi possível iniciar a sessão VR: ' + err.message);
+    }
+  });
+
+  initCapture();
 })();
 </script>
 </body>
