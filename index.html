@@ -7652,8 +7652,8 @@ document.addEventListener('keydown', function(e){
   scene.fog = new THREE.Fog(0x0a0e1a, 9, 46);
 
   var camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 140);
-  camera.position.set(0, 1.72, 2.05);
-  camera.lookAt(0, 0, 0);
+  camera.position.set(0, 1.6, 2.2);
+  camera.lookAt(0, 0.8, -0.4);
 
   var renderer = null;
   try{
@@ -7756,6 +7756,8 @@ document.addEventListener('keydown', function(e){
   var EXTRUDE = 0.035;
   var LIFT_HOVER = 0.02;
   var LIFT_STATE = 0.055;
+  var BOARD_TABLE_Y = 0.85;  /* altura de mesa (local-floor) */
+  var BOARD_Z = -0.4;        /* tabuleiro a frente do usuario */
 
   var terrShapes = {};   /* t -> {shapes:[THREE.Shape], contours:[...], bbox} */
   var terrObjs = {};     /* t -> {root, mesh, lines, label, tank, factory, mat, bbox} */
@@ -7899,6 +7901,7 @@ document.addEventListener('keydown', function(e){
       clickTargets.push(mesh);
       boardGroup.add(root);
     }
+    boardGroup.position.set(0, BOARD_TABLE_Y, BOARD_Z);
     scene.add(boardGroup);
   }
 
@@ -8028,13 +8031,13 @@ document.addEventListener('keydown', function(e){
   }
 
   /* ====================== PAINEIS DE UI 3D ====================== */
-  var UI_SCREEN_W = 2.5;
-  var UI_Y = 1.62;
-  var UI_Z = -1.62;
+  var UI_SCREEN_W = 2.8;
+  var UI_Y = 1.9;
+  var UI_Z = -1.6;
   var uiRoot = new THREE.Group();
   var uiPlanes = [];
   var lastPanelCount = 0;
-  var UI_SCALE = 2, UI_MAXDIM = 1024;
+  var UI_SCALE = 2, UI_MAXDIM = 2048;
 
   function _gcs(el){ try{ return window.getComputedStyle(el); }catch(e){ return {}; } }
   function _ownText(el){
@@ -8212,7 +8215,7 @@ document.addEventListener('keydown', function(e){
     var setup = document.getElementById('setup');
     if(setup && _gcs(setup).display !== 'none'){
       var sr = setup.getBoundingClientRect();
-      if(sr.width > 1 && sr.height > 1 && setup !== mapwrap){
+      if(sr.width > 1 && sr.height > 1 && setup !== mapwrap && out.indexOf(setup) < 0){
         out.push(setup);
       }
     }
@@ -8270,11 +8273,12 @@ document.addEventListener('keydown', function(e){
     lastPanelCount = uiPlanes.length;
   }
   uiRoot.position.set(0, UI_Y, UI_Z);
-  uiRoot.rotation.x = -0.12;
+  uiRoot.rotation.x = -0.1;
   scene.add(uiRoot);
 
   /* botao "Sair do VR" */
   var exitBtn = null;
+  var helpPlane = null;
   function makeExitButton(){
     var canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 80;
@@ -8303,6 +8307,31 @@ document.addEventListener('keydown', function(e){
     return plane;
   }
 
+  /* dica de controles VR, sempre visivel no rodape da tela */
+  function makeHelpHint(){
+    var canvas = document.createElement('canvas');
+    canvas.width = 1024; canvas.height = 96;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0,0,1024,96);
+    ctx.font = '700 40px Arial, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 8; ctx.lineJoin = 'round';
+    ctx.strokeText('APONTAR + GATILHO = CLICAR   |   ANAL. DIR = ZOOM   |   ANAL. ESQ = SCROLL / MEXER MAPA   |   GRIP = ZOOM RAPIDO', 512, 48);
+    ctx.fillStyle = '#bdf';
+    ctx.fillText('APONTAR + GATILHO = CLICAR   |   ANAL. DIR = ZOOM   |   ANAL. ESQ = SCROLL / MEXER MAPA   |   GRIP = ZOOM RAPIDO', 512, 48);
+    var tex = new THREE.CanvasTexture(canvas);
+    var plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.3, 0.22),
+      new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false, depthTest:false})
+    );
+    plane.position.set(0, -1.1, 0.02);
+    plane.renderOrder = 210;
+    plane.userData.help = true;
+    uiRoot.add(plane);
+    helpPlane = plane;
+    return plane;
+  }
+
   /* ====================== ENTRADA (LASER) ======================= */
   var raycaster = new THREE.Raycaster();
   var tmpVec = new THREE.Vector3();
@@ -8314,6 +8343,7 @@ document.addEventListener('keydown', function(e){
   var hoverT = null;
   var hoverUI = null;
   var lastAim = null;
+  var prevHoverUI = null;
 
   function ensureVisuals(hand){
     if(lasers[hand]) return;
@@ -8414,12 +8444,30 @@ document.addEventListener('keydown', function(e){
     if(!src || !src.handedness || !src.gamepad) return;
     cachedGamepads[src.handedness] = src.gamepad;
   }
+  function visibleScrollable(){
+    var cands = ['setup','rulesSummaryScreen','modal','tradePanel','tradeInner','configBox'];
+    var vw = window.innerWidth || 800, vh = window.innerHeight || 600;
+    for(var i=0;i<cands.length;i++){
+      var el = document.getElementById(cands[i]);
+      if(!el) continue;
+      var cs = _gcs(el);
+      if(cs.display === 'none' || cs.visibility === 'hidden') continue;
+      var r = el.getBoundingClientRect();
+      if(r.width <= 1 || r.height <= 1) continue;
+      if(r.top > vh || r.bottom < 0 || r.left > vw || r.right < 0) continue;
+      if(cs.overflowY === 'auto' || cs.overflowY === 'scroll' || el.scrollHeight > el.clientHeight + 2){
+        return el;
+      }
+    }
+    return null;
+  }
   function readGamepad(){
     var out = {lx:0,ly:0,rx:0,ry:0,gripL:false,gripR:false};
     var session = renderer.xr.getSession && renderer.xr.getSession();
     if(!session) return out;
     var srcs = session.inputSources || [];
     for(var i=0;i<srcs.length;i++){
+      cacheGamepad(srcs[i]);
       var gp = srcs[i].gamepad || cachedGamepads[srcs[i].handedness];
       if(!gp) continue;
       var ax = gp.axes || [];
@@ -8436,12 +8484,11 @@ document.addEventListener('keydown', function(e){
   }
   function handlePanZoom(gp){
     var now = Date.now();
-    var setupEl = document.getElementById('setup');
-    var setupVis = setupEl && _gcs(setupEl).display !== 'none' && setupEl.getBoundingClientRect().height > 1;
-    if(setupVis && setupEl){
+    var scrollEl = visibleScrollable();
+    if(scrollEl){
       if(Math.abs(gp.ly) > 0.18 || Math.abs(gp.lx) > 0.18){
-        setupEl.scrollTop = Math.max(0, setupEl.scrollTop - Math.round(gp.ly * 30));
-        setupEl.scrollLeft = Math.max(0, setupEl.scrollLeft + Math.round(gp.lx * 30));
+        scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - Math.round(gp.ly * 30));
+        scrollEl.scrollLeft = Math.max(0, scrollEl.scrollLeft + Math.round(gp.lx * 30));
       }
       return;
     }
@@ -8626,6 +8673,16 @@ document.addEventListener('keydown', function(e){
         for(var t3 in terrObjs){ terrObjs[t3].hovered = false; }
       }
 
+      /* feedback de hover nos paineis 3D */
+      if(prevHoverUI && prevHoverUI !== hoverUI) prevHoverUI.scale.set(1, 1, 1);
+      if(hoverUI && hoverUI !== prevHoverUI) hoverUI.scale.set(1.045, 1.045, 1.045);
+      prevHoverUI = hoverUI;
+
+      if(helpPlane){
+        var halfH = (UI_SCREEN_W/2) * (UI_VH/UI_VW);
+        helpPlane.position.y = -halfH + 0.14;
+      }
+
       /* build inicial / rebuild de UI quando muda */
       if(renderer && !boardGroupBuilt){ buildBoard(); buildBoardBuilt = true; }
       if(dirty){ dirty = false; if(presenting) syncBoard(); }
@@ -8688,6 +8745,7 @@ document.addEventListener('keydown', function(e){
     boardGroupBuilt = true;
   }
   makeExitButton();
+  makeHelpHint();
 
   function pickTerritoryAt(mx, my){
     for(var t in terrShapes){
@@ -8702,8 +8760,7 @@ document.addEventListener('keydown', function(e){
   }
 
   window.__vrDebug = function(){
-    var pickInside = 0, pickTotal = 0;
-    for(var t in CENTERS){
+    var pickInside = 0, pickTotal = 0;    for(var t in CENTERS){
       var c = CENTERS[t];
       if(pickTerritoryAt(c[0], c[1]) === t) pickInside++;
       pickTotal++;
@@ -8727,21 +8784,49 @@ document.addEventListener('keydown', function(e){
       pick: pickInside + '/' + pickTotal,
       terrObjs: Object.keys(terrObjs).length,
       geoBox: geoBox,
+      boardPos: [+boardGroup.position.x.toFixed(2), +boardGroup.position.y.toFixed(2), +boardGroup.position.z.toFixed(2)],
+      uiPos: [+uiRoot.position.x.toFixed(2), +uiRoot.position.y.toFixed(2), +uiRoot.position.z.toFixed(2)],
       labels: (function(){ var n=0; for(var t in terrObjs){ if(terrObjs[t].label) n++; } return n; })(),
       tanks: (function(){ var n=0; for(var t in terrObjs){ if(terrObjs[t].tank) n++; } return n; })(),
       uiPanels: lastPanelCount,
       gTerrs: armTotal,
-      exit: !!exitBtn
+      exit: !!exitBtn,
+      help: !!helpPlane
     };
   };
   window.__vrPick = pickTerritoryAt;
   window.__vrRefreshUI = buildPanels;
   window.__vrSync = syncBoard;
+  window.__vrScrollTarget = visibleScrollable;
+  window.__vrHitTest = function(x, y){
+    try{
+      var el = document.elementFromPoint(x, y);
+      if(!el) return null;
+      return {id: el.id || '', tag: el.tagName || '', cls: (el.getAttribute && (el.getAttribute('class')||'')) || ''};
+    }catch(e){ return {err: e.message}; }
+  };
+  window.__vrUIInfo = function(){
+    var out = [];
+    for(var i=0;i<uiPlanes.length;i++){
+      var p = uiPlanes[i];
+      var ud = p.userData || {};
+      var id = '';
+      var el = ud.uiEl;
+      if(el) id = el.id || (el.getAttribute && el.getAttribute('class')) || el.tagName;
+      if(ud.exit) id = 'EXIT';
+      var pos = p.position;
+      out.push({id:id, w:+p.geometry.parameters.width.toFixed(3), h:+p.geometry.parameters.height.toFixed(3),
+        x:+pos.x.toFixed(3), y:+pos.y.toFixed(3), z:+pos.z.toFixed(3),
+        ro: p.renderOrder});
+    }
+    return out;
+  };
 
   /* mostra/recolhe a cena: em modo janela mantemos a pagina normal por tras */
   boardGroup.visible = false;
   uiRoot.visible = false;
 })();
+
 </script>
 </body>
 </html>
