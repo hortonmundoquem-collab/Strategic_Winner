@@ -1290,14 +1290,6 @@ body.chooserActive #actionButtonGroup{opacity:0!important;visibility:hidden!impo
 </style>
 </head>
 <body>
-<style id="vrCss">
-#vr-button{position:fixed;left:10px;top:10px;z-index:5000;font-family:Arial,sans-serif!important;text-transform:uppercase!important;background:#1a8f3a;color:#fff;border:3px solid #ffffff;outline:3px solid #000000;padding:10px 18px;font-size:16px;border-radius:8px;cursor:pointer;letter-spacing:1px;box-shadow:0 4px 14px rgba(0,0,0,0.6)}
-#vr-button:disabled{background:#555;cursor:not-allowed}
-#vr-help{position:fixed;left:10px;bottom:8px;z-index:5000;font-family:Arial,sans-serif!important;color:#9fd0ff;font-size:12px;background:rgba(0,10,25,0.75);padding:6px 10px;border-radius:6px;border:1px solid #1a3a5a;pointer-events:none;white-space:pre;line-height:1.5}
-@media (max-width:900px){#vr-help{display:none}}
-</style>
-<button id="vr-button">Entrar em VR</button>
-<div id="vr-help">VR (Quest 3): apontar=gatilho clica  |  analógico direito: zoom  |  analógico esquerdo: arrastar mapa</div>
 
 <div id="setup">
   <h2>Strategic Winner</h2>
@@ -7627,1268 +7619,788 @@ document.addEventListener('keydown', function(e){
 })();
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script><script>
-/* =====================================================================
-   MODO VR 3D (Meta Quest 3) - v3
-   ---------------------------------------------------------------------
-   Tabuleiro REAL 3D: cada territorio vira uma peca extrudada (Extrude
-   Geometry a partir do PATHS[terr]), sobre um mar 3D, com rotulos 3D,
-   tanques 3D e paineis de interface como placas 3D crispadas (cada
-   elemento e pintado no proprio canvas pequeno, 2x, SEM fotografar a
-   pagina inteira nem o mapa). Selecao por laser (raycast nas pecas);
-   clique em territorio chama clickT(t) direto; clique em painel mapeia
-   UV -> coordenadas da janela e dispara eventos no DOM real (elementFrom
-   Point), mantendo TODA a logica do jogo intacta.
-   ===================================================================== */
+<!-- ================= MODO VR NATIVO 3D (Meta Quest 3, pelo navegador) =================
+     Reescrita completa: NADA aqui depende mais de "tirar print" da tela (html2canvas
+     foi removido por completo). O tabuleiro e construido como geometria 3D real, extrudada
+     a partir dos mesmos caminhos SVG (PATHS) que o jogo ja usa, ficando deitado como uma
+     mesa de guerra na sua frente. As cores/exercitos sao lidos direto do estado do jogo
+     (G.terrs, ownerColor, getDisplayArmies) e atualizados por um timer leve (sem DOM/print).
+     Os cliques no tabuleiro chamam clickT(t) diretamente - a mesma funcao que os territorios
+     2D ja chamam - entao toda a logica do jogo continua igual, sem simulacao de clique por
+     coordenada de tela. Os botoes de acao (atacar, fortificar, encerrar fase etc.) sao
+     espelhados como paineis 3D que, ao serem clicados, disparam um .click() real no botao
+     de verdade escondido por baixo - sem nunca precisar renderizar ele visualmente em 2D.
+============================================================================ -->
+<style id="vrModeStyle">
+#vrEnterBtn{position:fixed;bottom:14px;right:14px;z-index:999998;background:#0d47a1;color:#fff;border:2px solid #64b5f6;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important}
+#vrEnterBtn:hover{background:#1565c0}
+#vrEnterBtn:disabled{opacity:.45;cursor:not-allowed}
+#vrPcPreviewBtn{position:fixed;bottom:14px;right:190px;z-index:999998;background:#1a8f3a;color:#fff;border:2px solid #7ee08a;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important}
+#vrPcPreviewBtn:hover{background:#22a848}
+#vrStatusMsg{position:fixed;bottom:62px;right:14px;z-index:999998;background:rgba(0,0,0,.8);color:#fff;padding:8px 12px;border-radius:8px;font-size:11px;max-width:260px;display:none;line-height:1.4}
+#vrCanvas{position:fixed;top:0;left:0;z-index:999997}
+#vrPcHint{position:fixed;top:14px;left:14px;z-index:999998;background:rgba(0,0,0,.75);color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.6;display:none;font-family:Arial,sans-serif!important;text-transform:uppercase!important}
+#vrCrosshair{position:fixed;top:50%;left:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border:2px solid #fff;border-radius:50%;z-index:999998;display:none;pointer-events:none;box-shadow:0 0 4px rgba(0,0,0,.8)}
+body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not(#vrCanvas):not(#vrPcHint):not(#vrCrosshair):not(script):not(style){position:fixed!important;left:-99999px!important;top:-99999px!important}
+</style>
+<button id="vrEnterBtn" class="vr-ui-ignore" disabled>VR CARREGANDO...</button>
+<button id="vrPcPreviewBtn" class="vr-ui-ignore">PREVIA 3D NO PC</button>
+<div id="vrStatusMsg" class="vr-ui-ignore"></div>
+<div id="vrPcHint" class="vr-ui-ignore">CLIQUE NA TELA PARA OLHAR EM VOLTA (MOUSE)<br>WASD: MOVER &nbsp; ESPACO/SHIFT: SUBIR/DESCER<br>CLIQUE ESQUERDO: INTERAGIR &nbsp; ESC: LIBERAR MOUSE</div>
+<div id="vrCrosshair" class="vr-ui-ignore"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
 (function(){
-  "use strict";
-  if(typeof THREE === 'undefined') return;
-  var vrButton = document.getElementById('vr-button');
-  if(!vrButton) return;
+  var vrBtn = document.getElementById('vrEnterBtn');
+  var vrStatus = document.getElementById('vrStatusMsg');
 
-  /* ============================ CENA ============================ */
-  var scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0e1a);
-  scene.fog = new THREE.Fog(0x0a0e1a, 9, 46);
+  function showStatus(msg, ms){
+    vrStatus.textContent = msg;
+    vrStatus.style.display = 'block';
+    if(ms) setTimeout(function(){ vrStatus.style.display = 'none'; }, ms);
+    updateHeaderPanelText(msg);
+  }
 
-  var camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.05, 140);
-  camera.position.set(0, 1.6, 2.2);
-  camera.lookAt(0, 1.45, -1.25);
-
-  var renderer = null;
-  try{
-    renderer = new THREE.WebGLRenderer({antialias:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.xr.enabled = true;
-    var rc = renderer.domElement.style;
-    rc.position='fixed'; rc.left='0'; rc.top='0'; rc.width='100%'; rc.height='100%';
-    rc.zIndex='-1'; rc.pointerEvents='none';
-    document.body.appendChild(renderer.domElement);
-  }catch(e){ renderer = null; }
-
-  window.addEventListener('resize', function(){
-    if(!renderer) return;
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  // Erros do WebXR/Three.js as vezes acontecem dentro de promises internas e nunca aparecem
+  // em lugar nenhum visivel no navegador do Quest. Aqui eles saem escritos no proprio
+  // painel 3D dentro do headset.
+  window.addEventListener('unhandledrejection', function(ev){
+    console.error('[VR unhandledrejection]', ev.reason);
+    showStatus('ERRO INTERNO VR: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason));
+  });
+  window.addEventListener('error', function(ev){
+    console.error('[VR window error]', ev.error || ev.message);
   });
 
-  scene.add(new THREE.HemisphereLight(0x8899bb, 0x111122, 0.75));
-  var dirl = new THREE.DirectionalLight(0xffffff, 0.55);
-  dirl.position.set(4, 7, 5);
-  scene.add(dirl);
-
-  /* ================== PARSER DE PATH SVG (M/C/Z) ================== */
-  var NUM_RE = /-?[0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?/g;
-  function numChunk(s){
-    var out = [], m;
-    NUM_RE.lastIndex = 0;
-    while((m = NUM_RE.exec(s)) !== null){ out.push(parseFloat(m[0])); }
-    return out;
+  function init(){
+    if(typeof THREE === 'undefined'){ setTimeout(init, 200); return; }
+    if(!navigator.xr){
+      vrBtn.textContent = 'VR INDISPONIVEL NESTE NAVEGADOR';
+      vrBtn.disabled = true;
+      return;
+    }
+    navigator.xr.isSessionSupported('immersive-vr').then(function(ok){
+      if(ok){ vrBtn.disabled = false; vrBtn.textContent = 'ENTRAR EM VR'; }
+      else { vrBtn.textContent = 'VR NAO SUPORTADO NESTE NAVEGADOR'; vrBtn.disabled = true; }
+    }).catch(function(){
+      vrBtn.textContent = 'VR NAO SUPORTADO NESTE NAVEGADOR';
+      vrBtn.disabled = true;
+    });
   }
-  /* Retorna lista de contornos: cada contorno = [{x,y},...] fechado. */
-  var SEG_RE = /([MmCcZz])([^MmCcZz]*)/g;
-  function parsePathD(d){
-    var contours = [];
-    var cur = null;
-    var x = 0, y = 0, sx = 0, sy = 0;
-    SEG_RE.lastIndex = 0;
-    var m;
-    while((m = SEG_RE.exec(d)) !== null){
-      var cmd = m[1], args = m[2];
-      var nums = numChunk(args);
-      if(cmd === 'M' || cmd === 'm'){
-        if(cur && cur.length > 0){ contours.push(cur); }
-        cur = [];
-        for(var k=0;k+1<nums.length;k+=2){
-          var nx = nums[k], ny = nums[k+1];
-          if(cmd === 'm'){ nx += x; ny += y; }
-          x = nx; y = ny;
-          if(k === 0){ sx = x; sy = y; cur.push({x:x, y:y}); }
-        }
-      } else if(cmd === 'C' || cmd === 'c'){
-        if(!cur){ cur = []; cur.push({x:x, y:y}); }
-        for(var k2=0;k2+5<nums.length;k2+=6){
-          var c1x = nums[k2], c1y = nums[k2+1], c2x = nums[k2+2], c2y = nums[k2+3], ex = nums[k2+4], ey = nums[k2+5];
-          if(cmd === 'c'){ c1x += x; c1y += y; c2x += x; c2y += y; ex += x; ey += y; }
-          sampleCubic(cur, x, y, c1x, c1y, c2x, c2y, ex, ey);
-          x = ex; y = ey;
-        }
-      } else { /* Z */
-        if(cur && cur.length > 0){
-          if(cur[0].x !== x || cur[0].y !== y) cur.push({x:cur[0].x, y:cur[0].y});
-          contours.push(cur);
-          cur = null;
-        }
-        x = sx; y = sy;
+
+  var renderer, scene, camera;
+  var raycaster, tempMatrix;
+  var headerMesh, headerCanvas, headerCtx, headerTex;
+  var mapGroup, terrMeshes = {}, terrLabels = {};
+  var ctrlPanelGroup, uiButtons = [], navBtns = {};
+  var lastLogicUpdate = 0;
+  var LOGIC_UPDATE_MS = 220; // atualiza cores/exercitos/botoes a cada ~220ms - leve, sem DOM screenshot
+
+  var VB_W = 1920, VB_H = 1080;
+  var MAP_SCALE = 1.6 / VB_W;   // mesa de ~1.6m de largura
+  var EXTRUDE_DEPTH = 40;       // em unidades locais (pre-escala) -> ~3.3cm de altura real
+  var LIFT_AMOUNT = 55;         // levante do territorio selecionado, mesma escala
+
+  // Nomes padrao dos jogadores dentro do VR (nao ha teclado confiavel em sessao immersive-vr)
+  var VR_DEFAULT_NAMES = ['JOGADOR 1','JOGADOR 2','JOGADOR 3','JOGADOR 4','JOGADOR 5','JOGADOR 6'];
+  function applyVrDefaultNames(){
+    try{
+      for(var i=0;i<VR_DEFAULT_NAMES.length;i++){
+        var inp = document.getElementById('mpName'+i);
+        if(inp && !inp.value){ inp.value = VR_DEFAULT_NAMES[i]; inp.dispatchEvent(new Event('input',{bubbles:true})); inp.dispatchEvent(new Event('change',{bubbles:true})); }
       }
-    }
-    if(cur && cur.length > 0) contours.push(cur);
-    return contours;
-  }
-  function sampleCubic(cur, x0,y0,x1,y1,x2,y2,x3,y3){
-    var STEPS = 8;
-    for(var s=1;s<=STEPS;s++){
-      var t = s/STEPS, it = 1-t;
-      var a = it*it*it, b = 3*it*it*t, c = 3*it*t*t, d = t*t*t;
-      cur.push({x: a*x0 + b*x1 + c*x2 + d*x3, y: a*y0 + b*y1 + c*y2 + d*y3});
-    }
-  }
-  function pointInPoly(px, py, pts){
-    var inside = false;
-    for(var i=0, j=pts.length-1; i<pts.length; j=i++){
-      var xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
-      if(((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
-    }
-    return inside;
-  }
-  function contourArea(pts){
-    var a = 0;
-    for(var i=0, j=pts.length-1; i<pts.length; j=i++){
-      a += pts[j].x*pts[i].y - pts[i].x*pts[j].y;
-    }
-    return a/2;
+    }catch(e){ /* ignora */ }
   }
 
-  /* ==================== GEOMETRIA DO TABULEIRO ==================== */
-  var BOARD_W = 3.4;
-  var EXTRUDE = 0.035;
-  var LIFT_HOVER = 0.02;
-  var LIFT_STATE = 0.055;
-  var BOARD_QUADRO_Y = 1.45;  /* centro vertical do quadro (altura dos olhos) */
-  var BOARD_Z = -1.25;        /* distancia do quadro a frente do usuario */
-  var BOARD_SCALE = 0.8;      /* tamanho inicial (quadro na parede, nao gigante) */
+  function makeFloor(){
+    var grid = new THREE.GridHelper(20, 40, 0x2266aa, 0x123);
+    grid.position.y = 0;
+    scene.add(grid);
+    var floorGeo = new THREE.CircleGeometry(10, 48);
+    var floorMat = new THREE.MeshBasicMaterial({ color:0x0a1628, transparent:true, opacity:0.9 });
+    var floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI/2;
+    floor.position.y = -0.001;
+    scene.add(floor);
+    var skyGeo = new THREE.SphereGeometry(15, 24, 16);
+    var skyMat = new THREE.MeshBasicMaterial({ color:0x0d2138, side:THREE.BackSide });
+    scene.add(new THREE.Mesh(skyGeo, skyMat));
+  }
 
-  var terrShapes = {};   /* t -> {shapes:[THREE.Shape], contours:[...], bbox} */
-  var terrObjs = {};     /* t -> {root, mesh, lines, label, tank, factory, mat, bbox} */
-  var boardGroup = new THREE.Group();
-  var waterPlane = null;
-  var clickTargets = []; /* meshes raycasteaveis */
-  var XMID = 0, YMID = 0, UNIT = BOARD_W/1500;
-  var parsedCount = 0, holeCount = 0, xmin=1e9,xmax=-1e9,ymin=1e9,ymax=-1e9;
+  function makeHeaderPanel(){
+    headerCanvas = document.createElement('canvas');
+    headerCanvas.width = 1024; headerCanvas.height = 160;
+    headerCtx = headerCanvas.getContext('2d');
+    headerTex = new THREE.CanvasTexture(headerCanvas);
+    var geo = new THREE.PlaneGeometry(1.5, 0.23);
+    var mat = new THREE.MeshBasicMaterial({ map:headerTex, transparent:true });
+    headerMesh = new THREE.Mesh(geo, mat);
+    headerMesh.position.set(0, 1.95, -1.35);
+    headerMesh.rotation.x = -0.15;
+    scene.add(headerMesh);
+    updateHeaderPanelText('CARREGANDO TABULEIRO 3D...');
+  }
 
-  function buildShapes(d){
-    var contours = parsePathD(d);
-    var groups = [];
-    for(var i=0;i<contours.length;i++){
-      var pts = contours[i];
-      if(pts.length < 3) continue;
-      var host = null;
-      for(var g=0;g<groups.length;g++){
-        if(pointInPoly(pts[0].x, pts[0].y, groups[g].outer)){
-          host = groups[g]; break;
-        }
+  function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight){
+    var words = String(text).split(' ');
+    var line = '', lines = [];
+    for(var n=0;n<words.length;n++){
+      var testLine = line + words[n] + ' ';
+      if(ctx.measureText(testLine).width > maxWidth && n > 0){ lines.push(line); line = words[n] + ' '; }
+      else { line = testLine; }
+    }
+    lines.push(line);
+    var startY = y - ((lines.length-1)*lineHeight)/2;
+    for(var i=0;i<lines.length;i++){ ctx.fillText(lines[i].trim(), x, startY + i*lineHeight); }
+  }
+
+  function updateHeaderPanelText(msg){
+    if(!headerCtx) return;
+    headerCtx.clearRect(0,0,headerCanvas.width,headerCanvas.height);
+    headerCtx.fillStyle = 'rgba(0,0,0,0.75)';
+    headerCtx.fillRect(0,0,headerCanvas.width,headerCanvas.height);
+    headerCtx.fillStyle = '#fff';
+    headerCtx.font = 'bold 40px Arial';
+    headerCtx.textAlign = 'center';
+    headerCtx.textBaseline = 'middle';
+    wrapCanvasText(headerCtx, String(msg).toUpperCase(), headerCanvas.width/2, headerCanvas.height/2, headerCanvas.width-50, 46);
+    headerTex.needsUpdate = true;
+  }
+
+  // Le o estado real do jogo (sem DOM, sem print) e monta a linha de status permanente:
+  // fase atual, jogador da vez, reservas etc. Cai de volta pra mensagem generica se algo faltar.
+  function buildHeaderStatusText(){
+    try{
+      if(typeof G === 'undefined' || !G.players) return 'JOGO EM ANDAMENTO';
+      var cp = G.players[G.cur];
+      var phaseNames = { R:'REFORCO', A:'ATAQUE', F:'REAGRUPAMENTO', P1:'DISTRIBUICAO INICIAL' };
+      var phaseName = phaseNames[G.phase] || G.phase || '';
+      var reserves = (cp && typeof cp.arm === 'number') ? (' - RESERVAS: ' + cp.arm) : '';
+      return (cp ? cp.name : '') + ' - FASE: ' + phaseName + reserves;
+    }catch(e){ return 'JOGO EM ANDAMENTO'; }
+  }
+
+  // ---------- MAPA 3D (territorios extrudados a partir dos mesmos PATHS do jogo) ----------
+
+  function samplePathPoints(subpathD){
+    try{
+      var p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('d', subpathD);
+      var len = p.getTotalLength();
+      if(!len || !isFinite(len)) return [];
+      var n = Math.max(10, Math.min(140, Math.round(len/9)));
+      var pts = [];
+      for(var i=0;i<n;i++){
+        var pt = p.getPointAtLength(len*i/n);
+        pts.push({ x: (pt.x - VB_W/2), y: -(pt.y - VB_H/2) });
       }
-      if(host){ host.holes.push(pts); holeCount++; }
-      else groups.push({outer:pts, holes:[]});
-    }
+      return pts;
+    }catch(e){ console.error('[VR samplePathPoints]', e); return []; }
+  }
+
+  function buildTerritoryMesh(t, d){
+    var subpaths = d.match(/M[^M]*/g) || [d];
     var shapes = [];
-    for(var h=0;h<groups.length;h++){
+    for(var i=0;i<subpaths.length;i++){
+      var pts = samplePathPoints(subpaths[i]);
+      if(pts.length < 3) continue;
       var shape = new THREE.Shape();
-      var outer = groups[h].outer;
-      shape.moveTo((outer[0].x - XMID)*UNIT, (YMID - outer[0].y)*UNIT);
-      for(var p=1;p<outer.length;p++) shape.lineTo((outer[p].x - XMID)*UNIT, (YMID - outer[p].y)*UNIT);
+      shape.moveTo(pts[0].x, pts[0].y);
+      for(var j=1;j<pts.length;j++) shape.lineTo(pts[j].x, pts[j].y);
       shape.closePath();
-      for(var hh=0;hh<groups[h].holes.length;hh++){
-        var hole = groups[h].holes[hh];
-        var hp = new THREE.Path();
-        hp.moveTo((hole[0].x - XMID)*UNIT, (YMID - hole[0].y)*UNIT);
-        for(var q=1;q<hole.length;q++) hp.lineTo((hole[q].x - XMID)*UNIT, (YMID - hole[q].y)*UNIT);
-        hp.closePath();
-        shape.holes.push(hp);
-      }
       shapes.push(shape);
     }
-    return shapes;
-  }
-  function mapToWorld(mx, my, out){
-    var o = out || {};
-    o.x = (mx - XMID) * UNIT;
-    o.y = 0;
-    o.z = (my - YMID) * UNIT;
-    return o;
-  }
-  function terrColorRGB(t){
-    var col = '#888888';
-    try{ col = ownerColor(t) || '#888888'; }catch(e){}
-    return new THREE.Color(col);
-  }
-  function buildBoard(){
-    if(!PATHS) return;
-    var keys = Object.keys(PATHS);
-    xmin=1e9;xmax=-1e9;ymin=1e9;ymax=-1e9;
-    for(var i=0;i<keys.length;i++){
-      var t = keys[i];
-      var contours = parsePathD(PATHS[t]);
-      for(var c=0;c<contours.length;c++){
-        for(var p=0;p<contours[c].length;p++){
-          var pt = contours[c][p];
-          if(pt.x < xmin) xmin = pt.x; if(pt.x > xmax) xmax = pt.x;
-          if(pt.y < ymin) ymin = pt.y; if(pt.y > ymax) ymax = pt.y;
-        }
-      }
-    }
-    XMID = (xmin+xmax)/2; YMID = (ymin+ymax)/2;
-    UNIT = BOARD_W / Math.max(1, xmax-xmin);
-    var depth = (ymax-ymin)*UNIT;
-
-    /* mar 3D */
-    var wGeo = new THREE.PlaneGeometry(BOARD_W*1.06, depth*1.06);
-    waterPlane = new THREE.Mesh(wGeo, new THREE.MeshLambertMaterial({color:0x3f8fbf}));
-    waterPlane.rotation.x = -Math.PI/2;
-    waterPlane.position.y = -EXTRUDE/2 - 0.002;
-    waterPlane.userData.water = true;
-    waterPlane.receiveShadow = true;
-    boardGroup.add(waterPlane);
-    clickTargets.push(waterPlane);
-
-    /* base da mesa */
-    var table = new THREE.Mesh(
-      new THREE.BoxGeometry(BOARD_W*1.12, 0.05, depth*1.12),
-      new THREE.MeshLambertMaterial({color:0x0d1626})
-    );
-    table.position.y = -EXTRUDE - 0.035;
-    boardGroup.add(table);
-
-    /* territorios */
-    for(var i2=0;i2<keys.length;i2++){
-      var tt = keys[i2];
-      var contours2 = parsePathD(PATHS[tt]);
-      var bbox = {xmin:1e9,xmax:-1e9,ymin:1e9,ymax:-1e9};
-      for(var cc=0;cc<contours2.length;cc++){
-        for(var pp=0;pp<contours2[cc].length;pp++){
-          var qq = contours2[cc][pp];
-          if(qq.x<bbox.xmin)bbox.xmin=qq.x; if(qq.x>bbox.xmax)bbox.xmax=qq.x;
-          if(qq.y<bbox.ymin)bbox.ymin=qq.y; if(qq.y>bbox.ymax)bbox.ymax=qq.y;
-        }
-      }
-      var shapes = buildShapes(PATHS[tt]);
-      terrShapes[tt] = {shapes:shapes, contours:contours2};
-      parsedCount++;
-      var mat = new THREE.MeshLambertMaterial({color:0x999999, transparent:true, opacity:0.97, side:THREE.DoubleSide});
-      var geo;
-      try{
-        geo = new THREE.ExtrudeGeometry(shapes, {depth:EXTRUDE, bevelEnabled:false, steps:1});
-      }catch(e){
-        geo = new THREE.ShapeGeometry(shapes);
-      }
-      var mesh = new THREE.Mesh(geo, mat);
-      mesh.rotation.x = -Math.PI/2;
-      var root = new THREE.Group();
-      root.add(mesh);
-      /* bordas (coordenadas de mundo direto, no nivel do topo da peca) */
-      var pts3 = [];
-      for(var li=0;li<contours2.length;li++){
-        var cont = contours2[li];
-        for(var pi=0;pi<cont.length;pi++){
-          var w = mapToWorld(cont[pi].x, cont[pi].y);
-          pts3.push(w.x, EXTRUDE+0.002, w.z);
-        }
-      }
-      var lineGeo = new THREE.BufferGeometry();
-      lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts3), 3));
-      var lineMat = new THREE.LineBasicMaterial({color:0x050505});
-      var lines = new THREE.LineSegments(lineGeo, lineMat);
-      lines.frustumCulled = false;
-      root.add(lines);
-      var c2 = CENTERS[tt] || [ (bbox.xmin+bbox.xmax)/2, (bbox.ymin+bbox.ymax)/2 ];
-      terrObjs[tt] = {
-        root:root, mesh:mesh, lines:lines, mat:mat,
-        label:null, tank:null, factory:null,
-        cx:c2[0], cy:c2[1], bbox:bbox,
-        arm:-1, tanks:-1, name:'', state:'', hovered:false
-      };
-      clickTargets.push(mesh);
-      boardGroup.add(root);
-    }
-    boardGroup.position.set(0, BOARD_QUADRO_Y, BOARD_Z);
-    boardGroup.rotation.x = Math.PI/2; /* mapa em pe, como um quadro de parede */
-    boardGroup.scale.set(BOARD_SCALE, BOARD_SCALE, BOARD_SCALE);
-    scene.add(boardGroup);
-  }
-
-  /* ========================= ROTULOS 3D ========================= */
-  function makeLabelCanvas(t, name, arm, tanks, color){
-    var c = document.createElement('canvas');
-    c.width = 256; c.height = 128;
-    var ctx = c.getContext('2d');
-    ctx.clearRect(0,0,256,128);
-    function txt(s, fs, y, col, strokeW){
-      ctx.font = '900 ' + fs + 'px Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = strokeW;
-      ctx.strokeText(s, 128, y);
-      ctx.fillStyle = col;
-      ctx.fillText(s, 128, y);
-    }
-    txt(name, 30, 30, '#ffffff', 7);
-    txt(String(arm), 58, 86, color, 10);
-    if(tanks > 0) txt('T' + tanks, 22, 114, '#ffe066', 5);
-    return c;
-  }
-  function makeLabel(t){
-    var canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 128;
-    var tex = new THREE.CanvasTexture(canvas);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    var sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, transparent:true, depthTest:false}));
-    var info = terrObjs[t];
-    var b = info.bbox;
-    var ww = Math.max((b.xmax-b.xmin)*UNIT, (b.ymax-b.ymin)*UNIT);
-    var s = Math.max(0.18, Math.min(0.42, ww*0.30));
-    sp.scale.set(s, s*0.5, 1);
-    var w = mapToWorld(info.cx, info.cy);
-    sp.position.set(w.x, EXTRUDE+0.12, w.z);
-    sp.renderOrder = 40;
-    sp.userData.terr = t;
-    info.label = sp;
-    info.labelCanvas = canvas;
-    boardGroup.add(sp);
-    return sp;
-  }
-  function updateLabel(t){
-    var info = terrObjs[t];
-    if(!info) return;
-    if(!info.label){ makeLabel(t); }
-    var arm = (window.G && G.terrs[t]) ? (G.terrs[t].arm||0) : 0;
-    var tanks = 0;
-    try{ tanks = getDisplayTanks(t); }catch(e){}
-    var name = info.name || t;
-    var col = '#' + terrColorRGB(t).getHexString();
-    if(arm !== info.arm || tanks !== info.tanks || col !== info.lastCol || name !== info.lastName){
-      var sp = info.label;
-      var src = makeLabelCanvas(t, name, arm, tanks, col);
-      sp.material.map.image = src;
-      sp.material.map.needsUpdate = true;
-      info.arm = arm; info.tanks = tanks; info.lastCol = col; info.lastName = name;
-    }
-  }
-
-  /* ========================== TANQUES ========================== */
-  function makeTankMesh(color){
-    var g = new THREE.Group();
-    var body = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.035, 0.16), new THREE.MeshLambertMaterial({color:color}));
-    body.position.y = 0.02;
-    g.add(body);
-    var turret = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.09), new THREE.MeshLambertMaterial({color:color}));
-    turret.position.set(0, 0.045, 0.01);
-    g.add(turret);
-    var barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14, 6), new THREE.MeshLambertMaterial({color:0x333333}));
-    barrel.rotation.x = Math.PI/2;
-    barrel.position.set(0, 0.045, 0.09);
-    g.add(barrel);
-    var tracks = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.02), new THREE.MeshLambertMaterial({color:0x222222}));
-    tracks.position.set(-0.05, 0.01, 0.05);
-    g.add(tracks);
-    var tracks2 = tracks.clone();
-    tracks2.position.set(0.05, 0.01, 0.05);
-    g.add(tracks2);
-    return g;
-  }
-  function parseTankYaw(t){
-    var yaw = -Math.PI/2; /* base: tanque aponta p/ esquerda (screen 180) */
+    if(!shapes.length) return null;
+    var geo;
     try{
-      var el = document.getElementById('tankVeh-' + t);
-      if(el){
-        var tr = el.getAttribute('transform') || '';
-        var rot = 0, flip = false;
-        var m = /rotate\((-?[0-9.]+)/.exec(tr);
-        if(m) rot = parseFloat(m[1]);
-        if(tr.indexOf('scale(-1,1)') >= 0) flip = true;
-        var ang;
-        if(flip) ang = rot < 0 ? 360 + rot : rot;
-        else ang = 180 + rot;
-        yaw = (ang + 90) * Math.PI/180;
-      }
-    }catch(e){}
-    return yaw;
-  }
-  function updateTanks(){
-    for(var t in terrObjs){
-      var info = terrObjs[t];
-      var count = 0;
-      try{ count = getDisplayTanks(t); }catch(e){}
-      if(count > 0){
-        if(!info.tank){
-          var col = terrColorRGB(t);
-          info.tank = makeTankMesh(col);
-          var ic = _tankIconCenters && _tankIconCenters[t];
-          var wpt;
-          if(ic) wpt = mapToWorld(ic.x, ic.y);
-          else wpt = mapToWorld(info.cx, info.cy);
-          info.tank.position.set(wpt.x, EXTRUDE+0.06, wpt.z);
-          info.tank.scale.set(1,1,1);
-          boardGroup.add(info.tank);
-        }
-        info.tank.rotation.y = parseTankYaw(t);
-        info.tank.visible = true;
-      } else if(info.tank){
-        info.tank.visible = false;
-      }
-    }
+      geo = new THREE.ExtrudeGeometry(shapes, { depth:EXTRUDE_DEPTH, bevelEnabled:false, curveSegments:2 });
+    }catch(e){ console.error('[VR ExtrudeGeometry]', t, e); return null; }
+    var mat = new THREE.MeshBasicMaterial({ color:0x888888, side:THREE.DoubleSide });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.terrId = t;
+    var edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color:0x111111 }));
+    mesh.add(edges);
+    return mesh;
   }
 
-  /* ====================== PAINEIS DE UI 3D ====================== */
-  var UI_SCREEN_W = 2.8;
-  var UI_Y = 1.45;
-  var UI_Z = -0.85; /* na frente do quadro, para o laser nao passar por tras */
-  var uiRoot = new THREE.Group();
-  var uiPlanes = [];
-  var lastPanelCount = 0;
-  var UI_SCALE = 2, UI_MAXDIM = 2048;
-
-  function _gcs(el){ try{ return window.getComputedStyle(el); }catch(e){ return {}; } }
-  function _ownText(el){
-    var t = '';
-    for(var i=0;i<el.childNodes.length;i++){
-      var n = el.childNodes[i];
-      if(n.nodeType === 3){ var s = n.nodeValue || ''; if(s.trim()) t += s; }
-    }
-    return t.replace(/\s+/g, ' ').trim();
-  }
-  function _parseAlpha(c){
-    if(!c) return 0;
-    if(c === 'transparent') return 0;
-    var m = /rgba?\(([^)]*)\)/.exec(c);
-    if(m){
-      var p = m[1].split(',');
-      if(p.length >= 4) return parseFloat(p[3]) || 0;
-      return 1;
-    }
-    var m8 = /^#([0-9a-fA-F]{8})$/.exec(c);
-    if(m8) return parseInt(m8[1].substr(6,2), 16) / 255;
-    return 1;
-  }
-  function _gradStart(bg){
-    var m = /(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\)|[a-z]+\([^)]*\))/i.exec(bg);
-    return m ? m[1] : null;
-  }
-  function _rr(ctx, x, y, w, h, rad){
-    ctx.beginPath();
-    ctx.moveTo(x+rad, y);
-    ctx.arcTo(x+w, y, x+w, y+h, rad);
-    ctx.arcTo(x+w, y+h, x, y+h, rad);
-    ctx.arcTo(x, y+h, x, y, rad);
-    ctx.arcTo(x, y, x+w, y, rad);
-    ctx.closePath();
-  }
-  function _effZ(el){
-    var z = 0, cur = el;
-    while(cur && cur.nodeType === 1){
-      var zi = parseInt(_gcs(cur).zIndex, 10);
-      if(!isNaN(zi)) z = Math.max(z, zi);
-      cur = cur.parentElement;
-    }
-    return z;
-  }
-  function _paintTextLocal(ctx, el, cs, x, y, w, h){
-    var fs = parseFloat(cs.fontSize) || 14;
-    var fw = (cs.fontWeight && cs.fontWeight !== 'normal') ? cs.fontWeight : '';
-    var fst = (cs.fontStyle && cs.fontStyle !== 'normal') ? cs.fontStyle : '';
-    ctx.font = (fst ? fst + ' ' : '') + (fw ? fw + ' ' : '') + fs + 'px ' + (cs.fontFamily || 'Arial');
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    var align = cs.textAlign || 'left';
-    ctx.textAlign = align;
-    var txt = _ownText(el);
-    if(!txt) return;
-    var maxW = Math.max(12, w - 8);
-    var lines = [];
-    var src = txt.split('\n');
-    for(var i=0;i<src.length;i++){
-      var ln = src[i];
-      if(ctx.measureText(ln).width <= maxW){ lines.push(ln); continue; }
-      var words = ln.split(/\s+/), cur = '';
-      for(var wd=0;wd<words.length;wd++){
-        var tt = cur ? cur + ' ' + words[wd] : words[wd];
-        if(ctx.measureText(tt).width > maxW && cur){ lines.push(cur); cur = words[wd]; }
-        else cur = tt;
-      }
-      if(cur) lines.push(cur);
-    }
-    var lh = fs * 1.25;
-    var startY = y + h/2 - (lines.length*lh)/2 + lh/2;
-    var ow = Math.max(1, fs/7);
-    for(var li=0; li<lines.length; li++){
-      var tx = align === 'center' ? x + w/2 : (align === 'right' ? x + w - 6 : x + 6);
-      var ty = startY + li*lh;
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = ow;
-      ctx.strokeText(lines[li], tx, ty);
-      ctx.fillStyle = cs.color || '#fff';
-      ctx.fillText(lines[li], tx, ty);
-    }
-  }
-  function paintElLocal(ctx, el, cs, r, ox, oy){
-    var w = r.width, h = r.height;
-    var x = r.left - ox, y = r.top - oy;
-    if(x > UI_VW || y > UI_VH || x + w < 0 || y + h < 0) return;
-    var rad = parseFloat(cs.borderTopLeftRadius) || 0;
-    if(rad > h/2) rad = h/2;
-    var bg = cs.backgroundColor;
-    if(bg && _parseAlpha(bg) > 0){
-      ctx.fillStyle = bg; _rr(ctx, x, y, w, h, rad); ctx.fill();
-    } else if(cs.backgroundImage && cs.backgroundImage !== 'none'){
-      var g = _gradStart(cs.backgroundImage);
-      if(g){ ctx.fillStyle = g; _rr(ctx, x, y, w, h, rad); ctx.fill(); }
-    }
-    var bw = parseFloat(cs.borderTopWidth) || 0;
-    if(bw > 0){
-      ctx.strokeStyle = cs.borderTopColor || '#fff';
-      ctx.lineWidth = bw;
-      _rr(ctx, x + bw/2, y + bw/2, w - bw, h - bw, Math.max(0, rad - bw/2));
-      ctx.stroke();
-    }
-    var ow = parseFloat(cs.outlineWidth) || 0;
-    if(ow > 0){
-      ctx.strokeStyle = cs.outlineColor || '#000';
-      ctx.lineWidth = ow;
-      _rr(ctx, x - ow/2, y - ow/2, w + ow, h + ow, rad + ow/2);
-      ctx.stroke();
-    }
-    _paintTextLocal(ctx, el, cs, x, y, w, h);
-    try{
-      var imgs = el.querySelectorAll('img');
-      for(var k=0;k<imgs.length;k++){
-        var im = imgs[k];
-        if(!im.src || !im.complete) continue;
-        var ir = im.getBoundingClientRect();
-        ctx.drawImage(im, ir.left - ox, ir.top - oy, ir.width, ir.height);
-      }
-    }catch(e){}
-  }
-  function paintPanelInto(ctx, el, ox, oy, vw, vh){
-    var list = [el];
-    var desc = el.querySelectorAll('*');
-    for(var i=0;i<desc.length;i++) list.push(desc[i]);
-    var items = [];
-    for(var j=0;j<list.length;j++){
-      var e = list[j];
-      var tag = e.tagName;
-      if(tag === 'CANVAS' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' || tag === 'META' || tag === 'TITLE' || tag === 'TEMPLATE' || tag === 'SVG') continue;
-      var cs = _gcs(e);
-      if(cs.display === 'none' || cs.visibility === 'hidden') continue;
-      var o = parseFloat(cs.opacity); if(!isFinite(o)) o = 1;
-      if(o <= 0.001) continue;
-      var r = e.getBoundingClientRect();
-      if(r.width <= 0 || r.height <= 0) continue;
-      if(r.left > ox+vw || r.top > oy+vh || r.left+r.width < ox || r.top+r.height < oy) continue;
-      items.push({el:e, cs:cs, r:r, z:_effZ(e)});
-    }
-    items.sort(function(a,b){ return (a.z - b.z) || 0; });
-    for(var k=0;k<items.length;k++){
-      ctx.globalAlpha = items[k].cs.opacity && items[k].cs.opacity !== '1' ? (parseFloat(items[k].cs.opacity)||1) : 1;
-      paintElLocal(ctx, items[k].el, items[k].cs, items[k].r, ox, oy);
-    }
-    ctx.globalAlpha = 1;
-  }
-  var UI_VW = window.innerWidth || 800, UI_VH = window.innerHeight || 600;
-
-  function topFixedEls(){
-    var out = [];
-    var mapwrap = document.getElementById('mapwrap');
-    var all = document.querySelectorAll('body *');
-    for(var i=0;i<all.length;i++){
-      var el = all[i];
-      var tag = el.tagName;
-      if(tag === 'CANVAS' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' || tag === 'META' || tag === 'TITLE' || tag === 'TEMPLATE') continue;
-      if(el.id === 'vr-button' || el.id === 'vr-help') continue;
-      if(mapwrap && mapwrap.contains(el)) continue;
-      var cs = _gcs(el);
-      if(cs.display === 'none' || cs.visibility === 'hidden') continue;
-      var pos = cs.position;
-      if(pos !== 'fixed') continue;
-      var p = el.parentElement, hasFixed = false;
-      while(p){
-        if(_gcs(p).position === 'fixed'){ hasFixed = true; break; }
-        p = p.parentElement;
-      }
-      if(hasFixed) continue;
-      var r = el.getBoundingClientRect();
-      if(r.width <= 1 || r.height <= 1) continue;
-      var o = parseFloat(cs.opacity); if(!isFinite(o)) o = 1;
-      if(o <= 0.001) continue;
-      out.push(el);
-    }
-    var setup = document.getElementById('setup');
-    if(setup && _gcs(setup).display !== 'none'){
-      var sr = setup.getBoundingClientRect();
-      if(sr.width > 1 && sr.height > 1 && setup !== mapwrap && out.indexOf(setup) < 0){
-        out.push(setup);
-      }
-    }
-    return out;
+  function buildLabelSprite(t){
+    var canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    var ctx = canvas.getContext('2d');
+    var tex = new THREE.CanvasTexture(canvas);
+    var mat = new THREE.SpriteMaterial({ map:tex, depthTest:false, sizeAttenuation:true });
+    var sprite = new THREE.Sprite(mat);
+    var c = (typeof CENTERS !== 'undefined' && CENTERS[t]) ? CENTERS[t] : [VB_W/2, VB_H/2];
+    sprite.position.set((c[0]-VB_W/2), -(c[1]-VB_H/2), EXTRUDE_DEPTH + 26);
+    sprite.scale.set(85, 85, 1);
+    return { sprite:sprite, canvas:canvas, ctx:ctx, tex:tex, lastText:null, lastColor:null };
   }
 
-  function buildPanels(){
-    for(var i=0;i<uiPlanes.length;i++){
-      var old = uiPlanes[i];
-      var ci = clickTargets.indexOf(old);
-      if(ci >= 0) clickTargets.splice(ci, 1);
-      if(old.parent) old.parent.remove(old);
-      if(old.material && old.material.map) old.material.map.dispose();
-      if(old.geometry) old.geometry.dispose();
+  function buildTerritoryMap(){
+    if(typeof PATHS === 'undefined' || typeof ADJACENCY === 'undefined'){
+      showStatus('DADOS DO MAPA AINDA NAO CARREGARAM, TENTANDO DE NOVO...');
+      setTimeout(buildTerritoryMap, 500);
+      return;
     }
-    uiPlanes = [];
-    UI_VW = window.innerWidth || document.documentElement.clientWidth || 800;
-    UI_VH = window.innerHeight || document.documentElement.clientHeight || 600;
-    var UX = UI_SCREEN_W / UI_VW;
-    var els = topFixedEls();
-    for(var j=0;j<els.length;j++){
+    mapGroup = new THREE.Group();
+    var ids = Object.keys(ADJACENCY);
+    var built = 0;
+    for(var i=0;i<ids.length;i++){
+      var t = ids[i];
+      var d = PATHS[t];
+      if(!d) continue;
+      var mesh = buildTerritoryMesh(t, d);
+      if(!mesh) continue;
+      mapGroup.add(mesh);
+      terrMeshes[t] = mesh;
+      var label = buildLabelSprite(t);
+      mapGroup.add(label.sprite);
+      terrLabels[t] = label;
+      built++;
+    }
+    mapGroup.position.set(0, 1.5, -1.6);
+    mapGroup.rotation.x = 0;
+    mapGroup.scale.set(MAP_SCALE, MAP_SCALE, MAP_SCALE);
+    scene.add(mapGroup);
+    showStatus('TABULEIRO 3D CONSTRUIDO: ' + built + ' TERRITORIOS', 3000);
+  }
+
+  function updateTerritoryVisuals(){
+    if(!mapGroup) return;
+    var ids = Object.keys(terrMeshes);
+    for(var i=0;i<ids.length;i++){
+      var t = ids[i];
+      var mesh = terrMeshes[t];
+      var label = terrLabels[t];
+      var colorHex = '#888888', armiesTxt = '';
       try{
-      var el = els[j];
-      var r = el.getBoundingClientRect();
-      var w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-      var scale = UI_SCALE;
-      var md = Math.max(w*scale, h*scale, 1);
-      if(md > UI_MAXDIM) scale = UI_MAXDIM / md;
-      var canvas = document.createElement('canvas');
-      canvas.width = Math.max(2, Math.round(w*scale));
-      canvas.height = Math.max(2, Math.round(h*scale));
-      var ctx = canvas.getContext('2d');
-      ctx.setTransform(scale,0,0,scale,0,0);
-      ctx.clearRect(0,0,w,h);
-      paintPanelInto(ctx, el, r.left, r.top, w, h);
-      var tex = new THREE.CanvasTexture(canvas);
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      var pw = w * UX, ph = h * UX;
-      var plane = new THREE.Mesh(
-        new THREE.PlaneGeometry(pw, ph),
-        new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false, depthTest:false})
-      );
-      var lx = (r.left + w/2 - UI_VW/2) * UX;
-      var ly = (UI_VH/2 - (r.top + h/2)) * UX;
-      plane.position.set(lx, ly, 0.02 + (_effZ(el)||0)*0.001);
-      plane.renderOrder = 50 + (_effZ(el)||0)*10;
-      plane.userData.uiEl = el;
-      plane.userData.rect = {left:r.left, top:r.top, width:r.width, height:r.height};
-      uiRoot.add(plane);
-      uiPlanes.push(plane);
-      clickTargets.push(plane);
-      }catch(e2){}
-    }
-    lastPanelCount = uiPlanes.length;
-  }
-  uiRoot.position.set(0, UI_Y, UI_Z);
-  uiRoot.rotation.x = -0.1;
-  scene.add(uiRoot);
-
-  /* botao "Sair do VR" */
-  var exitBtn = null;
-  var helpPlane = null;
-  function makeExitButton(){
-    var canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 80;
-    var ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#c0392b';
-    _rr(ctx, 4, 4, 248, 72, 12); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 4;
-    _rr(ctx, 4, 4, 248, 72, 12); ctx.stroke();
-    ctx.font = '900 36px Arial';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 6; ctx.lineJoin = 'round';
-    ctx.strokeText('SAIR', 128, 42);
-    ctx.fillText('SAIR', 128, 42);
-    var tex = new THREE.CanvasTexture(canvas);
-    var plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.42, 0.13),
-      new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false, depthTest:false})
-    );
-    plane.position.set(UI_SCREEN_W/2 - 0.3, 0.22, 0.03);
-    plane.renderOrder = 200;
-    plane.userData.exit = true;
-    uiRoot.add(plane);
-    clickTargets.push(plane);
-    exitBtn = plane;
-    return plane;
-  }
-
-  /* dica de controles VR, sempre visivel no rodape da tela */
-  function makeHelpHint(){
-    var canvas = document.createElement('canvas');
-    canvas.width = 1024; canvas.height = 96;
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,1024,96);
-    ctx.font = '700 40px Arial, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineWidth = 8; ctx.lineJoin = 'round';
-    ctx.strokeText('APONTAR + GATILHO = CLICAR   |   ANAL. DIR = ZOOM   |   ANAL. ESQ = SCROLL / MEXER MAPA   |   GRIP = ZOOM RAPIDO', 512, 48);
-    ctx.fillStyle = '#bdf';
-    ctx.fillText('APONTAR + GATILHO = CLICAR   |   ANAL. DIR = ZOOM   |   ANAL. ESQ = SCROLL / MEXER MAPA   |   GRIP = ZOOM RAPIDO', 512, 48);
-    var tex = new THREE.CanvasTexture(canvas);
-    var plane = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.3, 0.22),
-      new THREE.MeshBasicMaterial({map:tex, transparent:true, depthWrite:false, depthTest:false})
-    );
-    plane.position.set(0, 1.02, 0.02);
-    plane.renderOrder = 210;
-    plane.userData.help = true;
-    uiRoot.add(plane);
-    helpPlane = plane;
-    return plane;
-  }
-
-  /* ====================== ENTRADA (LASER) ======================= */
-  var raycaster = new THREE.Raycaster();
-  var tmpVec = new THREE.Vector3();
-  var tmpDir = new THREE.Vector3();
-  var tmpQuat = new THREE.Quaternion();
-  var tmpMatrix = new THREE.Matrix4();
-  var lasers = {}, reticles = {};
-  var pendingHit = null;
-  var hoverT = null;
-  var hoverUI = null;
-  var hoverUIuv = null;
-  var lastAim = null;
-  var prevHoverUI = null;
-  var lastRayByHand = {}; /* ultima pose de raycast por mao, p/ re-verificar no clique */
-
-  function ensureVisuals(hand){
-    if(lasers[hand]) return;
-    var geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    var line = new THREE.Line(geo, new THREE.LineBasicMaterial({color:0x66ff88, transparent:true, opacity:0.55}));
-    line.frustumCulled = false;
-    scene.add(line);
-    lasers[hand] = line;
-    var ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.012, 0.02, 32),
-      new THREE.MeshBasicMaterial({color:0x66ff88, transparent:true, opacity:0.95, side:THREE.DoubleSide})
-    );
-    ring.frustumCulled = false;
-    scene.add(ring);
-    reticles[hand] = ring;
-  }
-  function setLaser(hand, origin, dir, len, hit){
-    var line = lasers[hand]; if(!line) return;
-    var pos = line.geometry.attributes.position.array;
-    pos[0]=origin.x; pos[1]=origin.y; pos[2]=origin.z;
-    if(hit){ pos[3]=hit.x; pos[4]=hit.y; pos[5]=hit.z; }
-    else { var e = origin.clone().addScaledVector(dir, len); pos[3]=e.x; pos[4]=e.y; pos[5]=e.z; }
-    line.geometry.attributes.position.needsUpdate = true;
-    line.visible = true;
-    var ring = reticles[hand];
-    if(hit){ ring.visible = true; ring.position.copy(hit); ring.lookAt(camera.position); }
-    else { ring.visible = false; }
-  }
-  function dispatchAt(x, y, type){
-    var el = document.elementFromPoint(x, y);
-    if(!el) return;
-    var hit = el;
-    while(hit && hit.nodeType === 1){
-      if(hit.id === 'vr-button' || hit.id === 'vr-help') return;
-      hit = hit.parentElement;
-    }
-    var opts = { bubbles:true, cancelable:true, clientX:x, clientY:y, view:window, button:0 };
-    if(type.indexOf('pointer') === 0){
-      el.dispatchEvent(new PointerEvent(type, opts));
-    } else {
-      el.dispatchEvent(new MouseEvent(type, opts));
+        colorHex = (typeof ownerColor === 'function') ? ownerColor(t) : '#888888';
+        armiesTxt = (typeof getDisplayArmies === 'function') ? String(getDisplayArmies(t)) : '';
+      }catch(e){ /* estado ainda nao pronto */ }
+      if(mesh.userData.lastColor !== colorHex){
+        mesh.material.color.set(colorHex);
+        mesh.userData.lastColor = colorHex;
+      }
+      var isSel = (typeof G !== 'undefined' && G.af === t);
+      mesh.position.z = isSel ? LIFT_AMOUNT : 0;
+      if(label && (label.lastText !== armiesTxt || label.lastColor !== colorHex)){
+        var ctx = label.ctx, canvas = label.canvas;
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, canvas.height/2-6, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = colorHex;
+        ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, canvas.height/2-14, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 54px Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(armiesTxt, canvas.width/2, canvas.height/2);
+        label.tex.needsUpdate = true;
+        label.lastText = armiesTxt; label.lastColor = colorHex;
+      }
     }
   }
-  function isHoverOk(t){
-    if(!t || !G || !G.players || !G.players.length) return true;
+
+  // ---------- CONSOLE 3D GERAL (espelha QUALQUER controle real do jogo: botoes, divs de regra,
+  //            selects, telas de handoff/dados/cartas/comercio/log/dicas/config - tudo com
+  //            canvas redesenhado so quando o texto muda, sem screenshot de DOM e sem lag) ----------
+
+  var VR_EXCLUDE_IDS = { vrEnterBtn:1, vrPcPreviewBtn:1, vrStatusMsg:1, vrCanvas:1, vrPcHint:1, vrCrosshair:1 };
+  var CTRL_COLS = 4, CTRL_ROWS = 4, CTRL_PER_PAGE = CTRL_COLS*CTRL_ROWS;
+  var CTRL_W = 0.36, CTRL_H = 0.13, CTRL_GAP = 0.02;
+  var ctrlPage = 0, lastCtxKey = '';
+  var infoPanel;
+
+  function isElVisible(el){
+    if(!el || !el.isConnected) return false;
+    if(el.disabled) return false;
+    var st = window.getComputedStyle(el);
+    if(st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) return false;
+    var r = el.getBoundingClientRect();
+    if(r.width === 0 && r.height === 0) return false;
     return true;
   }
-  function recheckHover(hand){
-    var ray = lastRayByHand[hand];
-    if(!ray) return;
-    raycaster.set(ray.origin, ray.dir);
-    raycaster.far = 20;
-    raycaster.params.Line = {threshold: 0.02};
-    var hits = raycaster.intersectObjects(clickTargets, false);
-    var hit = hits.length ? hits[0] : null;
-    if(!hit) return;
-    var ud = hit.object.userData;
-    if(ud.water){
-      hoverT = '__water'; hoverUI = null;
-    } else if(ud.exit){
-      hoverT = null; hoverUI = hit.object; hoverUIuv = hit.uv;
-    } else if(ud.uiEl){
-      hoverT = null; hoverUI = hit.object; hoverUIuv = hit.uv;
-    } else if(ud.terr){
-      hoverT = ud.terr; hoverUI = null;
-    } else {
-      hoverT = null;
-      for(var t in terrObjs){
-        if(terrObjs[t].mesh === hit.object){ hoverT = t; break; }
-      }
-      hoverUI = null;
-    }
-  }
-  function onSelectStart(e){
-    if(pendingHit) return;
-    var hand = (e && e.inputSource && e.inputSource.handedness) || 'right';
-    try{ recheckHover(hand); }catch(_){}
-    if(hoverT){ pendingHit = {type:'terr', t:hoverT}; }
-    else if(hoverUI){
-      if(hoverUI.userData && hoverUI.userData.exit){ pendingHit = {type:'exit'}; }
-      else { pendingHit = {type:'ui', ui:hoverUI, uv:hoverUIuv}; }
-    }
-  }
-  function onSelectEnd(){
-    if(!pendingHit) return;
-    if(pendingHit.type === 'terr'){
-      if(hoverT === pendingHit.t){
-        try{
-          if(pendingHit.t === '__water' && typeof clickWater === 'function') clickWater();
-          else if(typeof clickT === 'function') clickT(pendingHit.t);
-        }catch(e){}
-      }
-    } else if(pendingHit.type === 'ui'){
-      if(hoverUI === pendingHit.ui){
-        try{
-          var uv = pendingHit.uv;
-          var rect = pendingHit.ui.userData.rect;
-          if(uv && rect){
-            var cx = rect.left + uv.x * rect.width;
-            var cy = rect.top + (1 - uv.y) * rect.height;
-            dispatchAt(cx, cy, 'click');
-          }
-        }catch(e){ console.error('vr3d: dispatchAt', e); }
-      }
-    } else if(pendingHit.type === 'exit'){
-      try{ var s = renderer.xr.getSession && renderer.xr.getSession(); if(s) s.end(); }catch(e){}
-    }
-    pendingHit = null;
-  }
-  function onSelectStartEv(e){ onSelectStart(e); }
-  function onSelectEndEv(e){ onSelectEnd(); }
-  var vrControllers = [];
-  var vrSessionEvents = [];
-  function setupVrControllers(){
-    if(vrControllers.length) return;
-    for(var i=0;i<2;i++){
-      var c = renderer.xr.getController(i);
-      c.addEventListener('selectstart', onSelectStartEv);
-      c.addEventListener('selectend', onSelectEndEv);
-      scene.add(c);
-      vrControllers.push(c);
-    }
-  }
-  /* redundancia: ouvir tambem direto na sessao XR (caso o wiring do three falhe no Quest) */
-  function wireSessionEvents(session){
-    if(!session || vrSessionEvents.indexOf(session) >= 0) return;
-    vrSessionEvents.push(session);
-    session.addEventListener('selectstart', onSelectStartEv);
-    session.addEventListener('selectend', onSelectEndEv);
-  }
 
-  /* analógicos: zoom do tabuleiro (dir Y / grips) e pan (esq) / scroll do setup */
-  var ZOOM_STEP_MS = 150;
-  var lastZoomAt = 0;
-  var cachedGamepads = {};
-  function cacheGamepad(src){
-    if(!src || !src.handedness || !src.gamepad) return;
-    cachedGamepads[src.handedness] = src.gamepad;
-  }
-  function visibleScrollable(){
-    var cands = ['setup','rulesSummaryScreen','modal','tradePanel','tradeInner','configBox'];
-    var vw = window.innerWidth || 800, vh = window.innerHeight || 600;
-    for(var i=0;i<cands.length;i++){
-      var el = document.getElementById(cands[i]);
-      if(!el) continue;
-      var cs = _gcs(el);
-      if(cs.display === 'none' || cs.visibility === 'hidden') continue;
-      var r = el.getBoundingClientRect();
-      if(r.width <= 1 || r.height <= 1) continue;
-      if(r.top > vh || r.bottom < 0 || r.left > vw || r.right < 0) continue;
-      if(cs.overflowY === 'auto' || cs.overflowY === 'scroll' || el.scrollHeight > el.clientHeight + 2){
-        return el;
-      }
-    }
-    return null;
-  }
-  function readGamepad(){
-    var out = {lx:0,ly:0,rx:0,ry:0,gripL:false,gripR:false};
-    var session = renderer.xr.getSession && renderer.xr.getSession();
-    if(!session) return out;
-    var srcs = session.inputSources || [];
-    for(var i=0;i<srcs.length;i++){
-      cacheGamepad(srcs[i]);
-      var gp = srcs[i].gamepad || cachedGamepads[srcs[i].handedness];
-      if(!gp) continue;
-      var ax = gp.axes || [];
-      var x = ax.length>=2 ? ax[0] : 0, y = ax.length>=2 ? ax[1] : 0;
-      if(srcs[i].handedness==='right'){
-        out.rx = x; out.ry = y;
-        if(gp.buttons[1] && gp.buttons[1].pressed) out.gripR = true;
-      } else {
-        out.lx = x; out.ly = y;
-        if(gp.buttons[1] && gp.buttons[1].pressed) out.gripL = true;
-      }
-    }
-    return out;
-  }
-  function handlePanZoom(gp){
-    var now = Date.now();
-    var scrollEl = visibleScrollable();
-    if(scrollEl){
-      if(Math.abs(gp.ly) > 0.18 || Math.abs(gp.lx) > 0.18){
-        scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - Math.round(gp.ly * 30));
-        scrollEl.scrollLeft = Math.max(0, scrollEl.scrollLeft + Math.round(gp.lx * 30));
-      }
-      return;
-    }
-    if(Math.abs(gp.ry) > 0.35 || gp.gripR || gp.gripL){
-      if(now - lastZoomAt >= ZOOM_STEP_MS){
-        lastZoomAt = now;
-        var dir = gp.gripL ? -1 : (gp.gripR ? 1 : (gp.ry < 0 ? 1 : -1));
-        var s = Math.max(0.5, Math.min(1.8, boardGroup.scale.x * (1 + dir*0.08)));
-        boardGroup.scale.set(s, s, s);
-        uiRoot.scale.set(1/s, 1/s, 1/s);
-      }
-    }
-    if(Math.abs(gp.lx) > 0.12 || Math.abs(gp.ly) > 0.12){
-      var p = boardGroup.position;
-      p.x += gp.lx * 0.012;
-      p.z += gp.ly * 0.012;
-    }
-  }
-
-  /* ===================== SINCRONIZACAO 3D ======================= */
-  var dirty = true;
-  var lastSync = 0;
-  var SYNC_MS = 120;
-
-  function readTerrState(t){
-    var info = terrObjs[t];
-    var el = null;
-    try{
-      el = document.querySelector('#terrGroup [data-t="' + t.replace(/"/g,'\\"') + '"]');
-    }catch(e){}
-    var state = '';
-    if(el){
-      var cls = el.getAttribute('class') || '';
-      if(cls.indexOf('sel') >= 0) state = 'sel';
-      if(cls.indexOf('atk-source') >= 0) state = 'atk-source';
-      else if(cls.indexOf('fort-source') >= 0) state = 'fort-source';
-      if(cls.indexOf('atk-target') >= 0) state = 'atk-target';
-      else if(cls.indexOf('fort-target') >= 0) state = 'fort-target';
-    }
-    return {state:state, name:t};
-  }
-  function syncBoard(){
-    var now = Date.now();
-    if(now - lastSync < SYNC_MS) return;
-    lastSync = now;
-    for(var t in terrObjs){
-      var info = terrObjs[t];
-      var st = readTerrState(t);
-      var col = terrColorRGB(t);
-      info.mat.color.copy(col);
-      var lift = 0;
-      if(st.state === 'atk-source' || st.state === 'fort-source' || st.state === 'atk-target' || st.state === 'fort-target') lift = LIFT_STATE;
-      else if(info.hovered) lift = LIFT_HOVER;
-      info.root.position.y = lift;
-      var em = null;
-      if(st.state === 'atk-source') em = new THREE.Color(0xff5544);
-      else if(st.state === 'fort-source') em = new THREE.Color(0x55ff88);
-      else if(st.state === 'atk-target') em = new THREE.Color(0xff3333);
-      else if(st.state === 'fort-target') em = new THREE.Color(0x33ff66);
-      else if(info.hovered) em = new THREE.Color(0xffffff);
-      if(em){
-        info.mat.emissive.copy(em).multiplyScalar(0.35);
-        info.mat.emissiveIntensity = 0.6;
-      } else {
-        info.mat.emissive.setRGB(0,0,0);
-        info.mat.emissiveIntensity = 0;
-      }
-      if(st.name !== info.name){
-        info.name = st.name;
-        info.arm = -1;
-      }
-      updateLabel(t);
-    }
-    updateTanks();
-  }
-
-  var uiDirty = false;
-  function markDirty(){ dirty = true; }
-  function _inMapwrap(el){
-    var n = el && el.parentElement;
-    while(n){
-      if(n.id === 'mapwrap') return true;
-      n = n.parentElement;
-    }
-    return false;
-  }
-  document.addEventListener('scroll', function(ev){
-    dirty = true;
-    var t = ev.target;
-    if(t && t.id === 'setup') uiDirty = true;
-  }, true);
-  var mo = null;
-  try{ mo = new MutationObserver(function(muts){
-    var relevant = false, uiRel = false;
-    for(var mi = 0; mi < muts.length; mi++){
-      var m = muts[mi];
-      if(m.target && !_inMapwrap(m.target)) uiRel = true;
-      if(m.type !== 'attributes' || m.attributeName !== 'transform' || !m.target || !m.target.id || m.target.id.indexOf('tankVeh-') !== 0) relevant = true;
-      if(uiRel && relevant) break;
-    }
-    if(uiRel) uiDirty = true;
-    if(relevant) markDirty();
-  }); }catch(e){}
-  if(mo){ mo.observe(document.body, {subtree:true, childList:true, attributes:true, characterData:true}); }
-
-  /* ========================== LOOP ============================= */
-  var presenting = false;
-  var lastUIBuild = 0;
-  function animate(time, frame){
-    if(!renderer) return;
-    presenting = !!(renderer.xr && renderer.xr.isPresenting);
-    if(!presenting){
-      for(var hh in lasers){ lasers[hh].visible = false; if(reticles[hh]) reticles[hh].visible = false; }
-      lastAim = null;
-      return;
-    }
-    try{
-      var session = renderer.xr.getSession && renderer.xr.getSession();
-      var now = Date.now();
-      var seen = {};
-
-      hoverT = null; hoverUI = null; hoverUIuv = null;
-
-      if(session){
-        lastAim = null;
-        var ref = renderer.xr.getReferenceSpace && renderer.xr.getReferenceSpace();
-        if(frame && ref){
-          var srcs = session.inputSources || [];
-          for(var i=0;i<srcs.length;i++){
-            var src = srcs[i];
-            if(!src || !src.targetRaySpace) continue;
-            var pose = frame.getPose(src.targetRaySpace, ref);
-            if(!pose) continue;
-            var hand = src.handedness || 'right';
-            seen[hand] = true;
-            ensureVisuals(hand);
-            tmpVec.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
-            tmpQuat.set(pose.transform.orientation.x, pose.transform.orientation.y,
-                        pose.transform.orientation.z, pose.transform.orientation.w);
-            tmpDir.set(0,0,-1).applyQuaternion(tmpQuat);
-            lastRayByHand[hand] = {origin: tmpVec.clone(), dir: tmpDir.clone()};
-            raycaster.set(tmpVec, tmpDir);
-            raycaster.far = 20;
-            raycaster.params.Line = {threshold: 0.02};
-            var hits = raycaster.intersectObjects(clickTargets, false);
-            var hit = hits.length ? hits[0] : null;
-            if(hit){
-              setLaser(hand, tmpVec, tmpDir, 8, hit.point.clone());
-              var ud = hit.object.userData;
-              if(ud.water){
-                hoverT = '__water';
-              } else if(ud.exit){
-                hoverUI = hit.object; hoverUIuv = hit.uv;
-              } else if(ud.uiEl){
-                hoverUI = hit.object; hoverUIuv = hit.uv;
-              } else if(ud.terr){
-                hoverT = ud.terr;
-              } else {
-                /* achar territorio dono do mesh */
-                for(var t in terrObjs){
-                  if(terrObjs[t].mesh === hit.object){ hoverT = t; break; }
-                }
-              }
-              lastAim = {x:0, y:0};
-            } else {
-              setLaser(hand, tmpVec, tmpDir, 8, null);
-            }
-          }
-        }
-
-        /* hover lift */
-        for(var t2 in terrObjs){
-          var info = terrObjs[t2];
-          var was = info.hovered;
-          info.hovered = (hoverT === t2);
-          if(was !== info.hovered) dirty = true;
-        }
-
-        handlePanZoom(readGamepad());
-      } else {
-        for(var h in lasers){ lasers[h].visible = false; if(reticles[h]) reticles[h].visible = false; }
-        lastAim = null;
-        for(var t3 in terrObjs){ terrObjs[t3].hovered = false; }
-      }
-
-      /* feedback de hover nos paineis 3D */
-      if(prevHoverUI && prevHoverUI !== hoverUI) prevHoverUI.scale.set(1, 1, 1);
-      if(hoverUI && hoverUI !== prevHoverUI) hoverUI.scale.set(1.045, 1.045, 1.045);
-      prevHoverUI = hoverUI;
-
-      if(helpPlane){
-        var halfH = (UI_SCREEN_W/2) * (UI_VH/UI_VW);
-        helpPlane.position.y = -halfH + 0.14;
-      }
-
-      /* build inicial / rebuild de UI quando muda */
-      if(renderer && !boardGroupBuilt){ buildBoard(); buildBoardBuilt = true; }
-      if(dirty){ dirty = false; if(presenting) syncBoard(); }
-      if(presenting){
-        if(!pendingHit && uiDirty && now - lastUIBuild >= 500){ lastUIBuild = now; uiDirty = false; buildPanels(); }
-        else if(!pendingHit && now - lastUIBuild >= 8000){ lastUIBuild = now; buildPanels(); }
-      }
-
-    }catch(e){
-      try{ if(typeof console !== 'undefined' && console.error) console.error('vr3d:', (e && (e.stack || e.message)) || e); }catch(_){}
-    }
-    renderer.render(scene, camera);
-  }
-  var boardGroupBuilt = false;
-  var buildBoardBuilt = false;
-
-  /* ====================== BOTAO / SESSAO ======================= */
-  if(navigator.xr){
-    navigator.xr.isSessionSupported('immersive-vr').then(function(supported){
-      if(!supported){ vrButton.textContent = 'VR não suportado'; vrButton.disabled = true; }
-    }).catch(function(){ vrButton.textContent = 'VR indisponível'; vrButton.disabled = true; });
-  } else {
-    vrButton.textContent = 'WebXR não disponível (use o navegador do Quest)';
-    vrButton.disabled = true;
-  }
-
-  vrButton.addEventListener('click', async function(){
-    if(!renderer) return;
-    var cur = renderer.xr.getSession && renderer.xr.getSession();
-    if(cur){ try{ cur.end(); }catch(e){} return; }
-    if(!navigator.xr) return;
-    try{
-      var session = await navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'bounded-floor']
-      });
-      session.addEventListener('end', function(){
-        vrButton.textContent = 'Entrar em VR';
-        boardGroup.visible = false;
-        uiRoot.visible = false;
-        if(renderer) renderer.setAnimationLoop(null);
-      });
-      setupVrControllers();
-      wireSessionEvents(session);
-      if(renderer) renderer.setAnimationLoop(animate);
-      await renderer.xr.setSession(session);
-      vrButton.textContent = 'Sair do VR';
-      boardGroup.visible = true;
-      uiRoot.visible = true;
-      dirty = true;
-      uiDirty = true;
-      lastUIBuild = 0;
-    }catch(err){
-      alert('Não foi possível iniciar a sessão VR: ' + err.message);
-    }
-  });
-
-  /* ====================== DEBUG HEADLESS ======================= */
-  if(!boardGroupBuilt){
-    buildBoard();
-    buildBoardBuilt = true;
-    boardGroupBuilt = true;
-  }
-  makeExitButton();
-  makeHelpHint();
-
-  function pickTerritoryAt(mx, my){
-    for(var t in terrShapes){
-      var contours = terrShapes[t].contours;
-      var inside = false;
-      for(var c=0;c<contours.length;c++){
-        if(pointInPoly(mx, my, contours[c])){ inside = !inside; }
-      }
-      if(inside) return t;
-    }
-    return null;
-  }
-
-  window.__vrDebug = function(){
-    var pickInside = 0, pickTotal = 0;    for(var t in CENTERS){
-      var c = CENTERS[t];
-      if(pickTerritoryAt(c[0], c[1]) === t) pickInside++;
-      pickTotal++;
-    }
-    var armTotal = 0;
-    try{ if(G && G.terrs){ for(var a in G.terrs) armTotal++; } }catch(e){}
-    var geoBox = null;
-    try{
-      var bb = new THREE.Box3();
-      bb.setFromObject(boardGroup);
-      geoBox = {min:[+bb.min.x.toFixed(2), +bb.min.y.toFixed(2), +bb.min.z.toFixed(2)], max:[+bb.max.x.toFixed(2), +bb.max.y.toFixed(2), +bb.max.z.toFixed(2)]};
-    }catch(e){}
-    var vert = null;
-    try{
-      var tTop = null, tBot = null;
-      for(var v in terrObjs){
-        var vb = terrObjs[v].bbox;
-        if(!tTop || vb.ymin < terrObjs[tTop].bbox.ymin) tTop = v;
-        if(!tBot || vb.ymax > terrObjs[tBot].bbox.ymax) tBot = v;
-      }
-      function _vertY(t){
-        var w = mapToWorld(terrObjs[t].cx, terrObjs[t].cy);
-        return +(BOARD_QUADRO_Y - w.z*BOARD_SCALE).toFixed(3);
-      }
-      vert = { top: tTop, yTop: _vertY(tTop), bot: tBot, yBot: _vertY(tBot) };
-    }catch(e){}
-    return {
-      vrmod:'3d-v1',
-      renderer: !!renderer,
-      pats: Object.keys(PATHS || {}).length,
-      parsed: parsedCount,
-      holes: holeCount,
-      bbox: {xmin:Math.round(xmin), xmax:Math.round(xmax), ymin:Math.round(ymin), ymax:Math.round(ymax)},
-      unit: +UNIT.toFixed(5),
-      pick: pickInside + '/' + pickTotal,
-      terrObjs: Object.keys(terrObjs).length,
-      geoBox: geoBox,
-      vert: vert,
-      boardPos: [+boardGroup.position.x.toFixed(2), +boardGroup.position.y.toFixed(2), +boardGroup.position.z.toFixed(2)],
-      uiPos: [+uiRoot.position.x.toFixed(2), +uiRoot.position.y.toFixed(2), +uiRoot.position.z.toFixed(2)],
-      labels: (function(){ var n=0; for(var t in terrObjs){ if(terrObjs[t].label) n++; } return n; })(),
-      tanks: (function(){ var n=0; for(var t in terrObjs){ if(terrObjs[t].tank) n++; } return n; })(),
-      uiPanels: lastPanelCount,
-      gTerrs: armTotal,
-      exit: !!exitBtn,
-      help: !!helpPlane
-    };
-  };
-  window.__vrPick = pickTerritoryAt;
-  window.__vrRefreshUI = buildPanels;
-  window.__vrSync = syncBoard;
-  window.__vrScrollTarget = visibleScrollable;
-  window.__vrHitTest = function(x, y){
-    try{
-      var el = document.elementFromPoint(x, y);
-      if(!el) return null;
-      return {id: el.id || '', tag: el.tagName || '', cls: (el.getAttribute && (el.getAttribute('class')||'')) || ''};
-    }catch(e){ return {err: e.message}; }
-  };
-  window.__vrUIInfo = function(){
+  // Pega QUALQUER elemento clicavel real do jogo (botao, div de regra/modo com onclick, select),
+  // em qualquer tela que esteja visivel agora - setup, regras, handoff, dados, cartas, comercio,
+  // log, dicas, config. Fica de fora apenas o mapa (que ja tem raycasting proprio) e os elementos
+  // exclusivos da UI de VR.
+  function findInteractiveElements(){
+    var all = Array.prototype.slice.call(document.querySelectorAll('button, select, [onclick]'));
     var out = [];
-    for(var i=0;i<uiPlanes.length;i++){
-      var p = uiPlanes[i];
-      var ud = p.userData || {};
-      var id = '';
-      var el = ud.uiEl;
-      if(el) id = el.id || (el.getAttribute && el.getAttribute('class')) || el.tagName;
-      if(ud.exit) id = 'EXIT';
-      var pos = p.position;
-      out.push({id:id, w:+p.geometry.parameters.width.toFixed(3), h:+p.geometry.parameters.height.toFixed(3),
-        x:+pos.x.toFixed(3), y:+pos.y.toFixed(3), z:+pos.z.toFixed(3),
-        ro: p.renderOrder});
+    for(var i=0;i<all.length;i++){
+      var el = all[i];
+      if(VR_EXCLUDE_IDS[el.id]) continue;
+      if(el.closest && el.closest('#mapwrap')) continue;
+      if(el.tagName === 'INPUT' && el.type !== 'range' && el.type !== 'number') continue;
+      if(!isElVisible(el)) continue;
+      out.push(el);
     }
     return out;
-  };
+  }
 
-  /* mostra/recolhe a cena: em modo janela mantemos a pagina normal por tras */
-  boardGroup.visible = false;
-  uiRoot.visible = false;
+  function labelForElement(el){
+    if(el.tagName === 'SELECT'){
+      var opt = el.options[el.selectedIndex];
+      return (opt ? opt.textContent : el.value || '').trim();
+    }
+    var t = (el.textContent || '').trim().replace(/\s+/g,' ');
+    return t || el.title || el.id || 'BOTAO';
+  }
+
+  function activateElement(el){
+    try{
+      if(el.tagName === 'SELECT'){
+        el.selectedIndex = (el.selectedIndex + 1) % el.options.length;
+        el.dispatchEvent(new Event('change', { bubbles:true }));
+      } else if(el.tagName === 'INPUT' && (el.type === 'range' || el.type === 'number')){
+        var step = parseFloat(el.step) || 1;
+        var max = el.max !== '' ? parseFloat(el.max) : Infinity;
+        var min = el.min !== '' ? parseFloat(el.min) : -Infinity;
+        var v = (parseFloat(el.value) || 0) + step;
+        if(v > max) v = (min !== -Infinity ? min : 0);
+        el.value = v;
+        el.dispatchEvent(new Event('input', { bubbles:true }));
+        el.dispatchEvent(new Event('change', { bubbles:true }));
+      } else {
+        el.click();
+      }
+    }catch(err){ console.error('[VR activateElement]', err); showStatus('ERRO AO INTERAGIR: ' + (err && err.message || err)); }
+  }
+
+  function makeQuad(w, h, resScale){
+    var res = resScale || 1024;
+    var canvas = document.createElement('canvas');
+    canvas.width = res; canvas.height = Math.round(res * h / w);
+    var ctx = canvas.getContext('2d');
+    var tex = new THREE.CanvasTexture(canvas);
+    var geo = new THREE.PlaneGeometry(w, h);
+    var mat = new THREE.MeshBasicMaterial({ map:tex, transparent:true });
+    var mesh = new THREE.Mesh(geo, mat);
+    return { mesh:mesh, canvas:canvas, ctx:ctx, tex:tex };
+  }
+
+  function drawItemLabel(item, selected){
+    var ctx = item.ctx, canvas = item.canvas;
+    var el = item.el;
+    var cs = null;
+    try{ cs = window.getComputedStyle(el); }catch(e){ /* ignora */ }
+    var bg = (cs && cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') ? cs.backgroundColor : (selected ? '#1a8f3a' : '#0d47a1');
+    var fg = (cs && cs.color) ? cs.color : '#ffffff';
+    var bd = (cs && cs.borderTopColor && parseFloat(cs.borderTopWidth) > 0) ? cs.borderTopColor : (selected ? '#ffffff' : '#64b5f6');
+    if(selected){ bd = '#ffffff'; }
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.strokeStyle = bd;
+    ctx.lineWidth = selected ? 12 : 8;
+    ctx.strokeRect(4,4,canvas.width-8,canvas.height-8);
+    ctx.fillStyle = fg;
+    ctx.font = 'bold 30px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    wrapCanvasText(ctx, labelForElement(item.el).toUpperCase().slice(0,160), canvas.width/2, canvas.height/2, canvas.width-40, 34);
+    item.tex.needsUpdate = true;
+  }
+
+  function drawNavLabel(item, text){
+    var ctx = item.ctx, canvas = item.canvas;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 6;
+    ctx.strokeRect(3,3,canvas.width-6,canvas.height-6);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 34px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width/2, canvas.height/2);
+    item.tex.needsUpdate = true;
+  }
+
+  function wrapLines(ctx, text, maxWidth){
+    var words = String(text).split(' ');
+    var line = '', lines = [];
+    for(var n=0;n<words.length;n++){
+      var testLine = line + words[n] + ' ';
+      if(ctx.measureText(testLine).width > maxWidth && n > 0){ lines.push(line.trim()); line = words[n] + ' '; }
+      else { line = testLine; }
+    }
+    if(line.trim()) lines.push(line.trim());
+    return lines;
+  }
+
+  function drawInfoPanel(text){
+    var ctx = infoPanel.ctx, canvas = infoPanel.canvas;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = 'rgba(5,15,30,0.94)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.strokeStyle = '#3399ff'; ctx.lineWidth = 6;
+    ctx.strokeRect(3,3,canvas.width-6,canvas.height-6);
+    ctx.fillStyle = '#fff';
+    ctx.font = '26px Arial';
+    var lineHeight = 32, padTop = 46, padBottom = 46, maxWidth = canvas.width-70;
+    var lines = wrapLines(ctx, text, maxWidth);
+    var maxLinesPerPage = Math.max(1, Math.floor((canvas.height - padTop - padBottom) / lineHeight));
+    var pages = [];
+    for(var i=0;i<lines.length;i+=maxLinesPerPage){ pages.push(lines.slice(i, i+maxLinesPerPage)); }
+    if(!pages.length) pages = [[]];
+    infoPanel.pages = pages;
+    if(!(infoPanel.pageIdx >= 0 && infoPanel.pageIdx < pages.length)) infoPanel.pageIdx = 0;
+    var pageLines = pages[infoPanel.pageIdx];
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    var startY = padTop;
+    for(var l=0;l<pageLines.length;l++){ ctx.fillText(pageLines[l], canvas.width/2, startY + l*lineHeight); }
+    if(pages.length > 1){
+      ctx.font = '20px Arial';
+      ctx.fillStyle = '#7fc9ff';
+      ctx.fillText('PAGINA ' + (infoPanel.pageIdx+1) + '/' + pages.length + '  (USE ANTERIOR/PROXIMA)', canvas.width/2, canvas.height - 22);
+    }
+    infoPanel.tex.needsUpdate = true;
+  }
+
+  function makeCtrlPanel(){
+    ctrlPanelGroup = new THREE.Group();
+    ctrlPanelGroup.position.set(0, 1.35, -1.05);
+    scene.add(ctrlPanelGroup);
+
+    infoPanel = makeQuad(1.7, 0.5, 1400);
+    infoPanel.mesh.position.set(0, 0.55, 0.001);
+    infoPanel.lastText = null;
+    ctrlPanelGroup.add(infoPanel.mesh);
+
+    var prev = makeQuad(0.3, 0.1);
+    prev.mesh.userData.nav = 'prev';
+    prev.mesh.position.set(-0.9, -0.72, 0.001);
+    ctrlPanelGroup.add(prev.mesh);
+
+    var next = makeQuad(0.3, 0.1);
+    next.mesh.userData.nav = 'next';
+    next.mesh.position.set(0.9, -0.72, 0.001);
+    ctrlPanelGroup.add(next.mesh);
+
+    var pageInfo = makeQuad(0.5, 0.1);
+    pageInfo.mesh.position.set(0, -0.72, 0.001);
+    ctrlPanelGroup.add(pageInfo.mesh);
+
+    navBtns = { prev:prev, next:next, pageInfo:pageInfo };
+    drawNavLabel(navBtns.prev, '< ANTERIOR');
+    drawNavLabel(navBtns.next, 'PROXIMA >');
+  }
+
+  function layoutGrid(list){
+    var totalW = CTRL_COLS*CTRL_W + (CTRL_COLS-1)*CTRL_GAP;
+    var totalH = CTRL_ROWS*CTRL_H + (CTRL_ROWS-1)*CTRL_GAP;
+    var startX = -totalW/2 + CTRL_W/2;
+    var startY = totalH/2 - CTRL_H/2 - 0.08;
+    for(var i=0;i<list.length;i++){
+      var col = i % CTRL_COLS, row = Math.floor(i/CTRL_COLS);
+      list[i].mesh.position.set(startX + col*(CTRL_W+CTRL_GAP), startY - row*(CTRL_H+CTRL_GAP), 0.001);
+    }
+  }
+
+  function activeReadableContainer(){
+    var ids = ['handoffScreen','rulesSummaryScreen','overlay','cpanel','tradePanel','objscreen','configOverlay','tipsOverlay','logOverlay'];
+    for(var i=0;i<ids.length;i++){
+      var el = document.getElementById(ids[i]);
+      if(el && isElVisible(el)) return el;
+    }
+    return null;
+  }
+
+  function computeCtxKey(){
+    var ids = ['setup','mpSetup','overlay','cpanel','tradePanel','objscreen','logOverlay','tipsOverlay','configOverlay','handoffScreen','rulesSummaryScreen'];
+    var key = '';
+    for(var i=0;i<ids.length;i++){
+      var el = document.getElementById(ids[i]);
+      if(el && isElVisible(el)) key += ids[i] + ';';
+    }
+    return key;
+  }
+
+  function refreshCtrlPanel(){
+    if(!ctrlPanelGroup) return;
+
+    try{ applyVrDefaultNames(); }catch(e){ /* ignora */ }
+
+    var ctxKey = computeCtxKey();
+    if(ctxKey !== lastCtxKey){ ctrlPage = 0; if(infoPanel){ infoPanel.pageIdx = 0; } lastCtxKey = ctxKey; }
+
+    var readEl = activeReadableContainer();
+    if(readEl){
+      infoPanel.mesh.visible = true;
+      var txt = (readEl.innerText || readEl.textContent || '').trim().replace(/\s+/g,' ').slice(0,6000).toUpperCase();
+      if(infoPanel.lastText !== txt){ drawInfoPanel(txt); infoPanel.lastText = txt; }
+    } else {
+      infoPanel.mesh.visible = false;
+    }
+
+    var all = findInteractiveElements();
+    var totalPages = Math.max(1, Math.ceil(all.length / CTRL_PER_PAGE));
+    if(ctrlPage >= totalPages) ctrlPage = totalPages - 1;
+    var pageList = all.slice(ctrlPage*CTRL_PER_PAGE, ctrlPage*CTRL_PER_PAGE + CTRL_PER_PAGE);
+
+    for(var i=uiButtons.length-1;i>=0;i--){
+      if(pageList.indexOf(uiButtons[i].el) === -1){
+        ctrlPanelGroup.remove(uiButtons[i].mesh);
+        uiButtons.splice(i,1);
+      }
+    }
+    var used = [];
+    for(var v=0; v<pageList.length; v++){
+      var el = pageList[v];
+      var item = null;
+      for(var k=0;k<uiButtons.length;k++){ if(uiButtons[k].el === el){ item = uiButtons[k]; break; } }
+      if(!item){
+        var q = makeQuad(CTRL_W, CTRL_H);
+        q.el = el;
+        ctrlPanelGroup.add(q.mesh);
+        item = q;
+        uiButtons.push(item);
+      }
+      var label = labelForElement(el);
+      var selState = !!(el.classList && (el.classList.contains('sel') || el.classList.contains('active')));
+      var clsFingerprint = el.className || '';
+      if(item.lastLabel !== label || item.lastSel !== selState || item.lastCls !== clsFingerprint){
+        drawItemLabel(item, selState);
+        item.lastLabel = label; item.lastSel = selState; item.lastCls = clsFingerprint;
+      }
+      used.push(item);
+    }
+    layoutGrid(used);
+    var textPaging = infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1;
+    if(textPaging){
+      navBtns.prev.mesh.visible = infoPanel.pageIdx > 0;
+      navBtns.next.mesh.visible = infoPanel.pageIdx < infoPanel.pages.length - 1;
+      drawNavLabel(navBtns.pageInfo, 'TEXTO ' + (infoPanel.pageIdx+1) + '/' + infoPanel.pages.length);
+    } else {
+      navBtns.prev.mesh.visible = ctrlPage > 0;
+      navBtns.next.mesh.visible = ctrlPage < totalPages - 1;
+      drawNavLabel(navBtns.pageInfo, 'PAGINA ' + (ctrlPage+1) + '/' + totalPages);
+    }
+  }
+
+  // ---------- LOOP DE ATUALIZACAO LEVE (sem html2canvas, sem DOM screenshot) ----------
+
+  function maybeUpdateLogic(){
+    var now = performance.now();
+    if(now - lastLogicUpdate < LOGIC_UPDATE_MS) return;
+    lastLogicUpdate = now;
+    try{ updateTerritoryVisuals(); }catch(e){ console.error('[VR updateTerritoryVisuals]', e); }
+    try{ refreshCtrlPanel(); }catch(e){ console.error('[VR refreshCtrlPanel]', e); }
+    try{ updateHeaderPanelText(buildHeaderStatusText()); }catch(e){ /* ignora */ }
+  }
+
+  // ---------- CENA / SESSAO XR ----------
+
+  function interactAtRay(origin, direction){
+    raycaster.ray.origin.copy(origin);
+    raycaster.ray.direction.copy(direction).normalize();
+
+    var terrList = [];
+    for(var t in terrMeshes){ terrList.push(terrMeshes[t]); }
+    var hits = raycaster.intersectObjects(terrList, false);
+    if(hits.length){
+      var terrId = hits[0].object.userData.terrId;
+      try{
+        if(typeof window.clickT === 'function') window.clickT(terrId);
+      }catch(err){ console.error('[VR clickT]', err); showStatus('ERRO AO CLICAR NO TERRITORIO: ' + (err && err.message || err)); }
+      lastLogicUpdate = 0; // forca atualizacao imediata no proximo frame
+      return;
+    }
+
+    var hitList = [];
+    for(var i=0;i<uiButtons.length;i++){ hitList.push(uiButtons[i].mesh); }
+    if(navBtns.prev){ hitList.push(navBtns.prev.mesh, navBtns.next.mesh); }
+    var hits2 = raycaster.intersectObjects(hitList, false);
+    if(hits2.length){
+      var m = hits2[0].object;
+      if(m.userData.nav === 'prev'){
+        if(infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1){ if(infoPanel.pageIdx > 0){ infoPanel.pageIdx--; drawInfoPanel(infoPanel.lastText); } }
+        else if(ctrlPage > 0){ ctrlPage--; }
+        refreshCtrlPanel(); return;
+      }
+      if(m.userData.nav === 'next'){
+        if(infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1){ if(infoPanel.pageIdx < infoPanel.pages.length-1){ infoPanel.pageIdx++; drawInfoPanel(infoPanel.lastText); } }
+        else { ctrlPage++; }
+        refreshCtrlPanel(); return;
+      }
+      var item = null;
+      for(var k=0;k<uiButtons.length;k++){ if(uiButtons[k].mesh === m){ item = uiButtons[k]; break; } }
+      if(item && item.el){
+        activateElement(item.el);
+        lastLogicUpdate = 0;
+      }
+    }
+  }
+
+  function onSelectStart(e){
+    var origin = new THREE.Vector3().setFromMatrixPosition(e.target.matrixWorld);
+    var dir = new THREE.Vector3(0,0,-1).transformDirection(e.target.matrixWorld);
+    interactAtRay(origin, dir);
+  }
+
+  // ---------- MODO PREVIA 3D NO PC (sem headset - mouse olha em volta, WASD anda,
+  //            clique interage). Usa exatamente a mesma cena/logica do modo VR real;
+  //            so troca a fonte do raio (controle -> camera+mouse) e do movimento
+  //            (chao/braco de VR -> teclado). Serve para ajustar o jogo sem precisar
+  //            colocar o headset toda hora. ----------
+
+  var pcModeActive = false;
+  var pcYaw = 0, pcPitch = 0;
+  var pcKeys = {};
+  var PC_LOOK_SPEED = 0.0022, PC_MOVE_SPEED = 1.6;
+  var pcClock;
+
+  function setup3DUiVisibility(active){
+    document.body.classList.toggle('vr3d-active', active);
+    document.getElementById('vrPcHint').style.display = active ? 'block' : 'none';
+    document.getElementById('vrCrosshair').style.display = active ? 'block' : 'none';
+  }
+
+  function onPcMouseMove(e){
+    if(document.pointerLockElement !== renderer.domElement) return;
+    pcYaw -= e.movementX * PC_LOOK_SPEED;
+    pcPitch -= e.movementY * PC_LOOK_SPEED;
+    var lim = Math.PI/2 - 0.05;
+    if(pcPitch > lim) pcPitch = lim;
+    if(pcPitch < -lim) pcPitch = -lim;
+  }
+
+  function onPcCanvasClick(){
+    if(!pcModeActive) return;
+    if(document.pointerLockElement !== renderer.domElement){
+      renderer.domElement.requestPointerLock();
+      return;
+    }
+    var dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    interactAtRay(camera.position, dir);
+  }
+
+  function onPcKeyDown(e){ pcKeys[e.code] = true; }
+  function onPcKeyUp(e){ pcKeys[e.code] = false; }
+
+  function updatePcMovement(dt){
+    var forward = 0, strafe = 0, vert = 0;
+    if(pcKeys['KeyW'] || pcKeys['ArrowUp']) forward += 1;
+    if(pcKeys['KeyS'] || pcKeys['ArrowDown']) forward -= 1;
+    if(pcKeys['KeyD'] || pcKeys['ArrowRight']) strafe += 1;
+    if(pcKeys['KeyA'] || pcKeys['ArrowLeft']) strafe -= 1;
+    if(pcKeys['Space']) vert += 1;
+    if(pcKeys['ShiftLeft'] || pcKeys['ShiftRight']) vert -= 1;
+    if(!forward && !strafe && !vert) return;
+    var speed = PC_MOVE_SPEED * dt;
+    var fx = Math.sin(pcYaw), fz = -Math.cos(pcYaw);
+    var rx = Math.cos(pcYaw), rz = Math.sin(pcYaw);
+    camera.position.x += (fx*forward + rx*strafe) * speed;
+    camera.position.z += (fz*forward + rz*strafe) * speed;
+    camera.position.y += vert * speed;
+    if(camera.position.y < 0.3) camera.position.y = 0.3;
+    if(camera.position.y > 3) camera.position.y = 3;
+  }
+
+  function startPcPreview(){
+    if(!renderer) buildScene();
+    if(!pcModeActive){
+      pcModeActive = true;
+      camera.position.set(0, 1.6, 0.6);
+      pcYaw = 0; pcPitch = -0.12;
+      pcClock = new THREE.Clock();
+      setup3DUiVisibility(true);
+      window.addEventListener('mousemove', onPcMouseMove);
+      renderer.domElement.addEventListener('click', onPcCanvasClick);
+      window.addEventListener('keydown', onPcKeyDown);
+      window.addEventListener('keyup', onPcKeyUp);
+      document.addEventListener('pointerlockchange', function(){
+        if(document.pointerLockElement !== renderer.domElement){ pcKeys = {}; }
+      });
+      showStatus('PREVIA 3D NO PC ATIVA - CLIQUE NA TELA PARA OLHAR EM VOLTA', 5000);
+    }
+    renderer.setAnimationLoop(function(){
+      try{
+        var dt = pcClock ? Math.min(pcClock.getDelta(), 0.1) : 0.016;
+        if(pcModeActive){
+          updatePcMovement(dt);
+          camera.rotation.set(0,0,0);
+          camera.rotateY(pcYaw);
+          camera.rotateX(pcPitch);
+        }
+        maybeUpdateLogic();
+        renderer.render(scene, camera);
+      }catch(err){
+        console.error('[VR PC preview render loop]', err);
+      }
+    });
+  }
+
+  function buildScene(){
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.05, 100);
+    renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    try{ renderer.xr.setReferenceSpaceType('local-floor'); }catch(e){ console.error('[VR setReferenceSpaceType]', e); }
+    renderer.domElement.id = 'vrCanvas';
+    document.body.appendChild(renderer.domElement);
+
+    makeFloor();
+    makeHeaderPanel();
+    buildTerritoryMap();
+    makeCtrlPanel();
+
+    raycaster = new THREE.Raycaster();
+    tempMatrix = new THREE.Matrix4();
+
+    for(var i=0;i<2;i++){
+      var controller = renderer.xr.getController(i);
+      controller.addEventListener('selectstart', onSelectStart);
+      scene.add(controller);
+      var lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-6)]);
+      var line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color:0x33ff88 }));
+      controller.add(line);
+    }
+
+    window.addEventListener('resize', function(){
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  }
+
+  function enterVR(){
+    if(!renderer) buildScene();
+    pcModeActive = false;
+    setup3DUiVisibility(true);
+    navigator.xr.requestSession('immersive-vr', { optionalFeatures:['local-floor','bounded-floor'] }).then(function(session){
+      showStatus('SESSAO VR INICIADA...', 2500);
+      renderer.xr.setSession(session);
+      var renderErrCount = 0;
+      renderer.setAnimationLoop(function(){
+        try{
+          maybeUpdateLogic();
+          renderer.render(scene, camera);
+        }catch(err){
+          renderErrCount++;
+          console.error('[VR render loop]', err);
+          if(renderErrCount <= 3) showStatus('ERRO AO RENDERIZAR VR: ' + (err && err.message ? err.message : err));
+        }
+      });
+      showStatus('VR ATIVO - APONTE O CONTROLE PARA O TABULEIRO OU OS BOTOES E APERTE O GATILHO', 6000);
+      session.addEventListener('end', function(){
+        renderer.setAnimationLoop(null);
+        setup3DUiVisibility(false);
+        showStatus('VR ENCERRADO', 2500);
+      });
+    }).catch(function(err){
+      console.error('[VR requestSession]', err);
+      showStatus('NAO FOI POSSIVEL ENTRAR EM VR: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  vrBtn.addEventListener('click', enterVR);
+  document.getElementById('vrPcPreviewBtn').addEventListener('click', startPcPreview);
+  init();
 })();
-
 </script>
 </body>
 </html>
