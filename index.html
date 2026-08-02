@@ -7787,14 +7787,14 @@ document.addEventListener('keydown', function(e){
     for(var h=0;h<groups.length;h++){
       var shape = new THREE.Shape();
       var outer = groups[h].outer;
-      shape.moveTo((outer[0].x - XMID)*UNIT, (outer[0].y - YMID)*UNIT);
-      for(var p=1;p<outer.length;p++) shape.lineTo((outer[p].x - XMID)*UNIT, (outer[p].y - YMID)*UNIT);
+      shape.moveTo((outer[0].x - XMID)*UNIT, (YMID - outer[0].y)*UNIT);
+      for(var p=1;p<outer.length;p++) shape.lineTo((outer[p].x - XMID)*UNIT, (YMID - outer[p].y)*UNIT);
       shape.closePath();
       for(var hh=0;hh<groups[h].holes.length;hh++){
         var hole = groups[h].holes[hh];
         var hp = new THREE.Path();
-        hp.moveTo((hole[0].x - XMID)*UNIT, (hole[0].y - YMID)*UNIT);
-        for(var q=1;q<hole.length;q++) hp.lineTo((hole[q].x - XMID)*UNIT, (hole[q].y - YMID)*UNIT);
+        hp.moveTo((hole[0].x - XMID)*UNIT, (YMID - hole[0].y)*UNIT);
+        for(var q=1;q<hole.length;q++) hp.lineTo((hole[q].x - XMID)*UNIT, (YMID - hole[q].y)*UNIT);
         hp.closePath();
         shape.holes.push(hp);
       }
@@ -7806,7 +7806,7 @@ document.addEventListener('keydown', function(e){
     var o = out || {};
     o.x = (mx - XMID) * UNIT;
     o.y = 0;
-    o.z = (YMID - my) * UNIT;
+    o.z = (my - YMID) * UNIT;
     return o;
   }
   function terrColorRGB(t){
@@ -8348,6 +8348,7 @@ document.addEventListener('keydown', function(e){
   var hoverUIuv = null;
   var lastAim = null;
   var prevHoverUI = null;
+  var lastRayByHand = {}; /* ultima pose de raycast por mao, p/ re-verificar no clique */
 
   function ensureVisuals(hand){
     if(lasers[hand]) return;
@@ -8396,8 +8397,36 @@ document.addEventListener('keydown', function(e){
     if(!t || !G || !G.players || !G.players.length) return true;
     return true;
   }
+  function recheckHover(hand){
+    var ray = lastRayByHand[hand];
+    if(!ray) return;
+    raycaster.set(ray.origin, ray.dir);
+    raycaster.far = 20;
+    raycaster.params.Line = {threshold: 0.02};
+    var hits = raycaster.intersectObjects(clickTargets, false);
+    var hit = hits.length ? hits[0] : null;
+    if(!hit) return;
+    var ud = hit.object.userData;
+    if(ud.water){
+      hoverT = '__water'; hoverUI = null;
+    } else if(ud.exit){
+      hoverT = null; hoverUI = hit.object; hoverUIuv = hit.uv;
+    } else if(ud.uiEl){
+      hoverT = null; hoverUI = hit.object; hoverUIuv = hit.uv;
+    } else if(ud.terr){
+      hoverT = ud.terr; hoverUI = null;
+    } else {
+      hoverT = null;
+      for(var t in terrObjs){
+        if(terrObjs[t].mesh === hit.object){ hoverT = t; break; }
+      }
+      hoverUI = null;
+    }
+  }
   function onSelectStart(e){
     if(pendingHit) return;
+    var hand = (e && e.inputSource && e.inputSource.handedness) || 'right';
+    try{ recheckHover(hand); }catch(_){}
     if(hoverT){ pendingHit = {type:'terr', t:hoverT}; }
     else if(hoverUI){
       if(hoverUI.userData && hoverUI.userData.exit){ pendingHit = {type:'exit'}; }
@@ -8409,8 +8438,8 @@ document.addEventListener('keydown', function(e){
     if(pendingHit.type === 'terr'){
       if(hoverT === pendingHit.t){
         try{
-          if(typeof clickT === 'function') clickT(pendingHit.t);
-          else if(typeof clickWater === 'function' && pendingHit.t === '__water') clickWater();
+          if(pendingHit.t === '__water' && typeof clickWater === 'function') clickWater();
+          else if(typeof clickT === 'function') clickT(pendingHit.t);
         }catch(e){}
       }
     } else if(pendingHit.type === 'ui'){
@@ -8430,9 +8459,10 @@ document.addEventListener('keydown', function(e){
     }
     pendingHit = null;
   }
-  function onSelectStartEv(e){ onSelectStart(); }
+  function onSelectStartEv(e){ onSelectStart(e); }
   function onSelectEndEv(e){ onSelectEnd(); }
   var vrControllers = [];
+  var vrSessionEvents = [];
   function setupVrControllers(){
     if(vrControllers.length) return;
     for(var i=0;i<2;i++){
@@ -8442,6 +8472,13 @@ document.addEventListener('keydown', function(e){
       scene.add(c);
       vrControllers.push(c);
     }
+  }
+  /* redundancia: ouvir tambem direto na sessao XR (caso o wiring do three falhe no Quest) */
+  function wireSessionEvents(session){
+    if(!session || vrSessionEvents.indexOf(session) >= 0) return;
+    vrSessionEvents.push(session);
+    session.addEventListener('selectstart', onSelectStartEv);
+    session.addEventListener('selectend', onSelectEndEv);
   }
 
   /* analógicos: zoom do tabuleiro (dir Y / grips) e pan (esq) / scroll do setup */
@@ -8637,6 +8674,7 @@ document.addEventListener('keydown', function(e){
             tmpQuat.set(pose.transform.orientation.x, pose.transform.orientation.y,
                         pose.transform.orientation.z, pose.transform.orientation.w);
             tmpDir.set(0,0,-1).applyQuaternion(tmpQuat);
+            lastRayByHand[hand] = {origin: tmpVec.clone(), dir: tmpDir.clone()};
             raycaster.set(tmpVec, tmpDir);
             raycaster.far = 20;
             raycaster.params.Line = {threshold: 0.02};
@@ -8695,8 +8733,8 @@ document.addEventListener('keydown', function(e){
       if(renderer && !boardGroupBuilt){ buildBoard(); buildBoardBuilt = true; }
       if(dirty){ dirty = false; if(presenting) syncBoard(); }
       if(presenting){
-        if(uiDirty && now - lastUIBuild >= 500){ lastUIBuild = now; uiDirty = false; buildPanels(); }
-        else if(now - lastUIBuild >= 3000){ lastUIBuild = now; buildPanels(); }
+        if(!pendingHit && uiDirty && now - lastUIBuild >= 500){ lastUIBuild = now; uiDirty = false; buildPanels(); }
+        else if(!pendingHit && now - lastUIBuild >= 8000){ lastUIBuild = now; buildPanels(); }
       }
 
     }catch(e){
@@ -8733,6 +8771,7 @@ document.addEventListener('keydown', function(e){
         if(renderer) renderer.setAnimationLoop(null);
       });
       setupVrControllers();
+      wireSessionEvents(session);
       if(renderer) renderer.setAnimationLoop(animate);
       await renderer.xr.setSession(session);
       vrButton.textContent = 'Sair do VR';
@@ -8781,6 +8820,20 @@ document.addEventListener('keydown', function(e){
       bb.setFromObject(boardGroup);
       geoBox = {min:[+bb.min.x.toFixed(2), +bb.min.y.toFixed(2), +bb.min.z.toFixed(2)], max:[+bb.max.x.toFixed(2), +bb.max.y.toFixed(2), +bb.max.z.toFixed(2)]};
     }catch(e){}
+    var vert = null;
+    try{
+      var tTop = null, tBot = null;
+      for(var v in terrObjs){
+        var vb = terrObjs[v].bbox;
+        if(!tTop || vb.ymin < terrObjs[tTop].bbox.ymin) tTop = v;
+        if(!tBot || vb.ymax > terrObjs[tBot].bbox.ymax) tBot = v;
+      }
+      function _vertY(t){
+        var w = mapToWorld(terrObjs[t].cx, terrObjs[t].cy);
+        return +(BOARD_QUADRO_Y - w.z*BOARD_SCALE).toFixed(3);
+      }
+      vert = { top: tTop, yTop: _vertY(tTop), bot: tBot, yBot: _vertY(tBot) };
+    }catch(e){}
     return {
       vrmod:'3d-v1',
       renderer: !!renderer,
@@ -8792,6 +8845,7 @@ document.addEventListener('keydown', function(e){
       pick: pickInside + '/' + pickTotal,
       terrObjs: Object.keys(terrObjs).length,
       geoBox: geoBox,
+      vert: vert,
       boardPos: [+boardGroup.position.x.toFixed(2), +boardGroup.position.y.toFixed(2), +boardGroup.position.z.toFixed(2)],
       uiPos: [+uiRoot.position.x.toFixed(2), +uiRoot.position.y.toFixed(2), +uiRoot.position.z.toFixed(2)],
       labels: (function(){ var n=0; for(var t in terrObjs){ if(terrObjs[t].label) n++; } return n; })(),
