@@ -503,7 +503,7 @@ body.chooserActive #actionButtonGroup{opacity:0!important;visibility:hidden!impo
 }
 
 /* ===== MODAIS / OVERLAYS ===== */
-#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:380;align-items:center;justify-content:center}
+#overlay{display:none;position:fixed;inset:0;background:transparent;z-index:380;align-items:center;justify-content:center}
 #overlay.show{display:flex}
 #overlay.chooser{background:transparent;align-items:flex-end;justify-content:flex-end;padding-right:var(--pos-passarpecas-right);padding-bottom:var(--pos-passarpecas-bottom);pointer-events:none;z-index:380}
 /* --- Animação: tela das setinhas desliza de BAIXO para CIMA ao abrir --- */
@@ -580,7 +580,7 @@ body.chooserActive #actionButtonGroup{opacity:0!important;visibility:hidden!impo
 	#cpanel.peek{background:transparent;padding:0}
 	#cpanel.peek #cinner{pointer-events:auto;width:320px;height:100%;box-shadow:0 10px 30px rgba(0,0,0,0.75);margin-bottom:0}
 	#tradePanel{
-	  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);
+	  display:none;position:fixed;inset:0;background:transparent;
 	  z-index:401;align-items:center;justify-content:center;pointer-events:auto;
 	}
 	#tradePanel.show{display:flex}
@@ -3431,7 +3431,7 @@ function openRulesSummary(){
   const items = getRulesSummaryData();
   const _blkRS = 'text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 0 3px #000';
   const rows = items.map(it=>`<div style="margin-bottom:10px;padding:10px 12px;border:3px solid #ffdd00;border-radius:8px;background:rgba(0,0,0,0.25)"><div style="color:#ffdd00;font-weight:normal;font-size:16px;margin-bottom:4px;${_blkRS}">${it.title}</div><div style="color:#fff;font-size:15px;line-height:1.4;${_blkRS}">${it.desc}</div></div>`).join('');
-  const html = `<div id="rulesSummaryScreen" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:600;display:flex;align-items:center;justify-content:center;">
+  const html = `<div id="rulesSummaryScreen" style="position:fixed;inset:0;background:transparent;z-index:600;display:flex;align-items:center;justify-content:center;">
     <div style="background:#0a3a6a;border:3px solid #ffffff;outline:3px solid #000000;border-radius:14px;padding:28px 30px;max-width:640px;width:96%;max-height:88vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.9)">
       <div style="color:#ffdd00;font-weight:normal;font-size:28px;letter-spacing:1px;text-align:center;margin-bottom:18px;${_blkRS}">Regras dessa Partida:</div>
       ${rows}
@@ -3525,7 +3525,7 @@ function showHandoff(player, subtitle, onContinue){
   if(objscreen) objscreen.className = '';
   const prev = document.getElementById('handoffScreen');
   if(prev) prev.remove();
-  const html = `<div id="handoffScreen" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:500;display:flex;align-items:center;justify-content:center;">
+  const html = `<div id="handoffScreen" style="position:fixed;inset:0;background:transparent;z-index:500;display:flex;align-items:center;justify-content:center;">
     <div style="background:#0a1628;border:2px solid ${player.color};border-radius:14px;padding:34px 40px;max-width:520px;width:94%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.9)">
       <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:14px 0">
         <div style="width:34px;height:34px;border-radius:50%;background:${player.color};border:2px solid #fff;box-shadow:0 0 0 2px #000"></div>
@@ -3608,7 +3608,7 @@ function animateInitialFill() {
 function showFirstRoundScreen(){
   renderAll();
   const _blkFR = 'text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 0 3px #000';
-  const html = `<div id="firstRoundScreen" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:420;display:flex;align-items:center;justify-content:center;">
+  const html = `<div id="firstRoundScreen" style="position:fixed;inset:0;background:transparent;z-index:420;display:flex;align-items:center;justify-content:center;">
     <div style="background:#0a3a6a;border:3px solid #ffffff;outline:3px solid #000000;border-radius:14px;padding:26px 18px;max-width:640px;width:98%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.9)">
       <div style="color:#ffdd00;font-weight:normal;font-size:32px;margin-bottom:16px;letter-spacing:2px;${_blkFR}">PRIMEIRA RODADA</div>
       <div style="color:#fff;font-weight:normal;font-size:22px;margin-bottom:18px;${_blkFR}">A Primeira Rodada do Strategic Winner é diferente das outras!</div>
@@ -5728,7 +5728,7 @@ function showVictory(p, achievedObj){
   ] : [
     {txt:'Você e o bichao mermo em doido!', style:'font-size:clamp(14px,2vw,18px);color:#fff;font-weight:normal;text-shadow:0 0 16px rgba(255,255,255,0.35)'}
   ];
-  screen.style.cssText = "position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);padding:20px";
+  screen.style.cssText = "position:fixed;inset:0;z-index:900;display:flex;align-items:center;justify-content:center;background:transparent;padding:20px";
   screen.innerHTML = `<div style="position:relative;text-align:center;padding:24px 26px;max-width:520px;width:100%;background:#0a1628;border:2px solid ${p.color};border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.9)"><div style="position:absolute;inset:0;opacity:0.15;border-radius:14px;overflow:hidden;pointer-events:none;background:repeating-linear-gradient(135deg,transparent 0 14px,rgba(255,215,0,0.18) 14px 28px)"></div>
     <div style="position:relative;font-size:clamp(22px,4vw,34px);font-weight:normal;color:${p.color};text-shadow:0 0 18px ${p.color}">${p.name}</div>
     <div style="position:relative;font-size:clamp(18px,3vw,26px);font-weight:normal;color:#ffdd00;margin:8px 0 12px;letter-spacing:2px">${conqueredWorld?'VITORIA APOCALIPTICA!':'VITORIA!'}</div>
@@ -5875,7 +5875,7 @@ function showTurnPanel(){
   }
 
   const _blkTP = 'text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 0 3px #000';
-  const panelHTML = `<div id="turnpanel" style="position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:410;display:flex;align-items:center;justify-content:center;">
+  const panelHTML = `<div id="turnpanel" style="position:fixed;inset:0;background:transparent;z-index:410;display:flex;align-items:center;justify-content:center;">
 
     <div style="background:#0a3a6a;border:3px solid #ffffff;outline:3px solid #000000;border-radius:14px;padding:20px 8px;max-width:640px;width:96%;font-size:16px;font-weight:normal;line-height:1.85;color:#fff;${_blkTP}">
       <div style="color:#ff6a00;font-weight:normal;font-size:23px;margin-bottom:10px;text-align:center">Seu Turno de Jogar - ${G.roundNumber||1}ª Rodada</div>
@@ -7638,18 +7638,20 @@ document.addEventListener('keydown', function(e){
 #vrPcPreviewBtn{position:fixed;bottom:14px;right:190px;z-index:999998;background:#1a8f3a;color:#fff;border:2px solid #7ee08a;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important}
 #vrPcPreviewBtn:hover{background:#22a848}
 #vrStatusMsg{position:fixed;bottom:62px;right:14px;z-index:999998;background:rgba(0,0,0,.8);color:#fff;padding:8px 12px;border-radius:8px;font-size:11px;max-width:260px;display:none;line-height:1.4}
-#vrCanvas{position:fixed;top:0;left:0;z-index:999997}
+#vrCanvas{position:fixed;top:0;left:0;z-index:999997;display:none;pointer-events:none}
 #vrPcHint{position:fixed;top:14px;left:14px;z-index:999998;background:rgba(0,0,0,.75);color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.6;display:none;font-family:Arial,sans-serif!important;text-transform:uppercase!important}
+#vrExitBtn{position:fixed;top:14px;right:14px;z-index:999999;background:#c0392b;color:#fff;border:2px solid #ff8a80;border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5);font-family:Arial,sans-serif!important;text-transform:uppercase!important;display:none}
+#vrExitBtn:hover{background:#e74c3c}
 #vrCrosshair{position:fixed;top:50%;left:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border:2px solid #fff;border-radius:50%;z-index:999998;display:none;pointer-events:none;box-shadow:0 0 4px rgba(0,0,0,.8)}
-body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not(#vrCanvas):not(#vrPcHint):not(#vrCrosshair):not(script):not(style){position:fixed!important;left:-99999px!important;top:-99999px!important}
+body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not(#vrCanvas):not(#vrPcHint):not(#vrCrosshair):not(#vrExitBtn):not(script):not(style){position:fixed!important;left:-99999px!important;top:-99999px!important}
 </style>
 <button id="vrEnterBtn" class="vr-ui-ignore" disabled>VR CARREGANDO...</button>
 <button id="vrPcPreviewBtn" class="vr-ui-ignore">PREVIA 3D NO PC</button>
 <div id="vrStatusMsg" class="vr-ui-ignore"></div>
-<div id="vrPcHint" class="vr-ui-ignore">CLIQUE NA TELA PARA OLHAR EM VOLTA (MOUSE)<br>WASD: MOVER &nbsp; ESPACO/SHIFT: SUBIR/DESCER<br>CLIQUE ESQUERDO: INTERAGIR &nbsp; ESC: LIBERAR MOUSE</div>
+<div id="vrPcHint" class="vr-ui-ignore">CLIQUE NA TELA PARA OLHAR EM VOLTA (MOUSE)<br>WASD: MOVER &nbsp; ESPACO/SHIFT: SUBIR/DESCER<br>CLIQUE ESQUERDO: INTERAGIR &nbsp; ESC: SAIR DA PREVIA 3D</div>
+<button id="vrExitBtn" class="vr-ui-ignore">SAIR DA PREVIA 3D</button>
 <div id="vrCrosshair" class="vr-ui-ignore"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
   var vrBtn = document.getElementById('vrEnterBtn');
@@ -7673,8 +7675,29 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     console.error('[VR window error]', ev.error || ev.message);
   });
 
+  // OTIMIZACAO DE PESO: a biblioteca three.js (~600KB) so' e' necessaria quando o jogador
+  // realmente entra em VR ou abre a Previa 3D no PC. Antes ela era carregada sempre, em
+  // TODA partida (mesmo 100% 2D), deixando o carregamento inicial do jogo mais pesado a
+  // toa. Agora ela so' e' baixada e executada na hora em que um dos dois botoes e' clicado
+  // pela primeira vez - o resto do jogo (2D) fica leve como antes. A checagem de suporte a
+  // VR do navegador (abaixo) usa apenas a API nativa "navigator.xr", que nao depende do
+  // three.js, entao o botao ja pode mostrar "ENTRAR EM VR" / avisar "nao suportado" sem
+  // precisar baixar nada.
+  var threeLoadPromise = null;
+  function ensureThreeLoaded(){
+    if(typeof THREE !== 'undefined') return Promise.resolve();
+    if(threeLoadPromise) return threeLoadPromise;
+    threeLoadPromise = new Promise(function(resolve, reject){
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ threeLoadPromise = null; reject(new Error('Falha ao carregar three.js')); };
+      document.head.appendChild(s);
+    });
+    return threeLoadPromise;
+  }
+
   function init(){
-    if(typeof THREE === 'undefined'){ setTimeout(init, 200); return; }
     if(!navigator.xr){
       vrBtn.textContent = 'VR INDISPONIVEL NESTE NAVEGADOR';
       vrBtn.disabled = true;
@@ -7688,14 +7711,40 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
       vrBtn.disabled = true;
     });
   }
+  setTimeout(function(){
+    if(vrBtn.textContent === 'VR CARREGANDO...'){
+      vrBtn.textContent = 'VR NAO SUPORTADO NESTE NAVEGADOR';
+      vrBtn.disabled = true;
+    }
+  }, 8000);
 
   var renderer, scene, camera;
   var raycaster, tempMatrix;
   var headerMesh, headerCanvas, headerCtx, headerTex;
   var mapGroup, terrMeshes = {}, terrLabels = {};
-  var ctrlPanelGroup, uiButtons = [], navBtns = {};
+  // OTIMIZACAO DE PESO (VR): em vez de 119 Mesh + 119 LineSegments de contorno separados
+  // (238 draw calls so' para o tabuleiro, desenhados 2x por causa da estereoscopia), os
+  // territorios "de base" agora sao mesclados em UMA UNICA geometria (mergedTerrMesh, cor
+  // por vertice) + UM UNICO contorno mesclado (mergedEdgesMesh). Os Mesh individuais em
+  // terrMeshes[t] continuam existindo (mesma geometria de antes, criada uma vez), mas so'
+  // sao adicionados a cena como uma "copia levantada" por cima do mapa mesclado quando
+  // aquele territorio esta selecionado/ativo (0-2 objetos na maioria dos frames, em vez de
+  // 119) - preservando o efeito visual de "levantar" o territorio sem pagar o custo dos
+  // outros 117 territorios que nao estao fazendo nada.
+  var mergedTerrMesh = null, mergedEdgesMesh = null;
+  var terrRanges = {};       // t -> {vStart, vCount, fStart, fCount} dentro da geometria mesclada
+  var terrFaceIdArray = [];  // faceIndex (da geometria mesclada) -> id do territorio
+  var terrColorState = {};   // t -> ultima cor hex aplicada na geometria mesclada
+  var _tmpVrColor = null;    // THREE.Color reutilizavel (criado so' apos o three.js carregar)
+  var uiButtons = [];
   var lastLogicUpdate = 0;
-  var LOGIC_UPDATE_MS = 220; // atualiza cores/exercitos/botoes a cada ~220ms - leve, sem DOM screenshot
+  var LOGIC_UPDATE_MS = 300; // atualiza cores/exercitos/botoes a cada ~300ms - leve, sem DOM screenshot (reduzido para aliviar o custo de reflow forcado do withRealLayout())
+  var lastHudUpdate = 0;
+  var HUD_UPDATE_MS = 700;  // o espelho de botoes/paineis (que forca reflow real do DOM via
+                             // withRealLayout + querySelectorAll) roda mais devagar que as
+                             // cores do tabuleiro, ja que qualquer clique real ja forca uma
+                             // atualizacao imediata (lastHudUpdate=0) - nao precisa escanear
+                             // o DOM inteiro 3x por segundo "por via das duvidas"
 
   var VB_W = 1920, VB_H = 1080;
   var MAP_SCALE = 1.6 / VB_W;   // mesa de ~1.6m de largura
@@ -7837,6 +7886,52 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     return { sprite:sprite, canvas:canvas, ctx:ctx, tex:tex, lastText:null, lastColor:null };
   }
 
+  // Mescla as geometrias (ja' construidas individualmente por buildTerritoryMesh) de todos os
+  // territorios em uma unica BufferGeometry com cor por vertice, e guarda os intervalos de
+  // vertice/face de cada territorio para (a) poder recolorir so' os vertices daquele
+  // territorio depois e (b) poder descobrir, a partir do faceIndex de um raycast, qual
+  // territorio foi clicado.
+  function mergeTerritoryGeometries(ids){
+    var positions = [], normals = [], colors = [], indices = [];
+    var vertexOffset = 0, faceOffset = 0;
+    _tmpVrColor = new THREE.Color();
+    for(var i=0;i<ids.length;i++){
+      var t = ids[i];
+      var mesh = terrMeshes[t];
+      if(!mesh) continue;
+      var geo = mesh.geometry;
+      var posAttr = geo.attributes.position;
+      var normAttr = geo.attributes.normal;
+      var vCount = posAttr.count;
+      for(var v=0; v<vCount; v++){
+        positions.push(posAttr.getX(v), posAttr.getY(v), posAttr.getZ(v));
+        if(normAttr) normals.push(normAttr.getX(v), normAttr.getY(v), normAttr.getZ(v));
+        else normals.push(0,0,1);
+        colors.push(0.53,0.53,0.53); // cinza inicial (0x888888), atualizado no 1o updateTerritoryVisuals
+      }
+      var idxAttr = geo.index;
+      var idxArray = idxAttr ? idxAttr.array : null;
+      var faceCount;
+      if(idxArray){
+        for(var k=0;k<idxArray.length;k++) indices.push(idxArray[k] + vertexOffset);
+        faceCount = idxArray.length / 3;
+      } else {
+        for(var k2=0;k2<vCount;k2++) indices.push(k2 + vertexOffset);
+        faceCount = vCount / 3;
+      }
+      for(var fi=0; fi<faceCount; fi++) terrFaceIdArray[faceOffset+fi] = t;
+      terrRanges[t] = { vStart:vertexOffset, vCount:vCount, fStart:faceOffset, fCount:faceCount };
+      vertexOffset += vCount;
+      faceOffset += faceCount;
+    }
+    var mergedGeo = new THREE.BufferGeometry();
+    mergedGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    mergedGeo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    mergedGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    mergedGeo.setIndex(indices);
+    return mergedGeo;
+  }
+
   function buildTerritoryMap(){
     if(typeof PATHS === 'undefined' || typeof ADJACENCY === 'undefined'){
       showStatus('DADOS DO MAPA AINDA NAO CARREGARAM, TENTANDO DE NOVO...');
@@ -7846,44 +7941,89 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     mapGroup = new THREE.Group();
     var ids = Object.keys(ADJACENCY);
     var built = 0;
+    var builtIds = [];
     for(var i=0;i<ids.length;i++){
       var t = ids[i];
       var d = PATHS[t];
       if(!d) continue;
+      // Constroi a geometria/mesh individual de cada territorio (mesmo processo de sempre),
+      // mas NAO adiciona na cena ainda - ela vira fonte para a mescla abaixo, e so' volta a
+      // ser usada (isoladamente) como "copia levantada" quando o territorio estiver ativo.
       var mesh = buildTerritoryMesh(t, d);
       if(!mesh) continue;
-      mapGroup.add(mesh);
       terrMeshes[t] = mesh;
       var label = buildLabelSprite(t);
       mapGroup.add(label.sprite);
       terrLabels[t] = label;
+      builtIds.push(t);
       built++;
     }
+    // Tabuleiro "de base": 1 unico draw call de preenchimento + 1 unico draw call de contorno,
+    // em vez de 119+119. As copias individuais em terrMeshes[] ficam de reserva, escondidas.
+    var mergedGeo = mergeTerritoryGeometries(builtIds);
+    var mergedMat = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+    mergedTerrMesh = new THREE.Mesh(mergedGeo, mergedMat);
+    mapGroup.add(mergedTerrMesh);
+    var edgesGeo = new THREE.EdgesGeometry(mergedGeo, 20);
+    mergedEdgesMesh = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({ color:0x111111 }));
+    mapGroup.add(mergedEdgesMesh);
+
     mapGroup.position.set(0, 1.5, -1.6);
     mapGroup.rotation.x = 0;
     mapGroup.scale.set(MAP_SCALE, MAP_SCALE, MAP_SCALE);
     scene.add(mapGroup);
-    showStatus('TABULEIRO 3D CONSTRUIDO: ' + built + ' TERRITORIOS', 3000);
+    showStatus('TABULEIRO 3D CONSTRUIDO: ' + built + ' TERRITORIOS (OTIMIZADO)', 3000);
   }
 
   function updateTerritoryVisuals(){
-    if(!mapGroup) return;
+    if(!mapGroup || !mergedTerrMesh) return;
+    var colorAttr = mergedTerrMesh.geometry.attributes.color;
+    var colorArr = colorAttr.array;
+    var colorTouched = false;
     var ids = Object.keys(terrMeshes);
     for(var i=0;i<ids.length;i++){
       var t = ids[i];
-      var mesh = terrMeshes[t];
+      var overlay = terrMeshes[t];
       var label = terrLabels[t];
       var colorHex = '#888888', armiesTxt = '';
       try{
         colorHex = (typeof ownerColor === 'function') ? ownerColor(t) : '#888888';
         armiesTxt = (typeof getDisplayArmies === 'function') ? String(getDisplayArmies(t)) : '';
       }catch(e){ /* estado ainda nao pronto */ }
-      if(mesh.userData.lastColor !== colorHex){
-        mesh.material.color.set(colorHex);
-        mesh.userData.lastColor = colorHex;
+
+      // Cor: pinta so' os vertices deste territorio dentro da geometria mesclada (nao mexe
+      // nos outros 118), e so' quando a cor realmente mudou.
+      if(terrColorState[t] !== colorHex){
+        var range = terrRanges[t];
+        if(range){
+          _tmpVrColor.set(colorHex);
+          for(var vi=range.vStart; vi<range.vStart+range.vCount; vi++){
+            var base = vi*3;
+            colorArr[base] = _tmpVrColor.r; colorArr[base+1] = _tmpVrColor.g; colorArr[base+2] = _tmpVrColor.b;
+          }
+          colorTouched = true;
+        }
+        terrColorState[t] = colorHex;
       }
+
+      // Levante: em vez de mover 119 objetos todo frame, so' o(s) territorio(s) realmente
+      // selecionado(s)/ativo(s) ganham uma copia extra (a mesh individual original, ja'
+      // pronta em terrMeshes[t]) adicionada por cima do mapa mesclado. Os demais nem entram
+      // na cena, entao nao custam draw call nenhum.
       var isSel = (typeof G !== 'undefined' && G.af === t);
-      mesh.position.z = isSel ? LIFT_AMOUNT : 0;
+      if(overlay){
+        if(isSel){
+          if(!overlay.parent) mapGroup.add(overlay);
+          overlay.position.z = LIFT_AMOUNT;
+          if(overlay.userData.lastColor !== colorHex){
+            overlay.material.color.set(colorHex);
+            overlay.userData.lastColor = colorHex;
+          }
+        } else if(overlay.parent){
+          mapGroup.remove(overlay);
+        }
+      }
+
       if(label && (label.lastText !== armiesTxt || label.lastColor !== colorHex)){
         var ctx = label.ctx, canvas = label.canvas;
         ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -7899,25 +8039,64 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
         label.lastText = armiesTxt; label.lastColor = colorHex;
       }
     }
+    if(colorTouched) colorAttr.needsUpdate = true;
   }
 
   // ---------- CONSOLE 3D GERAL (espelha QUALQUER controle real do jogo: botoes, divs de regra,
   //            selects, telas de handoff/dados/cartas/comercio/log/dicas/config - tudo com
   //            canvas redesenhado so quando o texto muda, sem screenshot de DOM e sem lag) ----------
 
-  var VR_EXCLUDE_IDS = { vrEnterBtn:1, vrPcPreviewBtn:1, vrStatusMsg:1, vrCanvas:1, vrPcHint:1, vrCrosshair:1 };
-  var CTRL_COLS = 4, CTRL_ROWS = 4, CTRL_PER_PAGE = CTRL_COLS*CTRL_ROWS;
-  var CTRL_W = 0.36, CTRL_H = 0.13, CTRL_GAP = 0.02;
-  var ctrlPage = 0, lastCtxKey = '';
-  var infoPanel;
+  var VR_EXCLUDE_IDS = { vrEnterBtn:1, vrPcPreviewBtn:1, vrStatusMsg:1, vrCanvas:1, vrPcHint:1, vrCrosshair:1, vrExitBtn:1 };
+  var lastCtxKey = '';
+  // PAINEIS INDEPENDENTES (item 1 do pedido): cada tela "grande" (Cartas e Jogadores,
+  // Configuracoes, Dicas e Regras, Log, Objetivo...) ganha o seu PROPRIO quad de texto e o
+  // seu PROPRIO par de setas de pagina, guardados aqui por id do container. Antes so'
+  // existia UM painel compartilhado (a variavel "infoPanel"), entao abrir uma segunda tela
+  // escondia a primeira. Agora, exatamente como no jogo 2D, varias podem ficar abertas ao
+  // mesmo tempo (uma podendo ficar por cima da outra), porque cada uma tem seu proprio quad.
+  var infoPanels = {};
+  var hudGroup;                 // grupo com TODOS os botoes/paineis espelhados, alinhado 1:1 com o mapGroup
+  var HUD_Z_LIFT = EXTRUDE_DEPTH + 30; // fica um pouco acima do tabuleiro, na frente das etiquetas
+
+  // Le a posicao/tamanho REAL na tela (em pixels) de um elemento e converte para o mesmo
+  // sistema de coordenadas 1920x1080 (VB_W x VB_H) usado para desenhar o tabuleiro, para que
+  // cada botao caia exatamente na mesma posicao relativa que tem na tela 2D (igual a imagem
+  // de referencia do jogo), em vez de um grid generico.
+  function rectToVB(r){
+    var sx = VB_W / Math.max(1, window.innerWidth);
+    var sy = VB_H / Math.max(1, window.innerHeight);
+    return {
+      x: r.left * sx, y: r.top * sy,
+      w: Math.max(4, r.width * sx), h: Math.max(4, r.height * sy)
+    };
+  }
+
+  // O modo VR esconde o DOM 2D real (body.vr3d-active move tudo para fora da tela) para nao
+  // atrapalhar visualmente - mas isso tambem estraga a posicao (left/top viram -99999) que a
+  // gente precisa ler. Aqui a gente tira essa classe so pelo tempo de um unico calculo
+  // sincrono (sem deixar o navegador repintar a tela no meio do caminho), le as posicoes de
+  // verdade, e devolve a classe - sem nenhum "flash" visivel.
+  function withRealLayout(fn){
+    var body = document.body;
+    var was = body.classList.contains('vr3d-active');
+    if(was) body.classList.remove('vr3d-active');
+    try{ return fn(); } finally { if(was) body.classList.add('vr3d-active'); }
+  }
 
   function isElVisible(el){
     if(!el || !el.isConnected) return false;
-    if(el.disabled) return false;
     var st = window.getComputedStyle(el);
     if(st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) return false;
     var r = el.getBoundingClientRect();
     if(r.width === 0 && r.height === 0) return false;
+    // Varios paineis (cartas, log, dicas, config, objetivo) ficam sempre com display:flex/
+    // block e so' saem da tela via "transform:translateY(±150vh)" quando fechados - sem
+    // checar se o retangulo realmente cai dentro da janela, eles pareceriam "visiveis" o
+    // tempo todo, mesmo fechados, e apareceriam como uma tela escura na frente do tabuleiro.
+    // OBS: esta funcao so' da' o resultado certo quando chamada de dentro de withRealLayout(),
+    // que restaura a posicao de verdade dos elementos (o modo VR normalmente empurra tudo
+    // para fora da tela em -99999px para nao atrapalhar visualmente).
+    if(r.bottom <= 0 || r.right <= 0 || r.top >= window.innerHeight || r.left >= window.innerWidth) return false;
     return true;
   }
 
@@ -7925,18 +8104,35 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   // em qualquer tela que esteja visivel agora - setup, regras, handoff, dados, cartas, comercio,
   // log, dicas, config. Fica de fora apenas o mapa (que ja tem raycasting proprio) e os elementos
   // exclusivos da UI de VR.
+  var PASSIVE_SELECTOR = '#gameTitle, #turnTimerBadge, #chVal, .chooser-title, #objBtnStack .objDot';
+
   function findInteractiveElements(){
-    var all = Array.prototype.slice.call(document.querySelectorAll('button, select, [onclick]'));
+    var all = Array.prototype.slice.call(document.querySelectorAll('button, select, [onclick], ' + PASSIVE_SELECTOR));
     var out = [];
+    var seen = {};
     for(var i=0;i<all.length;i++){
       var el = all[i];
       if(VR_EXCLUDE_IDS[el.id]) continue;
       if(el.closest && el.closest('#mapwrap')) continue;
       if(el.tagName === 'INPUT' && el.type !== 'range' && el.type !== 'number') continue;
       if(!isElVisible(el)) continue;
+      var key = el.id || ('_' + i);
+      if(seen[key]) continue;
+      seen[key] = true;
       out.push(el);
     }
     return out;
+  }
+
+  // Elemento e' "clicavel de verdade" (deve receber .click()/activateElement) ou e' apenas
+  // um rotulo/valor que estamos mostrando no espelho (numero da tela de +10/-10, titulo do
+  // territorio, nome do jogo, timer) e portanto nao deve reagir a clique.
+  function isActivatable(el){
+    if(el.disabled) return false;
+    if(el.tagName === 'BUTTON' || el.tagName === 'SELECT') return true;
+    if(el.hasAttribute && el.hasAttribute('onclick')) return true;
+    if(el.tagName === 'INPUT') return true;
+    return false;
   }
 
   function labelForElement(el){
@@ -7949,6 +8145,7 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   }
 
   function activateElement(el){
+    if(!isActivatable(el)) return;
     try{
       if(el.tagName === 'SELECT'){
         el.selectedIndex = (el.selectedIndex + 1) % el.options.length;
@@ -8028,11 +8225,9 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     return lines;
   }
 
-  function drawInfoPanel(text){
-    var ctx = infoPanel.ctx, canvas = infoPanel.canvas;
+  function drawInfoPanel(panel, text){
+    var ctx = panel.ctx, canvas = panel.canvas;
     ctx.clearRect(0,0,canvas.width,canvas.height);
-    ctx.fillStyle = 'rgba(5,15,30,0.94)';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.strokeStyle = '#3399ff'; ctx.lineWidth = 6;
     ctx.strokeRect(3,3,canvas.width-6,canvas.height-6);
     ctx.fillStyle = '#fff';
@@ -8043,67 +8238,147 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     var pages = [];
     for(var i=0;i<lines.length;i+=maxLinesPerPage){ pages.push(lines.slice(i, i+maxLinesPerPage)); }
     if(!pages.length) pages = [[]];
-    infoPanel.pages = pages;
-    if(!(infoPanel.pageIdx >= 0 && infoPanel.pageIdx < pages.length)) infoPanel.pageIdx = 0;
-    var pageLines = pages[infoPanel.pageIdx];
+    panel.pages = pages;
+    if(!(panel.pageIdx >= 0 && panel.pageIdx < pages.length)) panel.pageIdx = 0;
+    var pageLines = pages[panel.pageIdx];
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     var startY = padTop;
     for(var l=0;l<pageLines.length;l++){ ctx.fillText(pageLines[l], canvas.width/2, startY + l*lineHeight); }
     if(pages.length > 1){
       ctx.font = '20px Arial';
       ctx.fillStyle = '#7fc9ff';
-      ctx.fillText('PAGINA ' + (infoPanel.pageIdx+1) + '/' + pages.length + '  (USE ANTERIOR/PROXIMA)', canvas.width/2, canvas.height - 22);
+      ctx.fillText('PAGINA ' + (panel.pageIdx+1) + '/' + pages.length + '  (USE ANTERIOR/PROXIMA)', canvas.width/2, canvas.height - 22);
     }
-    infoPanel.tex.needsUpdate = true;
+    panel.tex.needsUpdate = true;
   }
 
-  function makeCtrlPanel(){
-    ctrlPanelGroup = new THREE.Group();
-    ctrlPanelGroup.position.set(0, 1.35, -1.05);
-    scene.add(ctrlPanelGroup);
+  // Containers "grandes" (telas de cartas/jogadores, config, dicas, log, objetivos, comercio,
+  // handoff, resumo de regras) que mostram texto corrido: usamos o filho que realmente rola/
+  // exibe o conteudo (ex.: #cinner dentro de #cpanel) tanto para ler a posicao/tamanho real
+  // quanto o texto. A tela de passar pecas (#overlay/#modal) fica de fora desta lista porque
+  // ela ja e' inteiramente espelhada botao-a-botao (setinhas, -10/+10, OK, nome do territorio)
+  // exatamente como aparece na imagem, sem precisar de um painel de texto por baixo.
+  // Telas de bloqueio total (igual ao 2D): quando qualquer uma destas estiver
+  // visivel, ela cobre a tela inteira e so' os proprios botoes dela sao clicaveis -
+  // o tabuleiro por baixo NAO pode ser clicado ate' o jogador apertar um dos seus
+  // botoes (ex.: "JOGAR" na troca de jogador, "OK"/"SIM"/"NAO" na distribuicao de
+  // pecas). No 2D isso acontece sozinho porque a tela e' uma div "position:fixed;
+  // inset:0" por cima de tudo; no 3D replicamos a mesma regra aqui.
+  var BOARD_BLOCKING_IDS = ['handoffScreen','turnpanel','rulesSummaryScreen','firstRoundScreen','victoryScreen'];
+  function isBoardBlockedByModal(){
+    var blocked = false;
+    withRealLayout(function(){
+      for(var i=0;i<BOARD_BLOCKING_IDS.length;i++){
+        var el = document.getElementById(BOARD_BLOCKING_IDS[i]);
+        if(el && isElVisible(el)){ blocked = true; break; }
+      }
+    });
+    return blocked;
+  }
 
-    infoPanel = makeQuad(1.7, 0.5, 1400);
-    infoPanel.mesh.position.set(0, 0.55, 0.001);
-    infoPanel.lastText = null;
-    ctrlPanelGroup.add(infoPanel.mesh);
+  var READABLE_CONTAINERS = [
+    { outer:'rulesSummaryScreen', inner:'rulesSummaryScreen' },
+    { outer:'cpanel',             inner:'cinner' },
+    { outer:'tradePanel',         inner:'tradeInner' },
+    { outer:'objscreen',          inner:'objbox' },
+    { outer:'configOverlay',      inner:'configBox' },
+    { outer:'tipsOverlay',        inner:'tipsBox' },
+    { outer:'logOverlay',         inner:'logBox' }
+  ];
 
-    var prev = makeQuad(0.3, 0.1);
+  function makeStaticQuad(w, h, res){
+    var canvas = document.createElement('canvas');
+    var r = res || 900;
+    canvas.width = r; canvas.height = Math.max(20, Math.round(r*h/w));
+    var ctx = canvas.getContext('2d');
+    var tex = new THREE.CanvasTexture(canvas);
+    var mat = new THREE.MeshBasicMaterial({ map:tex, transparent:true });
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(w,h), mat);
+    return { mesh:mesh, canvas:canvas, ctx:ctx, tex:tex, vbW:w, vbH:h };
+  }
+
+  // Recria a geometria/canvas de um item espelhado quando o tamanho real (em unidades VB)
+  // muda, mantendo a mesma proporcao largura/altura que o elemento tem na tela de verdade.
+  function rebuildQuad(item, w, h){
+    if(item.vbW === w && item.vbH === h) return false;
+    var res = 900;
+    var cw = res, ch = Math.max(20, Math.round(res * h / w));
+    item.canvas.width = cw; item.canvas.height = ch;
+    if(item.mesh.geometry) item.mesh.geometry.dispose();
+    item.mesh.geometry = new THREE.PlaneGeometry(w, h);
+    item.vbW = w; item.vbH = h;
+    return true;
+  }
+
+  // Posiciona um item espelhado exatamente no ponto correspondente ao seu retangulo real na
+  // tela 2D, convertido para o mesmo espaco de coordenadas 1920x1080 do tabuleiro (VB_W/VB_H).
+  function placeMirror(mesh, vb){
+    mesh.position.set(vb.x + vb.w/2 - VB_W/2, -(vb.y + vb.h/2 - VB_H/2), HUD_Z_LIFT);
+  }
+
+  function makeMirrorItem(el){
+    var item = makeStaticQuad(10, 10, 8);
+    item.el = el;
+    hudGroup.add(item.mesh);
+    return item;
+  }
+
+  function ensureHudGroup(){
+    if(hudGroup) return;
+    hudGroup = new THREE.Group();
+    scene.add(hudGroup);
+    // Os quads de cada painel (Cartas e Jogadores, Configuracoes, Dicas, Log, Objetivo...) e
+    // as respectivas setas de pagina sao criados sob demanda, um por painel, em
+    // getOrCreateInfoPanel() - assim cada tela aberta tem seu proprio quad independente.
+  }
+
+  // Cria (na primeira vez) ou reaproveita o quad de texto + par de setas de pagina de UM
+  // painel especifico (identificado pelo id do container real, ex.: "cpanel", "logOverlay").
+  // Cada painel e' 100% independente dos outros: abrir "Configuracoes" nao afeta o quad
+  // que ja esta' mostrando "Cartas e Jogadores", exatamente como as divs no jogo 2D.
+  function getOrCreateInfoPanel(id){
+    var panel = infoPanels[id];
+    if(panel) return panel;
+    panel = makeStaticQuad(10, 10, 8);
+    panel.mesh.visible = false;
+    panel.lastText = null;
+    panel.pageIdx = 0;
+    hudGroup.add(panel.mesh);
+
+    var prev = makeStaticQuad(230, 90);
     prev.mesh.userData.nav = 'prev';
-    prev.mesh.position.set(-0.9, -0.72, 0.001);
-    ctrlPanelGroup.add(prev.mesh);
+    prev.mesh.userData.panelId = id;
+    prev.mesh.visible = false;
+    hudGroup.add(prev.mesh);
 
-    var next = makeQuad(0.3, 0.1);
+    var next = makeStaticQuad(230, 90);
     next.mesh.userData.nav = 'next';
-    next.mesh.position.set(0.9, -0.72, 0.001);
-    ctrlPanelGroup.add(next.mesh);
+    next.mesh.userData.panelId = id;
+    next.mesh.visible = false;
+    hudGroup.add(next.mesh);
+    drawNavLabel(prev, '< ANTERIOR');
+    drawNavLabel(next, 'PROXIMA >');
 
-    var pageInfo = makeQuad(0.5, 0.1);
-    pageInfo.mesh.position.set(0, -0.72, 0.001);
-    ctrlPanelGroup.add(pageInfo.mesh);
-
-    navBtns = { prev:prev, next:next, pageInfo:pageInfo };
-    drawNavLabel(navBtns.prev, '< ANTERIOR');
-    drawNavLabel(navBtns.next, 'PROXIMA >');
+    panel.navPrev = prev;
+    panel.navNext = next;
+    infoPanels[id] = panel;
+    return panel;
   }
 
-  function layoutGrid(list){
-    var totalW = CTRL_COLS*CTRL_W + (CTRL_COLS-1)*CTRL_GAP;
-    var totalH = CTRL_ROWS*CTRL_H + (CTRL_ROWS-1)*CTRL_GAP;
-    var startX = -totalW/2 + CTRL_W/2;
-    var startY = totalH/2 - CTRL_H/2 - 0.08;
-    for(var i=0;i<list.length;i++){
-      var col = i % CTRL_COLS, row = Math.floor(i/CTRL_COLS);
-      list[i].mesh.position.set(startX + col*(CTRL_W+CTRL_GAP), startY - row*(CTRL_H+CTRL_GAP), 0.001);
+  // Retorna a lista de TODOS os containers "grandes" visiveis agora (nao apenas o primeiro),
+  // para que varios possam ser espelhados ao mesmo tempo em VR, do mesmo jeito que no 2D
+  // varias dessas divs podem estar com a classe "show" simultaneamente.
+  function visibleReadableContainers(){
+    var out = [];
+    for(var i=0;i<READABLE_CONTAINERS.length;i++){
+      var c = READABLE_CONTAINERS[i];
+      var outerEl = document.getElementById(c.outer);
+      if(outerEl && isElVisible(outerEl)){
+        var innerEl = document.getElementById(c.inner);
+        out.push({ id:c.outer, el:(innerEl && isElVisible(innerEl)) ? innerEl : outerEl });
+      }
     }
-  }
-
-  function activeReadableContainer(){
-    var ids = ['handoffScreen','rulesSummaryScreen','overlay','cpanel','tradePanel','objscreen','configOverlay','tipsOverlay','logOverlay'];
-    for(var i=0;i<ids.length;i++){
-      var el = document.getElementById(ids[i]);
-      if(el && isElVisible(el)) return el;
-    }
-    return null;
+    return out;
   }
 
   function computeCtxKey(){
@@ -8117,64 +8392,110 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   }
 
   function refreshCtrlPanel(){
-    if(!ctrlPanelGroup) return;
+    ensureHudGroup();
+    if(!hudGroup) return;
+
+    // Mantem o HUD sempre alinhado 1:1 com o tabuleiro (mesmo grupo/escala do mapGroup),
+    // caso o mapa ainda nao tivesse sido criado quando o HUD foi montado.
+    if(mapGroup){
+      hudGroup.position.copy(mapGroup.position);
+      hudGroup.rotation.copy(mapGroup.rotation);
+      hudGroup.scale.copy(mapGroup.scale);
+    }
 
     try{ applyVrDefaultNames(); }catch(e){ /* ignora */ }
 
-    var ctxKey = computeCtxKey();
-    if(ctxKey !== lastCtxKey){ ctrlPage = 0; if(infoPanel){ infoPanel.pageIdx = 0; } lastCtxKey = ctxKey; }
+    var visiblePanelIds = {};
 
-    var readEl = activeReadableContainer();
-    if(readEl){
-      infoPanel.mesh.visible = true;
-      var txt = (readEl.innerText || readEl.textContent || '').trim().replace(/\s+/g,' ').slice(0,6000).toUpperCase();
-      if(infoPanel.lastText !== txt){ drawInfoPanel(txt); infoPanel.lastText = txt; }
-    } else {
-      infoPanel.mesh.visible = false;
-    }
+    // TUDO abaixo roda dentro de UMA unica janela de "layout real" (posicoes de verdade,
+    // sem o deslocamento de -99999px que o modo VR aplica por cima do DOM 2D), porque
+    // isElVisible() agora tambem confere a posicao na tela - varios paineis (cartas, log,
+    // dicas, config, objetivo) ficam sempre com display:flex e so' saem da tela via
+    // transform quando "fechados", entao sem essa checagem eles ficariam sempre visiveis.
+    withRealLayout(function(){
+      var ctxKey = computeCtxKey();
+      var ctxChanged = (ctxKey !== lastCtxKey);
+      lastCtxKey = ctxKey;
 
-    var all = findInteractiveElements();
-    var totalPages = Math.max(1, Math.ceil(all.length / CTRL_PER_PAGE));
-    if(ctrlPage >= totalPages) ctrlPage = totalPages - 1;
-    var pageList = all.slice(ctrlPage*CTRL_PER_PAGE, ctrlPage*CTRL_PER_PAGE + CTRL_PER_PAGE);
+      // ITEM 1: cada tela grande aberta (Cartas e Jogadores, Configuracoes, Dicas e Regras,
+      // Log, Objetivo...) ganha seu proprio quad, do MESMO tamanho/posicao que o container de
+      // verdade ocupa na tela 2D - e todas podem ficar visiveis ao mesmo tempo, uma podendo
+      // ficar por cima da outra, igual ao 2D.
+      var openContainers = visibleReadableContainers();
+      for(var oi=0; oi<openContainers.length; oi++){
+        var oc = openContainers[oi];
+        visiblePanelIds[oc.id] = true;
+        var panel = getOrCreateInfoPanel(oc.id);
+        var rect = oc.el.getBoundingClientRect();
+        var vb = rectToVB(rect);
+        var resized = rebuildQuad(panel, vb.w, vb.h);
+        placeMirror(panel.mesh, vb);
+        panel.vbRect = vb;
+        panel.mesh.visible = true;
+        if(!panel.wasVisible) panel.pageIdx = 0;
+        panel.wasVisible = true;
+        var txt = (oc.el.innerText || oc.el.textContent || '').trim().replace(/\s+/g,' ').slice(0,6000).toUpperCase();
+        if(panel.lastText !== txt || resized){ drawInfoPanel(panel, txt); panel.lastText = txt; }
+      }
+      // Esconde (sem destruir) os quads dos paineis que nao estao mais abertos.
+      for(var pid in infoPanels){
+        if(!visiblePanelIds[pid]){
+          var p = infoPanels[pid];
+          p.mesh.visible = false;
+          p.navPrev.mesh.visible = false;
+          p.navNext.mesh.visible = false;
+          p.wasVisible = false;
+        }
+      }
 
-    for(var i=uiButtons.length-1;i>=0;i--){
-      if(pageList.indexOf(uiButtons[i].el) === -1){
-        ctrlPanelGroup.remove(uiButtons[i].mesh);
-        uiButtons.splice(i,1);
+      // Todos os botoes/valores de verdade (Dicas e Regras, Configuracoes, Cartas e
+      // Jogadores, Log, Objetivo, timer, setinhas/-10/+10/OK da tela de passar pecas, nome
+      // do territorio etc.), cada um na posicao e no tamanho EXATOS que tem na tela 2D real.
+      var all = findInteractiveElements();
+      var rects = [];
+      for(var i=0;i<all.length;i++) rects[i] = all[i].getBoundingClientRect();
+
+      for(var j=uiButtons.length-1;j>=0;j--){
+        if(all.indexOf(uiButtons[j].el) === -1){
+          hudGroup.remove(uiButtons[j].mesh);
+          uiButtons.splice(j,1);
+        }
       }
-    }
-    var used = [];
-    for(var v=0; v<pageList.length; v++){
-      var el = pageList[v];
-      var item = null;
-      for(var k=0;k<uiButtons.length;k++){ if(uiButtons[k].el === el){ item = uiButtons[k]; break; } }
-      if(!item){
-        var q = makeQuad(CTRL_W, CTRL_H);
-        q.el = el;
-        ctrlPanelGroup.add(q.mesh);
-        item = q;
-        uiButtons.push(item);
+      for(var v=0; v<all.length; v++){
+        var el = all[v];
+        var item = null;
+        for(var k=0;k<uiButtons.length;k++){ if(uiButtons[k].el === el){ item = uiButtons[k]; break; } }
+        if(!item){ item = makeMirrorItem(el); uiButtons.push(item); }
+        var vb2 = rectToVB(rects[v]);
+        rebuildQuad(item, vb2.w, vb2.h);
+        placeMirror(item.mesh, vb2);
+
+        var label = labelForElement(el);
+        var selState = !!(el.classList && (el.classList.contains('sel') || el.classList.contains('active')));
+        var clsFingerprint = el.className || '';
+        if(item.lastLabel !== label || item.lastSel !== selState || item.lastCls !== clsFingerprint){
+          drawItemLabel(item, selState);
+          item.lastLabel = label; item.lastSel = selState; item.lastCls = clsFingerprint;
+        }
       }
-      var label = labelForElement(el);
-      var selState = !!(el.classList && (el.classList.contains('sel') || el.classList.contains('active')));
-      var clsFingerprint = el.className || '';
-      if(item.lastLabel !== label || item.lastSel !== selState || item.lastCls !== clsFingerprint){
-        drawItemLabel(item, selState);
-        item.lastLabel = label; item.lastSel = selState; item.lastCls = clsFingerprint;
+    });
+
+    // Setas de paginacao de CADA painel aberto: so aparecem quando o texto daquele painel e'
+    // longo demais para caber inteiro, logo abaixo do proprio quad daquele painel.
+    for(var pid2 in infoPanels){
+      var panel2 = infoPanels[pid2];
+      var textPaging = panel2.mesh.visible && panel2.pages && panel2.pages.length > 1;
+      if(textPaging && panel2.vbRect){
+        var px = panel2.mesh.position.x, py = panel2.mesh.position.y;
+        var by = py - panel2.vbRect.h/2 - 60;
+        panel2.navPrev.mesh.position.set(px - panel2.vbRect.w/4, by, HUD_Z_LIFT);
+        panel2.navNext.mesh.position.set(px + panel2.vbRect.w/4, by, HUD_Z_LIFT);
+        panel2.navPrev.mesh.visible = panel2.pageIdx > 0;
+        panel2.navNext.mesh.visible = panel2.pageIdx < panel2.pages.length - 1;
+      } else {
+        panel2.navPrev.mesh.visible = false;
+        panel2.navNext.mesh.visible = false;
       }
-      used.push(item);
-    }
-    layoutGrid(used);
-    var textPaging = infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1;
-    if(textPaging){
-      navBtns.prev.mesh.visible = infoPanel.pageIdx > 0;
-      navBtns.next.mesh.visible = infoPanel.pageIdx < infoPanel.pages.length - 1;
-      drawNavLabel(navBtns.pageInfo, 'TEXTO ' + (infoPanel.pageIdx+1) + '/' + infoPanel.pages.length);
-    } else {
-      navBtns.prev.mesh.visible = ctrlPage > 0;
-      navBtns.next.mesh.visible = ctrlPage < totalPages - 1;
-      drawNavLabel(navBtns.pageInfo, 'PAGINA ' + (ctrlPage+1) + '/' + totalPages);
     }
   }
 
@@ -8182,11 +8503,21 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
 
   function maybeUpdateLogic(){
     var now = performance.now();
-    if(now - lastLogicUpdate < LOGIC_UPDATE_MS) return;
-    lastLogicUpdate = now;
-    try{ updateTerritoryVisuals(); }catch(e){ console.error('[VR updateTerritoryVisuals]', e); }
-    try{ refreshCtrlPanel(); }catch(e){ console.error('[VR refreshCtrlPanel]', e); }
-    try{ updateHeaderPanelText(buildHeaderStatusText()); }catch(e){ /* ignora */ }
+    if(now - lastLogicUpdate >= LOGIC_UPDATE_MS){
+      lastLogicUpdate = now;
+      try{ updateTerritoryVisuals(); }catch(e){ console.error('[VR updateTerritoryVisuals]', e); }
+      try{ updateHeaderPanelText(buildHeaderStatusText()); }catch(e){ /* ignora */ }
+    }
+    // refreshCtrlPanel() e' a parte cara (forca um reflow real do DOM via withRealLayout +
+    // um querySelectorAll amplo pra encontrar botoes/paineis). Ela roda numa cadencia mais
+    // lenta e independente das cores do tabuleiro - qualquer clique real (ver interactAtRay/
+    // activateElement) ja zera lastHudUpdate para atualizar na hora, entao nada fica
+    // "atrasado" visualmente ao interagir; so' deixamos de reescanear o DOM inteiro sem
+    // necessidade varias vezes por segundo quando nada mudou.
+    if(now - lastHudUpdate >= HUD_UPDATE_MS){
+      lastHudUpdate = now;
+      try{ refreshCtrlPanel(); }catch(e){ console.error('[VR refreshCtrlPanel]', e); }
+    }
   }
 
   // ---------- CENA / SESSAO XR ----------
@@ -8195,32 +8526,26 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     raycaster.ray.origin.copy(origin);
     raycaster.ray.direction.copy(direction).normalize();
 
-    var terrList = [];
-    for(var t in terrMeshes){ terrList.push(terrMeshes[t]); }
-    var hits = raycaster.intersectObjects(terrList, false);
-    if(hits.length){
-      var terrId = hits[0].object.userData.terrId;
-      try{
-        if(typeof window.clickT === 'function') window.clickT(terrId);
-      }catch(err){ console.error('[VR clickT]', err); showStatus('ERRO AO CLICAR NO TERRITORIO: ' + (err && err.message || err)); }
-      lastLogicUpdate = 0; // forca atualizacao imediata no proximo frame
-      return;
-    }
-
+    // Botoes/HUD primeiro: eles ficam sempre NA FRENTE do tabuleiro (HUD_Z_LIFT = um
+    // pouco acima), entao devem "ganhar" a colisao quando o raio acerta os dois ao
+    // mesmo tempo. Ex.: o botao JOGAR (troca de jogador) fica bem no centro da tela,
+    // sobre o mapa - sem essa checagem primeiro, o territorio por baixo sempre vencia
+    // e o clique no botao nunca era processado.
     var hitList = [];
     for(var i=0;i<uiButtons.length;i++){ hitList.push(uiButtons[i].mesh); }
-    if(navBtns.prev){ hitList.push(navBtns.prev.mesh, navBtns.next.mesh); }
+    for(var pid in infoPanels){
+      hitList.push(infoPanels[pid].navPrev.mesh, infoPanels[pid].navNext.mesh);
+    }
     var hits2 = raycaster.intersectObjects(hitList, false);
     if(hits2.length){
       var m = hits2[0].object;
-      if(m.userData.nav === 'prev'){
-        if(infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1){ if(infoPanel.pageIdx > 0){ infoPanel.pageIdx--; drawInfoPanel(infoPanel.lastText); } }
-        else if(ctrlPage > 0){ ctrlPage--; }
-        refreshCtrlPanel(); return;
-      }
-      if(m.userData.nav === 'next'){
-        if(infoPanel.mesh.visible && infoPanel.pages && infoPanel.pages.length > 1){ if(infoPanel.pageIdx < infoPanel.pages.length-1){ infoPanel.pageIdx++; drawInfoPanel(infoPanel.lastText); } }
-        else { ctrlPage++; }
+      if(m.userData.nav === 'prev' || m.userData.nav === 'next'){
+        var navPanel = infoPanels[m.userData.panelId];
+        if(navPanel && navPanel.mesh.visible && navPanel.pages){
+          if(m.userData.nav === 'prev' && navPanel.pageIdx > 0) navPanel.pageIdx--;
+          else if(m.userData.nav === 'next' && navPanel.pageIdx < navPanel.pages.length-1) navPanel.pageIdx++;
+          drawInfoPanel(navPanel, navPanel.lastText);
+        }
         refreshCtrlPanel(); return;
       }
       var item = null;
@@ -8228,7 +8553,33 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
       if(item && item.el){
         activateElement(item.el);
         lastLogicUpdate = 0;
+        lastHudUpdate = 0;
       }
+      return;
+    }
+
+    if(isBoardBlockedByModal()) return;
+
+    // O mapa mesclado (1 unico objeto) cobre os 119 territorios "de base"; as copias
+    // levantadas (normalmente 0-2, ver updateTerritoryVisuals) ficam na cena por cima dela
+    // e sao testadas junto, com prioridade (ja' tem userData.terrId proprio).
+    var terrList = [];
+    if(mergedTerrMesh) terrList.push(mergedTerrMesh);
+    for(var t in terrMeshes){ if(terrMeshes[t].parent) terrList.push(terrMeshes[t]); }
+    var hits = raycaster.intersectObjects(terrList, false);
+    if(hits.length){
+      var hitObj = hits[0].object;
+      var terrId = hitObj.userData.terrId;
+      if(!terrId && hitObj === mergedTerrMesh && typeof hits[0].faceIndex === 'number'){
+        terrId = terrFaceIdArray[hits[0].faceIndex];
+      }
+      if(!terrId) return;
+      try{
+        if(typeof window.clickT === 'function') window.clickT(terrId);
+      }catch(err){ console.error('[VR clickT]', err); showStatus('ERRO AO CLICAR NO TERRITORIO: ' + (err && err.message || err)); }
+      lastLogicUpdate = 0; // forca atualizacao imediata no proximo frame
+      lastHudUpdate = 0;
+      return;
     }
   }
 
@@ -8254,6 +8605,31 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     document.body.classList.toggle('vr3d-active', active);
     document.getElementById('vrPcHint').style.display = active ? 'block' : 'none';
     document.getElementById('vrCrosshair').style.display = active ? 'block' : 'none';
+    document.getElementById('vrExitBtn').style.display = active ? 'block' : 'none';
+    // CORREÇÃO: ao desativar (sair da Prévia 3D no PC ou encerrar uma sessão de VR), o
+    // canvas 3D (#vrCanvas) ficava invisível porém continuava por cima de TODA a tela
+    // (z-index altíssimo, pointer-events padrão "auto"), engolindo todo clique do jogo 2D
+    // por baixo (ex.: botão JOGAR da tela de troca de jogador, mapa, etc.), mesmo com a
+    // interface 2D já visível de novo. Agora, ao desativar, escondemos o canvas e
+    // desligamos seus eventos de ponteiro; ao ativar, devolvemos ambos.
+    if(renderer && renderer.domElement){
+      renderer.domElement.style.display = active ? 'block' : 'none';
+      renderer.domElement.style.pointerEvents = active ? 'auto' : 'none';
+    }
+  }
+
+  // CORREÇÃO: não havia nenhuma forma de sair da "Prévia 3D no PC" (nem tecla ESC nem
+  // botão) — uma vez ativada, o jogo ficava preso nela para sempre, com a interface 2D
+  // inteira movida para fora da tela (ver regra CSS "body.vr3d-active"). Agora ESC (além
+  // de soltar o mouse, que o navegador já faz sozinho) encerra o modo por completo e volta
+  // para o jogo normal em 2D.
+  function stopPcPreview(){
+    if(!pcModeActive) return;
+    pcModeActive = false;
+    if(document.pointerLockElement === (renderer && renderer.domElement)) document.exitPointerLock();
+    if(renderer) renderer.setAnimationLoop(null);
+    setup3DUiVisibility(false);
+    showStatus('PREVIA 3D NO PC ENCERRADA', 2500);
   }
 
   function onPcMouseMove(e){
@@ -8276,7 +8652,7 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     interactAtRay(camera.position, dir);
   }
 
-  function onPcKeyDown(e){ pcKeys[e.code] = true; }
+  function onPcKeyDown(e){ pcKeys[e.code] = true; if(e.code === 'Escape'){ stopPcPreview(); } }
   function onPcKeyUp(e){ pcKeys[e.code] = false; }
 
   function updatePcMovement(dt){
@@ -8299,7 +8675,15 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   }
 
   function startPcPreview(){
-    if(!renderer) buildScene();
+    if(!renderer){
+      if(typeof THREE === 'undefined'){
+        showStatus('CARREGANDO MODULO 3D...');
+        ensureThreeLoaded().then(function(){ vrStatus.style.display='none'; startPcPreview(); })
+          .catch(function(err){ showStatus('NAO FOI POSSIVEL CARREGAR O MODULO 3D: ' + (err && err.message || err)); });
+        return;
+      }
+      buildScene();
+    }
     if(!pcModeActive){
       pcModeActive = true;
       camera.position.set(0, 1.6, 0.6);
@@ -8335,7 +8719,11 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   function buildScene(){
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.05, 100);
-    renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+    // OTIMIZACAO DE PESO: antialias (MSAA) e' uma das operacoes mais caras para a GPU,
+    // principalmente em VR (a cena e' renderizada 2x, uma para cada olho). Como o jogo usa
+    // graficos simples e planos (sem texturas detalhadas), desligar o antialias reduz bastante
+    // o custo de GPU por frame sem alterar a jogabilidade.
+    renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
@@ -8346,7 +8734,7 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
     makeFloor();
     makeHeaderPanel();
     buildTerritoryMap();
-    makeCtrlPanel();
+    ensureHudGroup();
 
     raycaster = new THREE.Raycaster();
     tempMatrix = new THREE.Matrix4();
@@ -8368,7 +8756,16 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
   }
 
   function enterVR(){
-    if(!renderer) buildScene();
+    if(!renderer){
+      if(typeof THREE === 'undefined'){
+        showStatus('CARREGANDO MODULO 3D...');
+        vrBtn.disabled = true;
+        ensureThreeLoaded().then(function(){ vrBtn.disabled = false; vrStatus.style.display='none'; enterVR(); })
+          .catch(function(err){ vrBtn.disabled = false; showStatus('NAO FOI POSSIVEL CARREGAR O MODULO 3D: ' + (err && err.message || err)); });
+        return;
+      }
+      buildScene();
+    }
     pcModeActive = false;
     setup3DUiVisibility(true);
     navigator.xr.requestSession('immersive-vr', { optionalFeatures:['local-floor','bounded-floor'] }).then(function(session){
@@ -8393,10 +8790,23 @@ body.vr3d-active > *:not(#vrEnterBtn):not(#vrPcPreviewBtn):not(#vrStatusMsg):not
       });
     }).catch(function(err){
       console.error('[VR requestSession]', err);
+      setup3DUiVisibility(false);
       showStatus('NAO FOI POSSIVEL ENTRAR EM VR: ' + (err && err.message ? err.message : err));
     });
   }
 
+  document.getElementById('vrExitBtn').addEventListener('click', function(){
+    if(renderer && renderer.xr && renderer.xr.isPresenting){
+      var s = renderer.xr.getSession();
+      if(s) s.end();
+    } else if(pcModeActive){
+      stopPcPreview();
+    } else {
+      // Estado inconsistente (nem em VR nem em Previa 3D no PC, mas o botao de
+      // saida apareceu): forca a volta pro jogo 2D de qualquer forma.
+      setup3DUiVisibility(false);
+    }
+  });
   vrBtn.addEventListener('click', enterVR);
   document.getElementById('vrPcPreviewBtn').addEventListener('click', startPcPreview);
   init();
