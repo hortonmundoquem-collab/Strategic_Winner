@@ -10763,302 +10763,172 @@ async function olGuestLoop(){
 })();
 </script>
 
-<div id="realVrPanel" data-html2canvas-ignore="true">
+<div id="realVrPanel">
   <button id="realVrButton" type="button">ENTRAR NA SALA VR</button>
   <div id="realVrStatus">VERIFICANDO SUPORTE WEBXR...</div>
-  <div id="realVrHelp">PREENCHA NOMES ANTES DE ENTRAR. NO VR: ANALÓGICO ESQUERDO ANDA; GATILHO APONTA E CLICA.</div>
+  <div id="realVrHelp">PREENCHA NOMES E INICIE A PARTIDA NA PAGINA COMUM. NO VR: ANALOGICO ESQUERDO ANDA; GATILHO APONTA E CLICA.</div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" crossorigin="anonymous"></script>
-<script type="module">
-const button = document.getElementById('realVrButton');
-const statusLine = document.getElementById('realVrStatus');
-const status = (text) => { statusLine.textContent = text; };
-try {
-  const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js');
-  if (!window.html2canvas) throw new Error('A biblioteca de captura não carregou. Atualize a página e tente novamente.');
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x100b12);
-  scene.fog = new THREE.Fog(0x100b12, 16, 30);
-  const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 80);
-  const rig = new THREE.Group();
-  rig.position.set(0, 0, 4.3);
-  rig.add(camera);
-  scene.add(rig);
-
-  const renderer = new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-  renderer.domElement.id = 'realVrCanvas';
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.xr.enabled = true;
-  renderer.xr.setReferenceSpaceType('local-floor');
-  document.body.appendChild(renderer.domElement);
-
-  scene.add(new THREE.HemisphereLight(0xffdfc0,0x21131b,1.8));
-  const ceilingLight = new THREE.PointLight(0xffc27a,32,24,2);
-  ceilingLight.position.set(0,5.0,-1.0); scene.add(ceilingLight);
-  const sideLightL = new THREE.PointLight(0xd34d58,8,11,2);
-  sideLightL.position.set(-7,3,-6); scene.add(sideLightL);
-  const sideLightR = new THREE.PointLight(0xd34d58,8,11,2);
-  sideLightR.position.set(7,3,-6); scene.add(sideLightR);
-
-  const mat = (color, roughness=.82, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(20,26),mat(0x251922));
-  floor.rotation.x=-Math.PI/2; floor.position.set(0,-.03,-1.7); scene.add(floor);
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(20,26),mat(0x171119));
-  ceiling.rotation.x=Math.PI/2; ceiling.position.set(0,6,-1.7); scene.add(ceiling);
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(20,6),mat(0x321824));
-  backWall.position.set(0,3,-11.8); scene.add(backWall);
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(26,6),mat(0x24131d));
-  leftWall.rotation.y=Math.PI/2; leftWall.position.set(-10,3,-1.7); scene.add(leftWall);
-  const rightWall = leftWall.clone(); rightWall.rotation.y=-Math.PI/2; rightWall.position.x=10; scene.add(rightWall);
-  const trimMat=mat(0x8f6835,.48,.38);
-  for (const x of [-9.88,9.88]) {
-    const trim=new THREE.Mesh(new THREE.BoxGeometry(.08,5.7,.08),trimMat);
-    trim.position.set(x,3,-1.7); scene.add(trim);
-  }
-  const carpet = new THREE.Mesh(new THREE.PlaneGeometry(8,18),new THREE.MeshStandardMaterial({color:0x551829,roughness:1}));
-  carpet.rotation.x=-Math.PI/2; carpet.position.set(0,.005,-2.2); scene.add(carpet);
-
-  const pageCanvas=document.createElement('canvas');
-  pageCanvas.width=Math.max(640,innerWidth); pageCanvas.height=Math.max(360,innerHeight);
-  const pageContext=pageCanvas.getContext('2d');
-  const pageTexture=new THREE.CanvasTexture(pageCanvas);
-  pageTexture.colorSpace=THREE.SRGBColorSpace;
-  pageTexture.minFilter=THREE.LinearFilter;
-  pageTexture.magFilter=THREE.LinearFilter;
-  pageTexture.generateMipmaps=false;
-  const screenWidth=9.5;
-  let screenHeight=screenWidth/(pageCanvas.width/pageCanvas.height);
-  let screenMesh;
-  const screenFrame=new THREE.Mesh(new THREE.BoxGeometry(screenWidth+.34,screenHeight+.34,.38),mat(0x171419,.35,.32));
-  screenFrame.position.set(0,2.65,-11.42); scene.add(screenFrame);
-  const goldEdge=new THREE.Mesh(new THREE.BoxGeometry(screenWidth+.12,screenHeight+.12,.08),trimMat);
-  goldEdge.position.set(0,2.65,-11.18); scene.add(goldEdge);
-  function makeScreen(){
-    if(screenMesh){scene.remove(screenMesh);screenMesh.geometry.dispose();}
-    screenHeight=screenWidth/(pageCanvas.width/pageCanvas.height);
-    screenMesh=new THREE.Mesh(new THREE.PlaneGeometry(screenWidth,screenHeight),new THREE.MeshBasicMaterial({map:pageTexture,toneMapped:false,side:THREE.FrontSide}));
-    screenMesh.position.set(0,2.65,-11.11); screenMesh.userData.isGameScreen=true; scene.add(screenMesh);
-    screenFrame.geometry.dispose(); screenFrame.geometry=new THREE.BoxGeometry(screenWidth+.34,screenHeight+.34,.38);
-    goldEdge.geometry.dispose(); goldEdge.geometry=new THREE.BoxGeometry(screenWidth+.12,screenHeight+.12,.08);
-    screenFrame.position.y=2.65; goldEdge.position.y=2.65;
-  }
-  makeScreen();
-  const screenGlow=new THREE.PointLight(0x88b8ff,7,10,2); screenGlow.position.set(0,3.0,-9.9); scene.add(screenGlow);
-
-  const chairFabric=mat(0x751f35), chairHighlight=mat(0x9e3448), chairDark=mat(0x190f15), cupMat=mat(0x927342,.35,.35);
-  function makeChair(x,z,scale=1){
-    const group=new THREE.Group(); group.position.set(x,0,z); group.scale.setScalar(scale); scene.add(group);
-    const seat=new THREE.Mesh(new THREE.BoxGeometry(1.15,.24,.92),chairFabric); seat.position.set(0,.57,0); group.add(seat);
-    const back=new THREE.Mesh(new THREE.BoxGeometry(1.15,1.3,.22),chairHighlight); back.position.set(0,1.26,.39); group.add(back);
-    const inner=new THREE.Mesh(new THREE.BoxGeometry(.87,1.05,.04),chairFabric); inner.position.set(0,1.27,.245); group.add(inner);
-    for(const side of [-1,1]){
-      const arm=new THREE.Mesh(new THREE.BoxGeometry(.24,.58,1.02),chairDark); arm.position.set(side*.7,.78,.02); group.add(arm);
-      const armTop=new THREE.Mesh(new THREE.BoxGeometry(.27,.12,.92),chairHighlight); armTop.position.set(side*.7,1.08,.02); group.add(armTop);
-      const leg=new THREE.Mesh(new THREE.BoxGeometry(.12,.48,.12),chairDark); leg.position.set(side*.43,.26,.25); group.add(leg);
-      const cup=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,.12,12),cupMat); cup.position.set(side*.7,1.18,-.22); group.add(cup);
+<script>
+/*
+ * Escopo adaptado no Canvas: tabuleiro/posse/contagens, selecao de territorio, chooser
+ * numerico, troca de jogador local, resposta SIM/NAO de troca de cartas e avancos de fase.
+ * Limitacao deliberada: controles/modalidades avancadas cuja UI original e composta por
+ * dialogos DOM (ex.: escolha/disparo de Misseis, selecao de cartas, objetivos, configuracao
+ * e telas de informacao) nao foram recriados no Canvas. O backend original e mantido sem
+ * alteracoes; para esses controles, saia da imersao e use a pagina convencional.
+ */
+/* Ponte clássica: compartilha os bindings lexicais do jogo com o módulo WebXR. */
+(function(){
+  var nativeCanvas=null, nativeCtx=null, drawQueued=false, chooser=null, handoff=null, hitAreas=[], lastMap=null;
+  var pathCache=Object.create(null), pathCacheRef=null;
+  var W=1600,H=900, VBW=1920,VBH=1080, box={x:24,y:60,w:1088,h:790}, mapFit={scale:1,x:24,y:60};
+  function getPath(t){if(pathCacheRef!==PATHS){pathCacheRef=PATHS;pathCache=Object.create(null);}if(!pathCache[t]){try{pathCache[t]=new Path2D(PATHS[t]);}catch(e){return null;}}return pathCache[t];}
+  function schedule(){ if(drawQueued)return; drawQueued=true; requestAnimationFrame(function(){drawQueued=false; if(nativeCtx) drawBoard(nativeCtx,W,H);}); }
+  function drawBoard(c,w,h){
+    W=w;H=h; hitAreas=[]; c.clearRect(0,0,w,h); c.fillStyle='#08111e'; c.fillRect(0,0,w,h);
+    c.fillStyle='#13263a'; c.fillRect(0,0,w,h*.075); c.fillStyle='#ffdf55'; c.font='bold 30px Arial'; c.fillText('STRATEGIC WINNER',24,45);
+    c.fillStyle='#a8c5da'; c.font='17px Arial';
+    if(typeof G==='undefined'||!G||!G.players||!G.players.length){ c.fillText('CONFIGURE NOMES E INICIE A PARTIDA NA PAGINA ANTES DE ENTRAR EM VR.',28,110); return; }
+    var p=G.players[G.cur]||{}, phase=G.phase||'?', phaseName={P1:'PRIMEIRA RODADA',R:'REFORCOS',A:'ATAQUE',F:'FORTIFICACAO',FILL:'DISTRIBUICAO INICIAL'}[phase]||phase;
+    c.fillStyle=p.color||'#fff'; c.fillRect(24,58,18,18); c.fillStyle='#fff'; c.font='bold 22px Arial'; c.fillText((p.name||'JOGADOR')+'  |  '+phaseName+'  |  RODADA '+(G.roundNumber||1),52,76);
+    if(phase==='FILL'){ c.fillStyle='#ffdf55'; c.font='20px Arial'; c.fillText('DISTRIBUICAO INICIAL: COMPLETE A PREPARACAO NA PAGINA ANTES DE USAR A SALA VR.',30,130); return; }
+    if(!PATHS||!CENTERS||!G.terrs){ c.fillText('AGUARDANDO ESTADO DO TABULEIRO...',28,130); return; }
+    box={x:20,y:94,w:w*.68,h:h*.86}; var s=Math.min(box.w/VBW,box.h/VBH); mapFit={scale:s,x:box.x+(box.w-VBW*s)/2,y:box.y+(box.h-VBH*s)/2};
+    c.save(); c.translate(mapFit.x,mapFit.y); c.scale(s,s); c.fillStyle='#23526b'; c.fillRect(0,0,VBW,VBH);
+    for(var t in PATHS){
+      var path=getPath(t); if(!path) continue;
+      var tr=G.terrs[t]||{}, fill='#555'; try{fill=ownerColor(t)||fill;}catch(e){}
+      c.fillStyle=fill; c.globalAlpha=.94; c.fill(path); c.globalAlpha=1; c.lineWidth=3/s; c.strokeStyle=(G.af===t?'#ffeb56':'#06101a'); c.stroke(path);
+      var center=CENTERS[t]; if(!center) continue; var x=center[0],y=center[1];
+      var arms=0; try{arms=getDisplayArmies(t);}catch(e){arms=tr.arm||0;}
+      c.textAlign='center'; c.textBaseline='middle'; c.font=Object.keys(PATHS).length>55?'bold 17px Arial':'bold 20px Arial'; c.lineWidth=3/s; c.strokeStyle='#000'; c.strokeText(String(arms),x,y+6); c.fillStyle='#fff'; c.fillText(String(arms),x,y+6);
+      if((tr.tanks||0)>0){c.font='bold 13px Arial';c.fillStyle='#ffdf55';c.fillText('T'+tr.tanks,x,y+21);}
     }
-    const frontLeg=new THREE.Mesh(new THREE.BoxGeometry(.88,.16,.12),chairDark); frontLeg.position.set(0,.12,-.3); group.add(frontLeg);
-    return group;
-  }
-  const seatXs=[-7.0,-5.35,-3.7,-2.05,2.05,3.7,5.35,7.0];
-  for(const z of [-6.4,-4.0,-1.6]) for(const x of seatXs) makeChair(x,z,z===-6.4?.9:1);
-  // Balizas de luz cálida en las paredes laterales.
-  for(const z of [-8,-4,0,4]) for(const side of [-1,1]){
-    const sconce=new THREE.Mesh(new THREE.SphereGeometry(.12,12,8),new THREE.MeshBasicMaterial({color:0xffc778}));
-    sconce.position.set(side*9.65,2.7,z); scene.add(sconce);
-    const lamp=new THREE.PointLight(0xffb766,2.1,4,2); lamp.position.set(side*9.3,2.7,z); scene.add(lamp);
-  }
-
-  const controllers=[];
-  const raycaster=new THREE.Raycaster();
-  const rayOrigin=new THREE.Vector3(), rayDirection=new THREE.Vector3(), q=new THREE.Quaternion();
-  const forward=new THREE.Vector3(), right=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
-  const screenPoint=new THREE.Vector2();
-  function pointOnGameScreen(controller){
-    controller.getWorldPosition(rayOrigin);
-    controller.getWorldQuaternion(q);
-    rayDirection.set(0,0,-1).applyQuaternion(q).normalize();
-    raycaster.set(rayOrigin,rayDirection);
-    const hit=raycaster.intersectObject(screenMesh,false)[0];
-    if(!hit || !hit.uv) return null;
-    screenPoint.copy(hit.uv);
-    return {x:Math.max(0,Math.min(innerWidth-1,screenPoint.x*innerWidth)),y:Math.max(0,Math.min(innerHeight-1,(1-screenPoint.y)*innerHeight)),distance:hit.distance};
-  }
-  function domTargetAt(point){
-    if(!point) return null;
-    const target=document.elementFromPoint(point.x,point.y);
-    if(!target || target.closest('#realVrPanel,#realVrCanvas')) return null;
-    return target;
-  }
-  function firePointer(target,type,x,y,buttons){
-    if(!target) return;
-    const init={bubbles:true,cancelable:true,composed:true,clientX:x,clientY:y,button:0,buttons};
-    target.dispatchEvent(new PointerEvent('pointer'+type,{...init,pointerId:41,pointerType:'mouse',isPrimary:true}));
-    const mouseType={down:'mousedown',move:'mousemove',up:'mouseup'}[type];
-    target.dispatchEvent(new MouseEvent(mouseType,init));
-  }
-  function selectTarget(controller){
-    const p=pointOnGameScreen(controller); if(!p) return;
-    const target=domTargetAt(p); if(!target) return;
-    controller.userData.press={x:p.x,y:p.y,target,hand:controller.userData.handedness||''};
-    firePointer(target,'down',p.x,p.y,1);
-  }
-  function releaseTarget(controller){
-    const press=controller.userData.press; if(!press) return;
-    const p=pointOnGameScreen(controller)||press;
-    const target=domTargetAt(p)||press.target;
-    firePointer(target,'up',p.x,p.y,0);
-    if(press.target instanceof HTMLSelectElement){
-      const select=press.target, n=select.options.length;
-      if(n>0){
-        const direction=press.hand==='left'?-1:1;
-        select.selectedIndex=(select.selectedIndex+direction+n)%n;
-        select.dispatchEvent(new Event('change',{bubbles:true}));
-      }
+    c.restore();
+    var px=w*.72,pw=w*.26; c.fillStyle='#10283c'; c.fillRect(px,94,pw,h*.86); c.strokeStyle='#6c91aa';c.lineWidth=2;c.strokeRect(px,94,pw,h*.86);
+    if(handoff){c.fillStyle='#ffdf55';c.font='bold 23px Arial';c.fillText('TROCA DE JOGADOR',px+20,140);c.fillStyle=handoff.player.color||'#fff';c.font='bold 28px Arial';c.fillText(handoff.player.name||'JOGADOR',px+20,190);c.fillStyle='#d4e1eb';c.font='16px Arial';c.fillText(handoff.subtitle||'CONFIRME PARA CONTINUAR A PARTIDA.',px+20,228);addButton(c,px+20,255,pw-40,58,'JOGAR','#267748','handoff');return;}
+    var lineY=128; c.textAlign='left';c.textBaseline='alphabetic';c.fillStyle='#ffdf55';c.font='bold 23px Arial'; c.fillText('PAINEL DE JOGO',px+20,lineY);
+    c.fillStyle='#fff';c.font='19px Arial';lineY+=42; c.fillText('JOGADOR: '+(p.name||'—'),px+20,lineY); lineY+=30;c.fillText('FASE: '+phaseName,px+20,lineY);lineY+=30;c.fillText('TROPAS DISPONIVEIS: '+(G.ttp||0),px+20,lineY);
+    if(G.af){lineY+=30;c.fillStyle='#ffb080';c.fillText('ORIGEM SELECIONADA: '+G.af,px+20,lineY);}
+    if(G._chooserActive&&chooser){
+      lineY+=48;c.fillStyle='#1a4365';c.fillRect(px+14,lineY-28,pw-28,175);c.strokeStyle='#d9f2ff';c.strokeRect(px+14,lineY-28,pw-28,175);
+      c.fillStyle='#fff';c.font='bold 18px Arial';c.fillText('QUANTIDADE: '+chooser.title,px+28,lineY);
+      c.fillStyle='#ffdf55';c.font='bold 42px Arial';c.textAlign='center';c.fillText(String(chooser.value),px+pw/2,lineY+53);c.textAlign='left';
+      button(c,px+22,lineY+72,66,48,'−', '#425c70','dec'); button(c,px+96,lineY+72,72,48,'−10','#425c70','dec10'); button(c,px+176,lineY+72,72,48,'+10','#355d42','inc10'); button(c,px+256,lineY+72,66,48,'+','#355d42','inc');
+      var by=lineY+132; if(chooser.cancel)button(c,px+22,by,130,48,'CANCELAR','#8b3035','cancel'); button(c,px+pw-158,by,136,48,'CONFIRMAR','#24844a','confirm');
     } else {
-      target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true,clientX:p.x,clientY:p.y,button:0,buttons:0,detail:1}));
-    }
-    controller.userData.press=null;
-  }
-  function buildController(index){
-    const controller=renderer.xr.getController(index);
-    controller.userData.handedness='';
-    controller.addEventListener('connected',e=>{controller.userData.handedness=e.data.handedness||'';});
-    controller.addEventListener('selectstart',()=>selectTarget(controller));
-    controller.addEventListener('selectend',()=>releaseTarget(controller));
-    const lineGeometry=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-1)]);
-    const line=new THREE.Line(lineGeometry,new THREE.LineBasicMaterial({color:0x8fffd0,transparent:true,opacity:.9}));
-    line.scale.z=12; controller.add(line); controller.userData.rayLine=line;
-    rig.add(controller); controllers.push(controller);
-  }
-  buildController(0); buildController(1);
-
-  let captureInProgress=false, captureQueued=false, captureTimer=null, lastCapture=0, presenting=false;
-  async function captureGamePage(){
-    if(captureInProgress){captureQueued=true;return;}
-    captureInProgress=true; lastCapture=performance.now();
-    try{
-      const shot=await window.html2canvas(document.body,{
-        backgroundColor:'#0a1628',scale:1,width:innerWidth,height:innerHeight,
-        windowWidth:innerWidth,windowHeight:innerHeight,scrollX:window.scrollX,scrollY:window.scrollY,
-        useCORS:true,allowTaint:false,logging:false,
-        ignoreElements:el=>el.id==='realVrPanel'||el.id==='realVrCanvas'
-      });
-      pageContext.clearRect(0,0,pageCanvas.width,pageCanvas.height);
-      pageContext.drawImage(shot,0,0,pageCanvas.width,pageCanvas.height);
-      pageTexture.needsUpdate=true;
-      shot.width=1; shot.height=1;
-    }catch(err){
-      console.warn('Não foi possível atualizar a textura da tela do jogo:',err);
-      status('A tela 3D está ativa, mas a captura do jogo falhou. Verifique se o navegador carregou todos os arquivos.');
-    }finally{
-      captureInProgress=false;
-      if(captureQueued){captureQueued=false; scheduleCapture(260);}
-    }
-  }
-  function scheduleCapture(delay=180){
-    if(!presenting || captureTimer) return;
-    const wait=Math.max(delay,900-(performance.now()-lastCapture));
-    captureTimer=setTimeout(()=>{captureTimer=null;void captureGamePage();},wait);
-  }
-  const observer=new MutationObserver(()=>scheduleCapture(220));
-  observer.observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true});
-
-  function renderFrame(time){
-    if(!presenting) return;
-    const dt=Math.min(.05,Math.max(.001,(time-(renderFrame.prev||time))/1000)); renderFrame.prev=time;
-    const session=renderer.xr.getSession();
-    let leftX=0,leftY=0,rightY=0;
-    if(session){
-      for(const source of session.inputSources){
-        const axes=source.gamepad?.axes||[];
-        if(source.handedness==='left'&&axes.length>=2){leftX=axes[0]||0;leftY=axes[1]||0;}
-        if(source.handedness==='right'&&axes.length>=2) rightY=axes[1]||0;
+      var cy=lineY+50;
+      if(phase==='P1'){
+        c.fillStyle='#cbd9e6';c.font='16px Arial';c.fillText('CLIQUE NOS TERRITORIOS PROPRIOS PARA POSICIONAR.',px+20,cy);cy+=30;
+        if(!G._p1IntroDone) addButton(c,px+20,cy,pw-40,56,'INICIAR DISTRIBUICAO','#267748','p1intro');
+      } else if(phase==='R'){
+        var tradePending=G.turnStepsPending&&G.turnStepsPending.s3&&!G.tradeDecided;
+        if(!G._turnIntroDone && tradePending){c.font='16px Arial';c.fillText('TROCAR CARTAS POR '+(typeof nextTradeBonus==='function'?nextTradeBonus():'')+' TROPAS?',px+20,cy);cy+=16;addButton(c,px+20,cy,pw-40,52,'SIM — TROCAR CARTAS','#267748','tradeYes');cy+=60;addButton(c,px+20,cy,pw-40,52,'NAO — PULAR TROCA','#7e3338','tradeNo');}
+        else if(!G._turnIntroDone)addButton(c,px+20,cy,pw-40,56,'OK — INICIAR TURNO','#267748','turnIntro');
+        else if((G.turnStepsPending&&Object.keys(G.turnStepsPending).some(function(k){return G.turnStepsPending[k]&&!(G.turnStepsDone||{})[k];})) && !G.reinfMode && !(G.ttp>0 && G._chooserActive)) addButton(c,px+20,cy,pw-40,56,'AVANCAR REFORCOS','#267748','advanceReinf');
+        else {c.fillStyle='#cbd9e6';c.font='16px Arial';c.fillText('SELECIONE UM TERRITORIO PROPRIO NO MAPA.',px+20,cy);}
+      } else if(phase==='A'){
+        addButton(c,px+20,cy,pw-40,58,'ENCERRAR ATAQUES / FORTIFICAR','#a15a24','toFort');cy+=72;
+        if(typeof togglePlaneAttackMode==='function'&&(p.planes||0)>0)addButton(c,px+20,cy,pw-40,48,'MODO AVIOES','#3e5878','planes');
+      } else if(phase==='F'){
+        if(G._confirmType==='endTurn'){addButton(c,px+20,cy,pw-40,54,'CONFIRMAR FIM DO TURNO','#267748','confirmYes');cy+=62;addButton(c,px+20,cy,pw-40,48,'CANCELAR','#7e3338','confirmNo');}
+        else addButton(c,px+20,cy,pw-40,58,'ENCERRAR TURNO','#a15a24','endTurn');
       }
     }
-    const moving=new THREE.Vector3(leftX,-leftY,0);
-    if(moving.lengthSq()>.0225){
-      camera.getWorldQuaternion(q);
-      forward.set(0,0,-1).applyQuaternion(q); forward.y=0; forward.normalize();
-      right.crossVectors(forward,up).normalize();
-      const delta=forward.multiplyScalar(moving.y).add(right.multiplyScalar(moving.x)).multiplyScalar(2.6*dt);
-      rig.position.add(delta);
-      rig.position.x=THREE.MathUtils.clamp(rig.position.x,-8.4,8.4);
-      rig.position.z=THREE.MathUtils.clamp(rig.position.z,-8.2,8.0);
-    }
-    for(const controller of controllers){
-      const p=pointOnGameScreen(controller);
-      controller.userData.rayLine.scale.z=p?Math.max(.35,Math.min(p.distance,12)):12;
-      const press=controller.userData.press;
-      if(press&&p){
-        const target=domTargetAt(p)||press.target;
-        firePointer(target,'move',p.x,p.y,1);
-      }
-      // O analógico direito rola a configuração quando a mira está sobre o painel de setup.
-      if(controller.userData.handedness==='right'&&Math.abs(rightY)>.72&&p){
-        const target=domTargetAt(p);
-        if(target&&target.closest('#setup')) target.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,clientX:p.x,clientY:p.y,deltaY:rightY*36}));
-      }
-    }
-    renderer.render(scene,camera);
-    if(time-(renderFrame.lastCapture||0)>1100){renderFrame.lastCapture=time;scheduleCapture(100);}
+    c.fillStyle='#afc4d5';c.font='14px Arial';c.fillText('GATILHO: SELECIONAR | ANALOGICO ESQUERDO: LOCOMOCAO',px+18,h-25);
   }
-
-  function onResize(){
-    if(renderer.xr.isPresenting) return;
-    camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight);
-    const w=Math.max(640,innerWidth),h=Math.max(360,innerHeight);
-    pageCanvas.width=w;pageCanvas.height=h;makeScreen();
-    if(presenting) scheduleCapture(100);
+  function addButton(c,x,y,w,h,label,color,key){ c.fillStyle=color;c.fillRect(x,y,w,h);c.strokeStyle='#fff';c.lineWidth=2;c.strokeRect(x,y,w,h);c.fillStyle='#fff';c.font='bold 16px Arial';c.textAlign='center';c.textBaseline='middle';c.fillText(label,x+w/2,y+h/2,w-10);hitAreas.push({x,y,w,h,key});c.textAlign='left'; }
+  function button(c,x,y,w,h,label,color,key){addButton(c,x,y,w,h,label,color,key);}
+  function setCanvas(canvas,context){nativeCanvas=canvas;nativeCtx=context;schedule();}
+  function redraw(){schedule();}
+  function activateChooser(title,min,max,onConfirm,onCancel,onChange){chooser={title:String(title||'').replace(/<[^>]*>/g,''),min,max,value:min,cancel:!!onCancel,onConfirm,onCancel,onChange}; setChooserActive(true); if(onChange)onChange(min);schedule();}
+  function click(x,y){
+    for(var i=hitAreas.length-1;i>=0;i--){var b=hitAreas[i];if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){
+      if(b.key==='inc'||b.key==='dec'||b.key==='inc10'||b.key==='dec10'){if(!chooser)return;chooser.value=Math.max(chooser.min,Math.min(chooser.max,chooser.value+({inc:1,dec:-1,inc10:10,dec10:-10}[b.key])));if(chooser.onChange)chooser.onChange(chooser.value);schedule();}
+      else if(b.key==='confirm'&&chooser){var q=chooser;chooser=null;setChooserActive(false);q.onConfirm(q.value);schedule();}
+      else if(b.key==='cancel'&&chooser){var q=chooser;chooser=null;setChooserActive(false);q.onCancel();schedule();}
+      else if(b.key==='handoff'&&handoff){var h=handoff;handoff=null;if(typeof resetTurnTimer==='function')resetTurnTimer();if(h.onContinue)h.onContinue();}
+      else if(b.key==='turnIntro'){turnIntroOK();}
+      else if(b.key==='tradeYes'){tradeAnswer(true);}
+      else if(b.key==='tradeNo'){tradeAnswer(false);}
+      else if(b.key==='advanceReinf'){advanceReinfFlow();}
+      else if(b.key==='p1intro'){startFirstRoundPlacement();}
+      else if(b.key==='toFort'){startFort();}
+      else if(b.key==='endTurn'){askEndTurnConfirm();}
+      else if(b.key==='confirmYes'){confirmActionYes();}
+      else if(b.key==='confirmNo'){cancelConfirmAction();}
+      else if(b.key==='planes'){togglePlaneAttackMode();}
+      schedule();return true;
+    }}
+    if(!G||!G.terrs||G.phase==='FILL'||chooser)return false;
+    var s=mapFit.scale, mx=(x-mapFit.x)/s,my=(y-mapFit.y)/s;
+    for(var t in PATHS){try{var path=getPath(t);if(path&&nativeCtx.isPointInPath(path,mx,my)){clickT(t);schedule();return true;}}catch(e){}}
+    return false;
   }
-  addEventListener('resize',onResize);
-
-  const supported=!!navigator.xr && await navigator.xr.isSessionSupported('immersive-vr').catch(()=>false);
-  if(!supported){
-    button.disabled=true;
-    status(isSecureContext?'ESTE NAVEGADOR NÃO DISPONIBILIZOU WEBXR IMMERSIVE-VR. ABRA PELO META QUEST BROWSER.':'WEBXR EXIGE UMA PÁGINA HTTPS. PUBLIQUE NO GITHUB PAGES.');
-  }else{
-    button.disabled=false;
-    status('WEBXR PRONTO. NO QUEST, PRESSIONE PARA ENTRAR NA SALA.');
-  }
-
-  async function enterVR(){
-    if(!navigator.xr||!supported) return;
-    button.disabled=true; status('ABRINDO A SALA VR...');
-    let sessionPromise;
-    try{
-      // A solicitação ocorre diretamente no clique real do usuário, antes de qualquer await.
-      sessionPromise=navigator.xr.requestSession('immersive-vr',{requiredFeatures:['local-floor'],optionalFeatures:['bounded-floor']});
-    }catch(err){button.disabled=false;status('NÃO FOI POSSÍVEL INICIAR WEBXR: '+err.message);return;}
-    try{
-      const session=await sessionPromise;
-      await renderer.xr.setSession(session);
-      presenting=true; document.body.classList.add('realVrActive'); renderer.domElement.style.display='block';
-      renderFrame.prev=0; renderFrame.lastCapture=0;
-      renderer.setAnimationLoop(renderFrame);
-      status('VR ATIVO. ANALÓGICO ESQUERDO ANDA; APERTE O GATILHO PARA CLICAR.');
-      await captureGamePage();
-      session.addEventListener('end',()=>{
-        presenting=false; renderer.setAnimationLoop(null); renderer.domElement.style.display='none';
-        document.body.classList.remove('realVrActive'); button.disabled=false;
-        status('SALA VR ENCERRADA. VOCÊ PODE ENTRAR NOVAMENTE.');
-      },{once:true});
-    }catch(err){
-      presenting=false; renderer.domElement.style.display='none'; document.body.classList.remove('realVrActive');
-      button.disabled=false; status('WEBXR NÃO INICIOU: '+(err?.message||'verifique o suporte e as permissões do Quest Browser.'));
-    }
-  }
-  button.addEventListener('click',enterVR);
-  // Prepara a textura antes da entrada; o jogo continua utilizável na página normal.
-  void captureGamePage();
-}catch(err){
-  console.error('Falha ao preparar a sala WebXR:',err);
-  button.disabled=true;
-  status('NÃO FOI POSSÍVEL CARREGAR A SALA VR. CONFIRA A CONEXÃO E RECARREGUE A PÁGINA.');
-}
+  window.NativeVRBridge={setCanvas:setCanvas,redraw:redraw,click:click,getChooser:function(){return chooser;}};
+  var oldMap=renderMap,oldAll=renderAll,oldSidebar=renderSidebar;
+  renderMap=function(){if(document.body.classList.contains('realVrActive')){schedule();return;}var r=oldMap.apply(this,arguments);schedule();return r;};
+  renderAll=function(){var r=oldAll.apply(this,arguments);schedule();return r;};
+  renderSidebar=function(){var r=oldSidebar.apply(this,arguments);schedule();return r;};
+  var oldChooser=showChooser;
+  showChooser=function(title,min,max,onConfirm,onCancel,onChange){if(document.body.classList.contains('realVrActive'))return activateChooser(title,min,max,onConfirm,onCancel,onChange);return oldChooser.apply(this,arguments);};
+  var oldHandoff=showHandoff;
+  showHandoff=function(player,subtitle,onContinue){if(document.body.classList.contains('realVrActive')){handoff={player:player,subtitle:subtitle,onContinue:onContinue};schedule();return;}return oldHandoff.apply(this,arguments);};
+})();
+</script>
+<script type="module">
+const button=document.getElementById('realVrButton'), statusLine=document.getElementById('realVrStatus');
+const status=t=>statusLine.textContent=t;
+try{
+ const THREE=await import('https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js');
+ const scene=new THREE.Scene();scene.background=new THREE.Color(0x100b12);scene.fog=new THREE.Fog(0x100b12,16,30);
+ const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.05,80),rig=new THREE.Group();rig.position.set(0,0,4.3);rig.add(camera);scene.add(rig);
+ const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});renderer.domElement.id='realVrCanvas';renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType('local-floor');document.body.appendChild(renderer.domElement);
+ scene.add(new THREE.HemisphereLight(0xffdfc0,0x21131b,1.8));const ceilingLight=new THREE.PointLight(0xffc27a,32,24,2);ceilingLight.position.set(0,5,-1);scene.add(ceilingLight);
+ const mat=(color,roughness=.82,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+ const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,26),mat(0x251922));floor.rotation.x=-Math.PI/2;floor.position.set(0,-.03,-1.7);scene.add(floor);
+ const ceiling=new THREE.Mesh(new THREE.PlaneGeometry(20,26),mat(0x171119));ceiling.rotation.x=Math.PI/2;ceiling.position.set(0,6,-1.7);scene.add(ceiling);
+ const back=new THREE.Mesh(new THREE.PlaneGeometry(20,6),mat(0x321824));back.position.set(0,3,-11.8);scene.add(back);
+ const side=new THREE.Mesh(new THREE.PlaneGeometry(26,6),mat(0x24131d));side.rotation.y=Math.PI/2;side.position.set(-10,3,-1.7);scene.add(side);const rightWall=side.clone();rightWall.rotation.y=-Math.PI/2;rightWall.position.x=10;scene.add(rightWall);
+ const trim=mat(0x8f6835,.48,.38);const carpet=new THREE.Mesh(new THREE.PlaneGeometry(8,18),mat(0x551829,1));carpet.rotation.x=-Math.PI/2;carpet.position.set(0,.005,-2.2);scene.add(carpet);
+ for(const x of [-9.88,9.88]){const beam=new THREE.Mesh(new THREE.BoxGeometry(.08,5.7,.08),trim);beam.position.set(x,3,-1.7);scene.add(beam);}
+ const canvas=document.createElement('canvas');canvas.width=1600;canvas.height=900;const ctx=canvas.getContext('2d');window.NativeVRBridge.setCanvas(canvas,ctx);
+ const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;texture.minFilter=THREE.LinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;
+ const sw=9.5,sh=sw/(canvas.width/canvas.height), frame=new THREE.Mesh(new THREE.BoxGeometry(sw+.34,sh+.34,.38),mat(0x171419,.35,.32));frame.position.set(0,2.65,-11.42);scene.add(frame);
+ const gold=new THREE.Mesh(new THREE.BoxGeometry(sw+.12,sh+.12,.08),trim);gold.position.set(0,2.65,-11.18);scene.add(gold);
+ const screen=new THREE.Mesh(new THREE.PlaneGeometry(sw,sh),new THREE.MeshBasicMaterial({map:texture,toneMapped:false,side:THREE.FrontSide}));screen.position.set(0,2.65,-11.11);scene.add(screen);
+ const glow=new THREE.PointLight(0x88b8ff,7,10,2);glow.position.set(0,3,-9.9);scene.add(glow);
+ // Poltronas do cinema mantidas na sala WebXR.
+ const fabric=mat(0x751f35),highlight=mat(0x9e3448),dark=mat(0x190f15),cupmat=mat(0x927342,.35,.35);
+ function chair(x,z,scale=1){const g=new THREE.Group();g.position.set(x,0,z);g.scale.setScalar(scale);scene.add(g);
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(1.15,.24,.92),fabric);seat.position.set(0,.57,0);g.add(seat);
+  const backrest=new THREE.Mesh(new THREE.BoxGeometry(1.15,1.3,.22),highlight);backrest.position.set(0,1.26,.39);g.add(backrest);
+  const inner=new THREE.Mesh(new THREE.BoxGeometry(.87,1.05,.04),fabric);inner.position.set(0,1.27,.245);g.add(inner);
+  for(const side of [-1,1]){const arm=new THREE.Mesh(new THREE.BoxGeometry(.24,.58,1.02),dark);arm.position.set(side*.7,.78,.02);g.add(arm);const top=new THREE.Mesh(new THREE.BoxGeometry(.27,.12,.92),highlight);top.position.set(side*.7,1.08,.02);g.add(top);const leg=new THREE.Mesh(new THREE.BoxGeometry(.12,.48,.12),dark);leg.position.set(side*.43,.26,.25);g.add(leg);const cup=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,.12,12),cupmat);cup.position.set(side*.7,1.18,-.22);g.add(cup);}
+  const front=new THREE.Mesh(new THREE.BoxGeometry(.88,.16,.12),dark);front.position.set(0,.12,-.3);g.add(front);}
+ const xs=[-7,-5.35,-3.7,-2.05,2.05,3.7,5.35,7];for(const z of [-6.4,-4,-1.6])for(const x of xs)chair(x,z,z===-6.4?.9:1);
+ for(const z of [-8,-4,0,4])for(const sideSign of [-1,1]){const lamp=new THREE.Mesh(new THREE.SphereGeometry(.12,12,8),new THREE.MeshBasicMaterial({color:0xffc778}));lamp.position.set(sideSign*9.65,2.7,z);scene.add(lamp);}
+ const controllers=[],raycaster=new THREE.Raycaster(),origin=new THREE.Vector3(),direction=new THREE.Vector3(),q=new THREE.Quaternion(),forward=new THREE.Vector3(),right=new THREE.Vector3(),up=new THREE.Vector3(0,1,0),uv=new THREE.Vector2();
+ function point(controller){controller.getWorldPosition(origin);controller.getWorldQuaternion(q);direction.set(0,0,-1).applyQuaternion(q).normalize();raycaster.set(origin,direction);const hit=raycaster.intersectObject(screen,false)[0];if(!hit||!hit.uv)return null;uv.copy(hit.uv);return{x:uv.x*canvas.width,y:(1-uv.y)*canvas.height,distance:hit.distance};}
+ function trigger(controller){const p=point(controller);if(p)window.NativeVRBridge.click(p.x,p.y);}
+ function buildController(i){const ctl=renderer.xr.getController(i);ctl.addEventListener('selectend',()=>trigger(ctl));const geom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]);const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0x8fffd0,transparent:true,opacity:.9}));line.scale.z=12;ctl.add(line);ctl.userData.rayLine=line;ctl.addEventListener('connected',e=>ctl.userData.hand=e.data.handedness||'');rig.add(ctl);controllers.push(ctl);}
+ buildController(0);buildController(1);let presenting=false;
+ function renderFrame(time){if(!presenting)return;const dt=Math.min(.05,Math.max(.001,(time-(renderFrame.prev||time))/1000));renderFrame.prev=time;let lx=0,ly=0;
+  const session=renderer.xr.getSession();if(session)for(const src of session.inputSources){const axes=src.gamepad?.axes||[];if(src.handedness==='left'&&axes.length>=2){lx=axes[0]||0;ly=axes[1]||0;}}
+  const move=new THREE.Vector3(lx,-ly,0);if(move.lengthSq()>.0225){camera.getWorldQuaternion(q);forward.set(0,0,-1).applyQuaternion(q);forward.y=0;forward.normalize();right.crossVectors(forward,up).normalize();rig.position.add(forward.multiplyScalar(move.y).add(right.multiplyScalar(move.x)).multiplyScalar(2.6*dt));rig.position.x=THREE.MathUtils.clamp(rig.position.x,-8.4,8.4);rig.position.z=THREE.MathUtils.clamp(rig.position.z,-8.2,8);}
+  for(const ctl of controllers){const p=point(ctl);ctl.userData.rayLine.scale.z=p?Math.max(.35,Math.min(p.distance,12)):12;}
+  renderer.render(scene,camera);
+ }
+ function resize(){if(renderer.xr.isPresenting)return;renderer.setSize(innerWidth,innerHeight);}
+ addEventListener('resize',resize);
+ const supported=!!navigator.xr&&await navigator.xr.isSessionSupported('immersive-vr').catch(()=>false);
+ if(!supported){button.disabled=true;status(isSecureContext?'WEBXR IMMERSIVE-VR INDISPONIVEL. ABRA NO META QUEST BROWSER.':'WEBXR EXIGE HTTPS. PUBLIQUE EM GITHUB PAGES.');}
+ else {button.disabled=false;status('WEBXR PRONTO. ENTRE APOS CONFIGURAR NOMES E INICIAR A PARTIDA.');}
+ async function enterVR(){if(!supported)return;button.disabled=true;let promise;try{promise=navigator.xr.requestSession('immersive-vr',{requiredFeatures:['local-floor'],optionalFeatures:['bounded-floor']});}catch(e){button.disabled=false;status('WEBXR: '+e.message);return;}
+  try{const session=await promise;await renderer.xr.setSession(session);presenting=true;document.body.classList.add('realVrActive');renderer.domElement.style.display='block';window.NativeVRBridge.redraw();renderer.setAnimationLoop(renderFrame);status('VR ATIVO. ANALOGICO ESQUERDO ANDA; GATILHO SELECIONA DIRETAMENTE O CANVAS.');session.addEventListener('end',()=>{presenting=false;renderer.setAnimationLoop(null);renderer.domElement.style.display='none';document.body.classList.remove('realVrActive');button.disabled=false;status('SALA VR ENCERRADA.');},{once:true});}
+  catch(e){presenting=false;renderer.domElement.style.display='none';document.body.classList.remove('realVrActive');button.disabled=false;status('WEBXR NAO INICIOU: '+(e.message||'verifique permissoes do navegador.'));}}
+ button.addEventListener('click',enterVR);
+}catch(e){console.error('Falha ao preparar sala WebXR:',e);button.disabled=true;status('NAO FOI POSSIVEL PREPARAR A SALA VR. CONFIRA A CONEXAO.');}
 </script>
 
 </body>
