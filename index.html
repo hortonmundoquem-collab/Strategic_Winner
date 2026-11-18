@@ -10766,7 +10766,7 @@ async function olGuestLoop(){
 <div id="realVrPanel">
   <button id="realVrButton" type="button">ENTRAR NA SALA VR</button>
   <div id="realVrStatus">VERIFICANDO SUPORTE WEBXR...</div>
-  <div id="realVrHelp">PREENCHA NOMES E INICIE A PARTIDA NA PAGINA COMUM. NO VR: ANALOGICO ESQUERDO ANDA; GATILHO APONTA E CLICA.</div>
+  <div id="realVrHelp">VOCE PODE ENTRAR ANTES DE INICIAR. AJUSTE NOMES E REGRAS NA PAGINA SE QUISER; INICIE A PARTIDA PELO PAINEL DA SALA. ANALOGICO ESQUERDO ANDA; GATILHO SELECIONA.</div>
 </div>
 <script>
 /*
@@ -10779,7 +10779,7 @@ async function olGuestLoop(){
  */
 /* Ponte clássica: compartilha os bindings lexicais do jogo com o módulo WebXR. */
 (function(){
-  var nativeCanvas=null, nativeCtx=null, drawQueued=false, chooser=null, handoff=null, hitAreas=[], lastMap=null;
+  var nativeCanvas=null, nativeCtx=null, drawQueued=false, chooser=null, handoff=null, firstRoundIntro=false, hitAreas=[], lastMap=null;
   var pathCache=Object.create(null), pathCacheRef=null;
   var W=1600,H=900, VBW=1920,VBH=1080, box={x:24,y:60,w:1088,h:790}, mapFit={scale:1,x:24,y:60};
   function getPath(t){if(pathCacheRef!==PATHS){pathCacheRef=PATHS;pathCache=Object.create(null);}if(!pathCache[t]){try{pathCache[t]=new Path2D(PATHS[t]);}catch(e){return null;}}return pathCache[t];}
@@ -10788,10 +10788,22 @@ async function olGuestLoop(){
     W=w;H=h; hitAreas=[]; c.clearRect(0,0,w,h); c.fillStyle='#08111e'; c.fillRect(0,0,w,h);
     c.fillStyle='#13263a'; c.fillRect(0,0,w,h*.075); c.fillStyle='#ffdf55'; c.font='bold 30px Arial'; c.fillText('STRATEGIC WINNER',24,45);
     c.fillStyle='#a8c5da'; c.font='17px Arial';
-    if(typeof G==='undefined'||!G||!G.players||!G.players.length){ c.fillText('CONFIGURE NOMES E INICIE A PARTIDA NA PAGINA ANTES DE ENTRAR EM VR.',28,110); return; }
+    if(typeof G==='undefined'||!G||!G.players||!G.players.length){
+      c.textAlign='center'; c.fillStyle='#fff'; c.font='bold 30px Arial'; c.fillText('A SALA ESTA PRONTA',w/2,160);
+      c.fillStyle='#cbd9e6'; c.font='19px Arial'; c.fillText('AS REGRAS E OS NOMES DEFINIDOS NA PAGINA SERAO USADOS.',w/2,208);
+      c.fillText('VOCE TAMBEM PODE ENTRAR NA SALA ANTES DE INICIAR.',w/2,242);
+      addButton(c,w*.34,h*.43,w*.32,72,'INICIAR PARTIDA','#267748','startGame'); c.textAlign='left'; return;
+    }
     var p=G.players[G.cur]||{}, phase=G.phase||'?', phaseName={P1:'PRIMEIRA RODADA',R:'REFORCOS',A:'ATAQUE',F:'FORTIFICACAO',FILL:'DISTRIBUICAO INICIAL'}[phase]||phase;
     c.fillStyle=p.color||'#fff'; c.fillRect(24,58,18,18); c.fillStyle='#fff'; c.font='bold 22px Arial'; c.fillText((p.name||'JOGADOR')+'  |  '+phaseName+'  |  RODADA '+(G.roundNumber||1),52,76);
-    if(phase==='FILL'){ c.fillStyle='#ffdf55'; c.font='20px Arial'; c.fillText('DISTRIBUICAO INICIAL: COMPLETE A PREPARACAO NA PAGINA ANTES DE USAR A SALA VR.',30,130); return; }
+    if(firstRoundIntro){
+      c.fillStyle='rgba(0,0,0,.88)'; c.fillRect(0,0,w,h); c.textAlign='center';
+      c.fillStyle='#ffdf55'; c.font='bold 34px Arial'; c.fillText('PRIMEIRA RODADA',w/2,h*.30);
+      c.fillStyle='#fff'; c.font='21px Arial'; c.fillText('CADA JOGADOR POSICIONA 3 SOLDADOS NOS SEUS TERRITORIOS.',w/2,h*.39);
+      c.fillText('A ORDEM COMECA DO ULTIMO JOGADOR E VAI ATE O PRIMEIRO.',w/2,h*.44);
+      addButton(c,w*.38,h*.56,w*.24,68,'CONTINUAR','#267748','firstRoundStart'); c.textAlign='left'; return;
+    }
+    if(phase==='FILL'){ c.fillStyle='#ffdf55'; c.font='20px Arial'; c.textAlign='center'; c.fillText('DISTRIBUINDO OS TERRITORIOS...',w/2,150); c.fillStyle='#cbd9e6'; c.font='16px Arial'; c.fillText('AGUARDE UM MOMENTO. A PARTIDA CONTINUA AUTOMATICAMENTE.',w/2,184); c.textAlign='left'; return; }
     if(!PATHS||!CENTERS||!G.terrs){ c.fillText('AGUARDANDO ESTADO DO TABULEIRO...',28,130); return; }
     box={x:20,y:94,w:w*.68,h:h*.86}; var s=Math.min(box.w/VBW,box.h/VBH); mapFit={scale:s,x:box.x+(box.w-VBW*s)/2,y:box.y+(box.h-VBH*s)/2};
     c.save(); c.translate(mapFit.x,mapFit.y); c.scale(s,s); c.fillStyle='#23526b'; c.fillRect(0,0,VBW,VBH);
@@ -10848,6 +10860,8 @@ async function olGuestLoop(){
       else if(b.key==='confirm'&&chooser){var q=chooser;chooser=null;setChooserActive(false);q.onConfirm(q.value);schedule();}
       else if(b.key==='cancel'&&chooser){var q=chooser;chooser=null;setChooserActive(false);q.onCancel();schedule();}
       else if(b.key==='handoff'&&handoff){var h=handoff;handoff=null;if(typeof resetTurnTimer==='function')resetTurnTimer();if(h.onContinue)h.onContinue();}
+      else if(b.key==='startGame'){startGame();}
+      else if(b.key==='firstRoundStart'){firstRoundIntro=false;startFirstRoundPlacement();}
       else if(b.key==='turnIntro'){turnIntroOK();}
       else if(b.key==='tradeYes'){tradeAnswer(true);}
       else if(b.key==='tradeNo'){tradeAnswer(false);}
@@ -10866,10 +10880,11 @@ async function olGuestLoop(){
     return false;
   }
   window.NativeVRBridge={setCanvas:setCanvas,redraw:redraw,click:click,getChooser:function(){return chooser;}};
-  var oldMap=renderMap,oldAll=renderAll,oldSidebar=renderSidebar;
+  var oldMap=renderMap,oldAll=renderAll,oldSidebar=renderSidebar,oldFirstRound=showFirstRoundScreen;
   renderMap=function(){if(document.body.classList.contains('realVrActive')){schedule();return;}var r=oldMap.apply(this,arguments);schedule();return r;};
   renderAll=function(){var r=oldAll.apply(this,arguments);schedule();return r;};
   renderSidebar=function(){var r=oldSidebar.apply(this,arguments);schedule();return r;};
+  showFirstRoundScreen=function(){if(document.body.classList.contains('realVrActive')){firstRoundIntro=true;schedule();return;}return oldFirstRound.apply(this,arguments);};
   var oldChooser=showChooser;
   showChooser=function(title,min,max,onConfirm,onCancel,onChange){if(document.body.classList.contains('realVrActive'))return activateChooser(title,min,max,onConfirm,onCancel,onChange);return oldChooser.apply(this,arguments);};
   var oldHandoff=showHandoff;
@@ -10913,9 +10928,29 @@ try{
  function trigger(controller){const p=point(controller);if(p)window.NativeVRBridge.click(p.x,p.y);}
  function buildController(i){const ctl=renderer.xr.getController(i);ctl.addEventListener('selectend',()=>trigger(ctl));const geom=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-1)]);const line=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0x8fffd0,transparent:true,opacity:.9}));line.scale.z=12;ctl.add(line);ctl.userData.rayLine=line;ctl.addEventListener('connected',e=>ctl.userData.hand=e.data.handedness||'');rig.add(ctl);controllers.push(ctl);}
  buildController(0);buildController(1);let presenting=false;
- function renderFrame(time){if(!presenting)return;const dt=Math.min(.05,Math.max(.001,(time-(renderFrame.prev||time))/1000));renderFrame.prev=time;let lx=0,ly=0;
-  const session=renderer.xr.getSession();if(session)for(const src of session.inputSources){const axes=src.gamepad?.axes||[];if(src.handedness==='left'&&axes.length>=2){lx=axes[0]||0;ly=axes[1]||0;}}
-  const move=new THREE.Vector3(lx,-ly,0);if(move.lengthSq()>.0225){camera.getWorldQuaternion(q);forward.set(0,0,-1).applyQuaternion(q);forward.y=0;forward.normalize();right.crossVectors(forward,up).normalize();rig.position.add(forward.multiplyScalar(move.y).add(right.multiplyScalar(move.x)).multiplyScalar(2.6*dt));rig.position.x=THREE.MathUtils.clamp(rig.position.x,-8.4,8.4);rig.position.z=THREE.MathUtils.clamp(rig.position.z,-8.2,8);}
+ function renderFrame(time){
+  if(!presenting)return;
+  const dt=Math.min(.05,Math.max(.001,(time-(renderFrame.prev||time))/1000));renderFrame.prev=time;
+  let stickX=0,stickY=0;
+  const session=renderer.xr.getSession();
+  if(session)for(const src of session.inputSources){
+    if(src.handedness!=='left'||!src.gamepad)continue;
+    const axes=src.gamepad.axes||[];
+    // xr-standard: axes[0..1] são do touchpad; axes[2..3] são do thumbstick.
+    // Se o controle expuser apenas dois eixos, usa esse par como fallback.
+    const start=axes.length>=4?2:0;
+    if(axes.length>=start+2){stickX=Number(axes[start])||0;stickY=Number(axes[start+1])||0;break;}
+  }
+  const deadzone=v=>{const a=Math.abs(v);return a<.16?0:Math.sign(v)*(a-.16)/.84;};
+  stickX=deadzone(stickX);stickY=deadzone(stickY);
+  let forwardAmount=-stickY,sideAmount=stickX;
+  const magnitude=Math.hypot(forwardAmount,sideAmount);
+  if(magnitude>1){forwardAmount/=magnitude;sideAmount/=magnitude;}
+  if(magnitude>.001){
+    camera.getWorldQuaternion(q);forward.set(0,0,-1).applyQuaternion(q);forward.y=0;forward.normalize();right.crossVectors(forward,up).normalize();
+    rig.position.addScaledVector(forward,forwardAmount*2.8*dt);rig.position.addScaledVector(right,sideAmount*2.8*dt);
+    rig.position.x=THREE.MathUtils.clamp(rig.position.x,-8.4,8.4);rig.position.z=THREE.MathUtils.clamp(rig.position.z,-8.2,8);
+  }
   for(const ctl of controllers){const p=point(ctl);ctl.userData.rayLine.scale.z=p?Math.max(.35,Math.min(p.distance,12)):12;}
   renderer.render(scene,camera);
  }
@@ -10923,9 +10958,9 @@ try{
  addEventListener('resize',resize);
  const supported=!!navigator.xr&&await navigator.xr.isSessionSupported('immersive-vr').catch(()=>false);
  if(!supported){button.disabled=true;status(isSecureContext?'WEBXR IMMERSIVE-VR INDISPONIVEL. ABRA NO META QUEST BROWSER.':'WEBXR EXIGE HTTPS. PUBLIQUE EM GITHUB PAGES.');}
- else {button.disabled=false;status('WEBXR PRONTO. ENTRE APOS CONFIGURAR NOMES E INICIAR A PARTIDA.');}
+ else {button.disabled=false;status('WEBXR PRONTO. VOCE PODE ENTRAR ANTES DE INICIAR; A PARTIDA COMECA NO PAINEL VIRTUAL.');}
  async function enterVR(){if(!supported)return;button.disabled=true;let promise;try{promise=navigator.xr.requestSession('immersive-vr',{requiredFeatures:['local-floor'],optionalFeatures:['bounded-floor']});}catch(e){button.disabled=false;status('WEBXR: '+e.message);return;}
-  try{const session=await promise;await renderer.xr.setSession(session);presenting=true;document.body.classList.add('realVrActive');renderer.domElement.style.display='block';window.NativeVRBridge.redraw();renderer.setAnimationLoop(renderFrame);status('VR ATIVO. ANALOGICO ESQUERDO ANDA; GATILHO SELECIONA DIRETAMENTE O CANVAS.');session.addEventListener('end',()=>{presenting=false;renderer.setAnimationLoop(null);renderer.domElement.style.display='none';document.body.classList.remove('realVrActive');button.disabled=false;status('SALA VR ENCERRADA.');},{once:true});}
+  try{const session=await promise;await renderer.xr.setSession(session);presenting=true;document.body.classList.add('realVrActive');renderer.domElement.style.display='block';window.NativeVRBridge.redraw();renderer.setAnimationLoop(renderFrame);status('VR ATIVO. ANALOGICO ESQUERDO MOVE; GATILHO INICIA E SELECIONA.');session.addEventListener('end',()=>{presenting=false;renderer.setAnimationLoop(null);renderer.domElement.style.display='none';document.body.classList.remove('realVrActive');button.disabled=false;status('SALA VR ENCERRADA.');},{once:true});}
   catch(e){presenting=false;renderer.domElement.style.display='none';document.body.classList.remove('realVrActive');button.disabled=false;status('WEBXR NAO INICIOU: '+(e.message||'verifique permissoes do navegador.'));}}
  button.addEventListener('click',enterVR);
 }catch(e){console.error('Falha ao preparar sala WebXR:',e);button.disabled=true;status('NAO FOI POSSIVEL PREPARAR A SALA VR. CONFIRA A CONEXAO.');}
