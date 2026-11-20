@@ -813,7 +813,8 @@
           bots: [0, 1, 1, 1, 1, 1].map(Boolean),
           names: ["Jogador 1", "Bonaparte", "Gengis Khan", "Napoleao", "Bismarck", "Sun Tzu"],
         },
-        RS = RU.map((r, i) => (i ? "A" : "B")),
+        /* Padrões iguais ao original (applyDefaultRules): 1=A, 2=A, 3=E, 4=C, 5=A, 6=B, 7=D, 8=A, 9=B, 10=B, 11=F, 12=A */
+        RS = ["A", "A", "E", "C", "A", "B", "D", "A", "B", "B", "F", "A"],
         G = null,
         scr = "menu",
         hover = "",
@@ -3053,7 +3054,7 @@
             return { x, i, m, txt, lh };
           });
           cells.forEach(({ x, i, m, txt, lh }) => {
-            const dis = i == 11;
+            const dis = i == 11 && RS[7] == "A"; /* original: item 12 só fica apagado enquanto 08 = A */
             LB(m[1] + "-", m[2], x, y, w, dis);
             DD(x, y + lh + 6, w, txt, "r" + i, () => (ex = i), 19, dis);
           });
@@ -3250,7 +3251,13 @@
         });
       }
       /* Caixa azul do original: fundo #0a3a6a, borda 3px branca por dentro, contorno 3px preto por fora */
+      /* Áreas ocupadas pelos painéis abertos (Informações, Log, Dicas, Config, Objetivo).
+         No original esses painéis têm pointer-events:none no contêiner e só a caixa em si recebe
+         clique, então o mapa continua clicável ao redor. */
+      let OVR = [];
+      const inOvr = (x, y) => OVR.some((r) => x >= r.x - 4 && x <= r.x + r.w + 4 && y >= r.y - 4 && y <= r.y + r.h + 4);
       function FRAME(x, y, w, h, fill = "#0a3a6a", border = "#fff") {
+        OVR.push({ x, y, w, h });
         c.save();
         c.shadowColor = "rgba(0,0,0,.85)";
         c.shadowBlur = 20;
@@ -3648,6 +3655,7 @@
           col = COL[vp];
         let y = 87;
         const card = (h, draw) => {
+          OVR.push({ x, y, w, h });
           c.save();
           c.shadowColor = "rgba(0,0,0,.85)";
           c.shadowBlur = 28;
@@ -4014,6 +4022,8 @@
         showInfo ||
         showRules ||
         showCfg;
+      /* Só telas realmente modais bloqueiam o mapa inteiro. */
+      const modalOv = () => (G && G.mv) || (G && G.fortify) || (G && G.hand) || showCards;
       const PHB = {
         R: "Ir para\nAtaque",
         A: "Encerrar ataques\nReagrupar",
@@ -4609,7 +4619,7 @@
         VB.h = 1080;
       }
       function mapOn() {
-        return !!G && ((scr == "game" && !anyOv()) || (scr == "win" && G.look && !showStats));
+        return !!G && ((scr == "game" && !modalOv()) || (scr == "win" && G.look && !showStats));
       }
       /* MIX: nomes escondidos no zoom inicial e para fora; aparecem a partir do 2º nível de zoom para dentro */
       function showNames() {
@@ -4789,6 +4799,7 @@
       }
       function draw() {
         btns = [];
+        OVR = [];
         if (G && scr != "menu") {
           stUpd();
           if (scr == "win" && !G.gEnd) G.gEnd = Date.now();
@@ -5577,7 +5588,7 @@
       function pick(x, y) {
         for (const b of btns)
           if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return { b };
-        if (scr == "game" && !anyOv()) {
+        if (scr == "game" && !modalOv() && !inOvr(x, y)) {
           const zs = zsc(),
             mx = VB.x + x / zs,
             my = VB.y + y / zs;
@@ -6124,6 +6135,8 @@
       }
       function aimTerritory(k) {
         if (!mapOn() || !vrTerritoryMeshes.length) return null;
+        const sh = aim(k);
+        if (sh && inOvr(sh.x, sh.y)) return null;
         tm.identity().extractRotation(k.matrixWorld);
         ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
         ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
@@ -6166,7 +6179,7 @@
         });
         k.addEventListener("squeezestart", () => {
           const h = aim(k);
-          if (h && mapOn()) {
+          if (h && mapOn() && !inOvr(h.x, h.y)) {
             const zs = zsc();
             vGrab = { k, mx: VB.x + h.x / zs, my: VB.y + h.y / zs };
           }
@@ -6191,7 +6204,7 @@
         if (R.xr.isPresenting || e.button !== 0) return;
         mPanned = false;
         const h = scrHit(e);
-        if (h && mapOn() && !(pick(h.x, h.y) || {}).b)
+        if (h && mapOn() && !inOvr(h.x, h.y) && !(pick(h.x, h.y) || {}).b)
           mDrag = { sx: h.x, sy: h.y, vx: VB.x, vy: VB.y };
       });
       R.domElement.addEventListener("pointermove", (e) => {
@@ -6238,7 +6251,7 @@
             tex.needsUpdate = true;
             return;
           }
-          if (!h || !mapOn()) return;
+          if (!h || !mapOn() || inOvr(h.x, h.y)) return;
           e.preventDefault();
           zoomAt(e.deltaY > 0 ? 1 : -1, h.x, h.y);
         },
@@ -6260,7 +6273,8 @@
       const clk = new THREE.Clock(),
         q = new THREE.Quaternion(),
         f = new THREE.Vector3(),
-        rt = new THREE.Vector3();
+        rt = new THREE.Vector3(),
+        hp = new THREE.Vector3();
       let snapped = false;
       R.setAnimationLoop(() => {
         tick();
@@ -6282,11 +6296,18 @@
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
         if (s) {
-          R.xr.getCamera().getWorldQuaternion(q);
-          f.set(0, 0, -1).applyQuaternion(q);
-          f.y = 0;
-          f.normalize();
-          rt.set(-f.z, 0, f.x);
+          /* Direções tiradas da pose real da cabeça (matriz mundial da câmera, já com a rotação do rig):
+             frente = -Z da câmera, direita = +X da câmera, ambos achatados no plano do chão. */
+          cam.updateWorldMatrix(true, false);
+          {
+            const me = cam.matrixWorld.elements;
+            f.set(-me[8], 0, -me[10]);
+            if (f.lengthSq() < 1e-4) f.set(me[4], 0, me[6]).multiplyScalar(-1); // olhando reto p/ cima/baixo
+            f.normalize();
+            rt.set(me[0], 0, me[2]);
+            if (rt.lengthSq() < 1e-4) rt.set(-f.z, 0, f.x);
+            rt.normalize();
+          }
           for (const src of s.inputSources) {
             const g = src.gamepad;
             if (!g) continue;
@@ -6317,7 +6338,16 @@
                 }
               } else zAcc = 0;
               if (Math.abs(x) > 0.7 && Math.abs(x) > Math.abs(y) && !snapped) {
+                /* Gira em volta da CABEÇA (não da origem do rig), senão a posição do jogador muda junto. */
+                cam.updateWorldMatrix(true, false);
+                hp.setFromMatrixPosition(cam.matrixWorld);
+                const hx0 = hp.x,
+                  hz0 = hp.z;
                 rig.rotation.y -= (Math.sign(x) * Math.PI) / 6;
+                rig.updateMatrixWorld(true);
+                hp.setFromMatrixPosition(cam.matrixWorld);
+                rig.position.x += hx0 - hp.x;
+                rig.position.z += hz0 - hp.z;
                 snapped = true;
               } else if (Math.abs(x) < 0.3) snapped = false;
             }
