@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
+  <head><base href="https://d16ilfvy4mv02r.cloudfront.net/workspaces/rLG2WUz3ViVwKxvQIyHhZydR8cQHk4xs/6450c67a-fe8b-4dde-a5d3-5b2dab4d550c/files/">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Strategic Winner VR</title>
@@ -28,6 +28,143 @@
       import * as THREE from "three";
       import { VRButton } from "three/addons/webxr/VRButton.js";
       import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
+      import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+      /* =====================================================================================
+         LEIA PRIMEIRO — INSTRUÇÕES PARA QUALQUER IA QUE CONTINUAR ESTE ARQUIVO
+         =====================================================================================
+         OBJETIVO: converter para VR (WebXR + Three.js) o jogo "Strategic Winner" (arquivo original
+         "index_7 (Perfeito)"). NÃO INVENTAR NADA: regras, textos, visual e comportamento devem ser
+         IDÊNTICOS ao original. Só se muda COMO é desenhado (do canvas 2D para objetos 3D), para ficar
+         leve no óculos. A lógica do jogo (G, clickT, attack, bots, etc.) NÃO deve ser alterada.
+
+         ARQUITETURA ATUAL: o jogo inteiro é desenhado por draw() no canvas 2D "S" (1920x1080), usado
+         como textura (tex) do plano "screen" na sala de cinema. O mapa muda de lugar com o zoom/pan
+         pela caixa VB (viewBox) e zsc() (escala). O grupo 3D do mapa segue VB via syncVRMapTransform().
+         CAMADAS (de trás para a frente, todas na área da tela 9.6 x 5.4 m, recortadas por vrClip):
+           z -8.865  vrSea           plano azul do mar (#5bbcd8)                     [3D]
+           z -8.860  vrFillGroup     preenchimento (cor do dono) de cada território  [3D]  <- ETAPA 4
+           z -8.855  vrStrokeGroup   bordas dos territórios (preta/branca/vermelha...) [3D]  <- ETAPA 5
+           z -8.850  screen          canvas 2D, agora TRANSPARENTE onde é mapa       [canvas]
+           z -8.820  vrMapGroup      malhas invisíveis de clique (layer 1) + destaque hover [3D] <- ETAPA 3
+         Ordem de desenho: fills renderOrder = índice (<1000) -> screen 1000 -> destaque hover 2000.
+
+         INTERRUPTOR DE SEGURANÇA: const VR_MAP_3D_FILLS (logo abaixo). Em false tudo volta ao
+         comportamento antigo (mar e cores desenhados no canvas, tela opaca). Se algo der errado
+         com a etapa 4, teste com false para comparar.
+
+         PROGRESSO (marque [x] ao concluir; faça UMA etapa por vez e teste no óculos entre elas):
+           [x] 1. Sala de cinema 3D + canvas como tela + som + andar/girar + ponteiros.
+           [x] 2. Malhas 3D invisíveis dos territórios para a mira (buildVRHitMap / aimTerritory).
+           [x] 3. Destaque (hover) do território em 3D (vrHoverT / vrHL). onHover não redesenha o canvas.
+           [x] 4. Cor de preenchimento dos territórios em 3D (syncVRFills, chamado todo quadro no loop).
+                  Em draw(): fundo do mar virou clearRect e o c.fill(P2[t]) foi pulado quando
+                  VR_MAP_3D_FILLS. Obs: o mar e os fills só aparecem quando scr != "menu".
+           [x] 5. BORDAS em 3D (FEITO: vrSetStroke/vrSetOverlay/vrStrokeEnd, chamados dentro de draw();
+                  interruptor VR_MAP_3D_STROKES; grupo vrStrokeGroup em z -8.855; contorno = ribbon via
+                  SVGLoader.pointsToStroke, largura em unidades do mapa, escala junto com o zoom).
+                  Texto original da etapa: BORDAS dos territórios em 3D: hoje ainda eram c.stroke(P2[t]) dentro do laço
+                  "for (const t of G.T)" de draw(). Cores/larguras: t==G.sel -> #fff 7px; alvo de ataque
+                  #ff2222; reforço/mover #33ff33; airTarget #ff7800; airEligible #ffad33;
+                  missileEligible #ff5c31; missileArmed #ffdd00; normal #111 2.5px. Também os
+                  contornos tracejados amarelos (G.cp, G.ts, G.fl). Sugestão: THREE.LineLoop/Line2 por
+                  território (contorno do ShapeGeometry), atualizados em uma função syncVRStrokes()
+                  chamada no loop, igual ao syncVRFills(). Depois, remover esses c.stroke do canvas.
+           [x] 6. FEITO: linhas pontilhadas = vrBuildConn() (malha única por mapa, atrás dos fills, filha de
+                  vrFillGroup, interruptor VR_MAP_3D_LINES); seta e explosão = vrFxArrow/vrFxBoom/vrFxHide,
+                  chamados no bloco G.fx de draw() (objetos filhos de vrStrokeGroup, interruptor VR_MAP_3D_FX).
+                  Texto original: Linhas pontilhadas de conexão (M.Q, connGeom/connPt) e a seta/explosão de ataque
+                  (G.fx, fxPath/fxAt) em 3D.
+           [x] 7. FEITO: rótulos em 3D = vrSyncLabels()/vrDrawLabel() (um plano + mini-canvas por território em
+                  vrLabelGroup, z -8.8525, renderOrder 900, interruptor VR_MAP_3D_LABELS). Usa as mesmas funções
+                  T/TN/TK/drawTankIcons trocando `c`; redesenha só quando a assinatura (sig) muda, máx. 12 por quadro.
+                  Em draw(), o laço de rótulos é pulado quando VR_MAP_3D_LABELS. Inclui ✈ e 🚀 do ataque aéreo/míssil.
+           [x] 8. FEITO: interruptor VR_MAP_3D_LIGHT. Pan (mouse e grip) chama redrawPan() = só syncVRMapTransform();
+                  animação de ataque não reenvia a textura a cada quadro. Zoom: ver 9d (antes redraw() 1x por passo,
+                  atualiza o texto "Zoom" da HUD). Se algo da HUD ficar desatualizado, teste com false.
+           [x] 9d. FEITO: zoom (roda/stick/botões +/-) só move o grupo 3D a cada passo e redesenha a HUD
+                          uma vez 180 ms depois do último passo (zoomHudT em zoomAt). false = VR_MAP_3D_LIGHT.
+                          [x] 9e. FEITO: tela Soldados conferida/ajustada.
+                          [x] 9f. FEITO: tela de troca de cartas por Soldados igual ao original (painel azul, dicas,
+                                  "Essa Troca vale", cartas 200x262 com silhueta, Fechar sem trocar/Trocar cartas,
+                                  3ª carta inválida recusada com aviso vermelho = G.tradeFlash). 
+                          [x] 9g. FEITO: Estatísticas (statsScreen) iguais ao showBattleData do original: painel
+                                  #0a1628 borda dourada, cabeçalho + Olhar Mapa/Nova Partida, CLASSIFICAÇÃO (com Tanques/
+                                  Aviões se ativos), grade 2 colunas com objetivo cumprido em destaque (G.winObj). Sem as
+                                  animações de pulso.
+                          [x] 9h. FEITO: tela de Fim de jogo (VITÓRIA) igual ao showVictory do original: sombra da
+                                  caixa, listras diagonais douradas, brilho colorido nos textos, fontes/rotação/espaçamento
+                                  do hype. 
+                          [x] 9i. FEITO: explosão da conquista igual ao explosionAt() do original (núcleo, 2 anéis,
+                                  faíscas, destroços, destroços voando e fumaça) em 3D: vrBurstInit/Start/Tick, interruptor
+                                  VR_MAP_3D_BURST. 
+                          [x] 9j. FEITO: tremor dos territórios no ataque (vrShake/vrShakeTick, interruptor
+                                  VR_MAP_3D_SHAKE). O traço do tiro (shotTrace) já era a seta 3D da etapa 6b.
+                                  [x] 9k. FEITO: míssil = som de explosão + tremor fast + até 3 explosões simultâneas
+                                  (vrBursts = 3 cópias de vrBurst; fireMissileStrike chama vrBurstStart).
+                                  [x] 9l. FEITO: ataque com Aviões = tremor short-def + seta 3D descendo de cima até o alvo
+                                  (planeShotTrace), em resolvePlaneAttack (jogador e bots). Diferença: quando o Avião
+                                  está suspenso, o original sai do ícone do Avião; aqui sai sempre 260 px acima.
+                                  [x] 9m. FEITO: com o Avião suspenso (G.airMode && G.airTarget), a seta sai do ícone ✈
+                                  do rótulo (x - cs*1.45, y + cs*0.7), sem desvio.
+                          [x] 9n. FEITO: pássaro (perdiz) e SATÉLITE em 3D = vrCreateFlyer/vrDrawBird/vrDrawSat/
+                                  vrShootDown/vrFlyTick/vrFlyRemove/vrRemoveOnePiece (grupo vrFlyGroup em espaço de
+                                  TELA fixo, na frente do canvas; clicável com gatilho VR e mouse). Cai em 1,5 s
+                                  até o centro de um território do jogador humano com >1 soldado, explode, treme
+                                  forte e perde 1 soldado + log/toast, igual ao shootDownEntity do original.
+                                  Satélite a cada 2 min (1 por vez) via vrStartFlyingEntities(); o original NÃO
+                                  instancia o pássaro, então por paridade ele fica disponível mas fora da
+                                  programação automática. Interruptor: VR_FLY_3D.
+           [x] 9o. FEITO: auditoria estática de animações/ataques/capturas/mísseis/aviões contra o original
+                  (ver bloco ROTEIRO: 33 parâmetros conferidos, sem divergência). Nada de lógica mudou.
+           [x] 9p. FEITO: TERRITÓRIOS SUSPENSOS ("levante") em 3D — igual ao original. Território
+                  selecionado / origem e alvo de ataque / alvo de avião / alvo de míssil sobe
+                  (9px,-11px) com placa de sombra no chão (syncVRLift, chamado todo quadro; interruptor
+                  VR_LIFT_3D). Faltam só os itens de TESTE (não dá para verificar no sandbox):
+           [x] 9q. FEITO: DIM VEIL — quando há escolha de alvo (território selecionado no ataque/reagrupar,
+                  modo Avião ou Míssil), os territórios NÃO envolvidos escurecem (cor ×0,5) e o mar
+                  escurece (×0,38), igual ao .terr-dim-veil/.dim do original. Os alvos válidos sobem
+                  junto (vrLiftedSet inclui vizinhos-alvo e alvos de Avião/Míssil). syncVRFills aplica a
+                  cor escurecida sem criar malhas novas (sem custo de ordenação). Interruptor: VR_DIM_3D.
+           [x] 9r. FEITO: LEVANTE NA DISTRIBUIÇÃO DE REFORÇOS (fases R e P1) — era a ÚNICA situação
+                  de levante do original que faltava aqui. Agora, como no original (reinfLiftMap /
+                  reinfEligible), TODOS os territórios onde o jogador humano PODE colocar soldados de
+                  direito sobem (9px,-11px) com a placa de sombra, e o resto do mapa + o mar escurecem
+                  (reinfDimTerritories/waterDim). Situações: P1 com soldados iniciais; R com G.pend>0;
+                  R só com bônus de continente pendente (G.cp -> só os seus territórios daquele
+                  continente, regra 06-A); R com o passo de tanques/fábrica (G.ts) -> territórios
+                  válidos para o passo. Implementado em vrReinfEligible(), usado por vrLiftedSet() e
+                  vrDimActive(). Também corrigido: com o modo MÍSSEIS sobem apenas os alvos que o
+                  jogador tem CARTA (missileCardTargets), como no original, e não todos os inimigos.
+                  Interruptores: VR_LIFT_3D / VR_DIM_3D (desligar = volta ao comportamento anterior).
+                                  PRÓXIMA: partida completa (regras ao vivo) e testes no Quest real (nitidez/FPS/controles).
+           [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
+                  [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
+                          quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
+                  [x] 9b. NADA A FAZER: draw() só roda em mudança real (cronômetro 1x/s, cliques), não por quadro.
+                  [x] 9c. FEITO: canvas 1280x720 (VR_CANVAS_K = 2/3 no topo do arquivo; 1 = tamanho antigo). draw()
+                          aplica a escala nos 3 setTransform. pick() mantém identidade (isPointInPath). TESTAR no
+                          óculos a nitidez do texto; se ficar borrado, usar VR_CANVAS_K = 1 ou 0.8.
+
+         COMO TESTAR: abrir no navegador (mouse: arrastar = pan, roda = zoom) e no óculos (gatilho =
+         clicar, grip = arrastar mapa, stick direito = zoom). Conferir: cores dos donos iguais ao
+         original, troca de dono após conquista, território "escondido" (G.fillHid) cinza, zoom/pan
+         com tudo alinhado, menu/vitória/estatísticas sem buracos transparentes.
+         CUIDADOS: ShapeGeometry usa regra nonzero (o canvas usava evenodd): se algum território com
+         "buraco" ficar errado, ajustar em buildVRHitMap. Não usar localStorage. Manter y invertido
+         (scale.y negativo) nos grupos do mapa. Ao terminar uma etapa, atualize este bloco.
+         ===================================================================================== */
+      const VR_MAP_3D_FILLS = true;
+      /* Etapa 5: bordas em 3D. Em false, as bordas voltam a ser desenhadas no canvas (c.stroke). */
+      const VR_MAP_3D_STROKES = VR_MAP_3D_FILLS;
+      /* Etapa 6: linhas pontilhadas de conexão e seta/explosão de ataque em 3D (false = canvas). */
+      const VR_MAP_3D_LINES = VR_MAP_3D_FILLS;
+      const VR_MAP_3D_FX = VR_MAP_3D_STROKES;
+      /* Etapa 7: nomes, números, ícones e marcadores (✈ 🚀) dos territórios em 3D (false = canvas). */
+      const VR_MAP_3D_LABELS = VR_MAP_3D_FILLS;
+      /* Etapa 8: com mar, cores, bordas, linhas, seta e rótulos em 3D, o canvas só tem HUD/painéis. Então
+         arrastar o mapa (pan) NÃO redesenha nem reenvia o canvas; só move o grupo 3D. Também a animação
+         da seta de ataque deixa de reenviar a textura 1920x1080 a cada quadro. (false = comportamento antigo) */
+      const VR_MAP_3D_LIGHT = VR_MAP_3D_FILLS && VR_MAP_3D_STROKES && VR_MAP_3D_LINES && VR_MAP_3D_FX && VR_MAP_3D_LABELS;
       const D = {
         A: {
           P: {
@@ -784,12 +921,71 @@
        *
        * AINDA FALTA / PRECISA SER CONFERIDO CONTRA O ORIGINAL:
        * [x] Botão de ação das fases (Encerrar ataques / Encerrar turno com confirmação SIM/NÃO / Desistir) e caixa azul informativa; textos extras embaixo do mapa removidos.
-       * [ ] Telas de troca de cartas, Soldados (chooser), Estatísticas e Fim de jogo.
+       * [x] Tela Soldados (chooser) conferida com o CSS original (etapa 9e): cores, tamanhos 120/70,
+       *     fontes 30/60/24 iguais; corrigido contorno preto 2px e borda branca 3px por dentro.
+       * [x] Telas de troca de cartas, Estatísticas e Fim de jogo (9f cartas, 9g estatísticas e 9h fim FEITOS).
        * [ ] Jogar partidas completas e comparar cada regra, fase, carta, unidade e vitória.
-       * [ ] Revisar traduções de textos dinâmicos para cobrir as mesmas frases do original.
+       *     (auditoria estática das REGRAS já feita: ataque com dados e modo A 2x1 conferidos e corrigidos
+       *      — o attack() do VR agora tem as mesmas guardas do original: modo A exige 3 pontos e o modo
+       *      com dados exige >=2 peças (antes um território com só 1 Tanque "atacava" sem efeito). Também
+       *      conferidos e idênticos: bônus de continente (Totalidade + Parcialidade/MAP_A), bônus por
+       *      metade dos territórios e recompensa da troca de cartas (base + bônus de território).
+       *      Nesta 2ª rodada da auditoria, conferidos e IDÊNTICOS ao original: Ataque Aéreo (Aviões) —
+       *      planeAttackRound (modo A 2x1 e dados com defMax 2/3), applyPlaneAttackerLoss (dano acumulado
+       *      por pontos), dano limitado a ptsOf-1; Míssil — missilePointsFor (0,2×cartas×troca, mín.1),
+       *      missileCardCanAttack (modo A exige >1 ponto), laço 2-por-1 (A) e 1-dado (B/C) parando em 1
+       *      ponto, tradeCount++ por disparo; Objetivos/Vitória — objAch (dom25, t20s3, c07..c12, eliminação
+       *      com eliminação por outro→ 25 territórios) e checkWin (mundo inteiro antes do objetivo);
+       *      maxCards (A5/B7/C10/D∞) e carta ao fim do turno (2 se atingiu o limite, senão 1);
+       *      validação da troca (tripleOk = 3 do mesmo continente OU 3 continentes diferentes OU com
+       *      Coringa). CORRIGIDO nesta 3ª rodada: Reagrupamento (Regra 09) — o VR tinha uma trava
+       *      "G.fp" que só permitia um único movimento por turno (inventada, não existe no original);
+       *      removida para paridade: pode-se reagrupar várias vezes, cada destino vizinho da origem
+       *      (modo A) ou qualquer território seu (modo B "Livre"). Falta só a validação jogando
+       *      partidas inteiras.)
+       *
+       *      REGRAS 01–12 — VERIFICAÇÃO COMPLETA (todas ligadas ao motor, RS[0..11] consumidos):
+       *      01 mapa (RS[0]: A=Equilibrado→mapa D.B, B=Desequilibrado→mapa D.A) ......... OK
+       *      02 rodadas/eliminação (RS[1]: D=10,E=15,F=20,G=30; B=1º elim, C=2º elim) .. OK
+       *      03 tempo do turno (RS[2]: 120/180/240/300/Livre; timeout auto-distribui) ... OK
+       *      04 nº de objetivos (RS[3]: A=1,B=2,C=3; pool com 14 objetivos, ids iguais) . OK
+       *      05 soldados de continente (RS[4]): Totalidade .b iguais (A:7,3,7,4,10,3 /
+       *         B:7,5,7,5,8,5) + Parcialidade só no mapa desequilibrado (6/5/4/7→3/2/2/3) OK
+       *      06 distribuição (RS[5]: A=só no continente, B=livre) ....................... OK
+       *      07 máximo de cartas (RS[6]: A5/B7/C10/D ilimitado) ......................... OK
+       *      08 ataque/defesa (RS[7]: A 2x1+1x1, B 3x2, C 3x3) .......................... OK
+       *      09 reagrupamento (RS[8]: A vizinho, B livre) ............................... OK
+       *      10 carta de fim de turno (RS[9]: limite 5/7/10 → 2 cartas, senão 1) ........ OK
+       *      11 especiais (RS[10]: Tanques BFG, Aviões CFG, Mísseis DFG) ................ OK
+       *      12 aleatoriedade (RS[11]: A Xorshift128, B Cripto, C MT19937, D PCG32,
+       *         E Shuffle-Bag) — CORRIGIDO nesta rodada: o VR usava r*6 (multiplicação);
+       *         agora usa rejection sampling (x%6)+1 em A/B/D e módulo em C, igual ao
+       *         _diceRand() do original. ............................................. OK
+       *      Diferança intencional (não é bug): o VR ENCERRA a partida no limite de rodadas
+       *      (Regra 02 D–G), enquanto o original não tinha essa checagem implementada.
+       * [x] Revisar traduções de textos dinâmicos para cobrir as mesmas frases do original.
+       *     (auditoria: a tabela G_PT_EN do VR é idêntica à G_PT_EN do original — 217 pares, 0 faltando,
+       *      0 divergentes; o VR só acrescenta 9 frases próprias de VR. Corrigido: a linha de status do
+       *      LOG agora mostra "★ +2 cartas!" ao atingir o limite, como renderLogOverlay/renderPhaseBar do
+       *      original.)
        * [x] Seletor A/B/C: C usa a partida local original com acesso externo pelo Parsec.
        *     D/Internet continua fora do seletor VR porque o original desativa o início nesse modo.
-       * [ ] Comparar animações, ataques, capturas, mísseis e aviões com o original.
+       * [x] Comparar animações, ataques, capturas, mísseis e aviões com o original.
+       *     (etapa 9o — auditoria estática de código, parâmetros idênticos ao original:
+       *      • explosão/conquista (explosionAt → vrBurstInit1/vrBurstTick1): 35 faíscas (r 60–200,
+       *        tamanho 3–9), 18 destroços (r 90–260, tamanho 7–19, giro 720°), anéis r 8→200 (1,1s /
+       *        0,9s + atraso 0,12s), núcleo r 5→120 (0,95s), pós-explosão aos 600 ms com 25 destroços
+       *        voadores (dist 200–800) + 15 partículas de fumaça (3s). Idêntico em contagem/raio/tempo.
+       *      • míssil (doMissileStrike → fireMissileStrike): soundExplosion + shake 'fast' + até 3
+       *        explosões (min(pontos,3)); laço 2-por-1 (A) / 1-dado (B/C) parando em 1 ponto — igual.
+       *      • ataque/captura (attack): soundShot + arco (vrFxTick/vrFxArrow); conquista dispara a
+       *        explosão só com fx.cq, tremor atk short-atk / def short-def (fast na conquista) — igual.
+       *      • avião (planeShotTrace): seta de 260 px acima (desvio ±60 x, jitter 36) ou, com Avião
+       *        suspenso (G.airMode && G.airTarget), do ícone ✈ (jitter 0) — igual ao original.
+       *      • voadores (shootDownEntity/perdiz+satélite): cai em 1,5 s ao centro de território do
+       *        jogador humano com >1 soldado, explode, tremor 'fast', perde 1 soldado — igual.
+       *      A correção fina de "sensação" só é possível de olho no óculos; por isso o item abaixo
+       *      continua aberto. Nenhuma divergência de lógica/parâmetro foi encontrada nesta etapa.)
        * [ ] Testar no Meta Quest real: nitidez sem foveação, FPS, controles e conforto.
        *
        * Atualize cada item apenas após validar o fluxo correspondente. O objetivo é paridade,
@@ -798,9 +994,13 @@
 
       /* ===== TELA (canvas 1920x1080 que vira a "tela de cinema") ===== */
       const S = document.createElement("canvas");
-      S.width = 1920;
-      S.height = 1080;
-      const c = S.getContext("2d");
+      /* Etapa 9c: o canvas da HUD pode ter resolução menor (ex.: 1280x720) e o jogo continua usando
+         coordenadas 1920x1080: draw() aplica a escala VR_CANVAS_K no setTransform. Para voltar ao
+         tamanho antigo, use VR_CANVAS_K = 1. */
+      const VR_CANVAS_K = 2 / 3;
+      S.width = Math.round(1920 * VR_CANVAS_K);
+      S.height = Math.round(1080 * VR_CANVAS_K);
+      let c = S.getContext("2d"); // let: a etapa 7 troca c temporariamente pelo mini-canvas de cada rótulo
       const COL = ["#d62828", "#2378c8", "#228b3a", "#f6e03e", "#85299a", "#f06a0a"],
         PN = ["Vermelho", "Azul", "Verde", "Amarelo", "Roxo", "Laranja"];
       const rl = (i) => RU[i].o.find((o) => o[0] == RS[i])[1];
@@ -1207,7 +1407,7 @@
           t ^= t << 11;
           t ^= t >>> 8;
           xs[0] = (t ^ s0 ^ (s0 >>> 19)) >>> 0;
-          return xs[0] / 4294967296;
+          return xs[0];
         };
         const mt = new Uint32Array(624);
         let mi = 625;
@@ -1235,7 +1435,7 @@
           y ^= (y << 7) & 0x9d2c5680;
           y ^= (y << 15) & 0xefc60000;
           y ^= y >>> 18;
-          return (y >>> 0) / 4294967296;
+          return y >>> 0;
         };
         const M64 = (1n << 64n) - 1n;
         let ps = (BigInt(u32()) << 32n) | BigInt(u32()),
@@ -1260,17 +1460,31 @@
         };
         return {
           die() {
+            // Igual ao _diceRand() do original: A/B/D usam rejection sampling (x%6)+1 e C usa
+            // módulo direto. Assim os dados seguem exatamente o mesmo sistema da Regra 12.
             const m = RS[11];
             if (m == "E") return fromBag();
-            const r =
-              m == "B"
-                ? u32() / 4294967296
-                : m == "C"
-                  ? mtN()
-                  : m == "D"
-                    ? pcg() / 4294967296
-                    : xor();
-            return 1 + ((r * 6) | 0);
+            if (m == "B") {
+              let x;
+              do {
+                x = u32();
+              } while (x >= 0xfffffffc);
+              return (x % 6) + 1;
+            }
+            if (m == "C") return (mtN() % 6) + 1;
+            if (m == "D") {
+              let x;
+              do {
+                x = pcg();
+              } while (x >= 0xfffffffc);
+              return (x % 6) + 1;
+            }
+            // A (Xorshift128, padrão) e fallback
+            let x;
+            do {
+              x = xor();
+            } while (x >= 0xfffffffc);
+            return (x % 6) + 1;
           },
         };
       })();
@@ -1378,6 +1592,8 @@
         G.msg = "Primeira Rodada: posicionamento inicial.";
         scr = "game";
         hover = "";
+        vrFlyReset(); // etapa 9n: limpa voadores da partida anterior
+        vrStartFlyingEntities(); // etapa 9n: satélite a cada 2 min (como startFlyingEntities do original)
       }
       function p1Turn() {
         if (G.cur < 0) {
@@ -1549,6 +1765,19 @@
         const planesLost = before - (G.pl[p] || 0);
         if (G.st && G.st[p]) G.st[p].at++;
         soundShot();
+        /* etapa 9l: igual ao original: shakeTerritory(t,'short-def') + planeShotTrace(t): seta que desce
+           de cima (260 px acima, x aleatório ±30) em curva até o centro do alvo, usando a seta 3D do G.fx. */
+        vrShake(t, "short-def");
+        const PB = G.M && G.M.C && G.M.C[t];
+        if (PB) {
+          /* etapa 9m: com o Avião suspenso sobre o alvo (✈ do rótulo), a seta sai do centro do ícone e
+             sem desvio (jitter 0), como no original; senão sai 260 px acima com desvio ±18. */
+          const lmP = G.airMode && G.airTarget === t ? lmet() : null,
+            PA = lmP ? [PB[0] - lmP.cs * 1.45, PB[1] + lmP.cs * 0.7] : [PB[0] + (Math.random() - 0.5) * 60, PB[1] - 260],
+            jt = lmP ? 0 : 36,
+            F = fxPath({ A: PA, B: PB, c1: [(PA[0] + PB[0]) / 2 + (Math.random() - 0.5) * jt, (PA[1] + PB[1]) / 2 + (Math.random() - 0.5) * jt] });
+          G.fx = { s: null, t, t0: performance.now(), cq: false, plane: 1, F, fl: Math.max(380, Math.min(700, 300 + 11 * Math.sqrt(F.total))) };
+        }
         G.msg =
           "Ataque aéreo em " +
           t +
@@ -1892,6 +2121,12 @@
           (leftover ? " (" + leftover + " ponto(s) restante(s) perdido(s))" : "") +
           ".";
         addLog(PN[G.cur] + ": " + G.msg + " O míssil não conquista territórios.");
+        /* etapa 9k: igual ao doMissileStrike() do original: soundExplosion + shakeTerritory(t,'fast')
+           + explosionAt(t) repetido min(pontos, 3) vezes (cada uma com partículas aleatórias próprias). */
+        soundExplosion();
+        vrShake(t, "fast");
+        const C = G.M && G.M.C && G.M.C[t];
+        if (C) for (let k = 0; k < Math.min(ptsTotal, 3); k++) vrBurstStart(C[0], C[1]);
       }
       function toggleMissileMode() {
         if (G.ph !== "A") {
@@ -2033,6 +2268,7 @@
         if (cnt(p) == G.T.length) {
           G.win = p;
           G.why = "Conquistou todos os territórios do mundo!";
+          G.winObj = null;
           scr = "win";
           return;
         }
@@ -2040,6 +2276,7 @@
           if (objAch(p, o)) {
             G.win = p;
             G.why = "Objetivo cumprido: " + o.txt.replace(/<br>/g, " ");
+            G.winObj = o; // etapa 9g: só para destacar o objetivo cumprido nas Estatísticas
             scr = "win";
             return;
           }
@@ -2345,10 +2582,14 @@
       }
       const roll = (n) => Array.from({ length: n }, () => RNG.die()).sort((a, b) => b - a);
       function attack(s, t) {
+        const m = RS[7];
+        // Guardas iguais ao attack() do original: no modo A (2x1) o atacante precisa de 3 pontos;
+        // no modo com dados precisa de pelo menos 2 peças (min(3, peças-1) >= 1). Sem isso um
+        // território com só 1 Tanque (2 pontos) conseguiria "atacar" sem dados e sem efeito.
+        if (m == "A" ? ptsOf(s) < 3 : pcsOf(s) <= 1) return;
         if (G.st) G.st[G.cur].at++;
         soundAttack();
         soundShot();
-        const m = RS[7];
         let a = 0,
           la = 0,
           msg;
@@ -2446,6 +2687,9 @@
         }
         addLog(PN[G.cur] + ": " + s + " → " + t + " · " + G.msg);
         G.fx = { s, t, t0: performance.now(), cq: G.own[t] == G.cur };
+        // etapa 9j: como no original: atacante short-atk; defensor short-def, ou fast se foi conquistado
+        vrShake(s, "short-atk");
+        vrShake(t, G.fx.cq ? "fast" : "short-def");
         if (ptsOf(s) < mn()) G.sel = null;
       }
       function openFortifyChooser(from, to) {
@@ -2658,8 +2902,11 @@
             source &&
             source != t &&
             (free() || J[source].includes(t)) &&
-            available > 0 &&
-            (free() || !G.fp || (G.fp[0] == source && G.fp[1] == t));
+            available > 0;
+          // Regra 09: igual ao original, em cada fase de Reagrupamento pode-se mover várias
+          // vezes, desde que cada destino seja vizinho da origem (modo A) ou qualquer território
+          // seu (modo B "Livre"). O original NÃO trava a um único movimento (não tem G.fp);
+          // por isso a cláusula antiga "!G.fp" foi removida para manter a paridade.
           if (ok) {
             openFortifyChooser(source, t);
           } else {
@@ -3593,7 +3840,10 @@
             G.ph === "R"
               ? `Tropas disponíveis: ${totPend()}`
               : G.ph === "A"
-                ? `Conquistas este turno: ${G.cq || 0}`
+                ? // igual ao renderLogOverlay() do original: mostra "★ +2 cartas!" ao atingir o limite de cartas
+                  `Conquistas este turno: ${G.cq || 0}${
+                    cardThr() != null && (G.cq || 0) >= cardThr() ? " ★ +2 cartas!" : ""
+                  }`
                 : G.ph === "F"
                   ? "Reagrupamento de exércitos"
                   : "";
@@ -4302,13 +4552,15 @@
         c.save();
         if (disabled) c.globalAlpha = 0.35;
         c.beginPath();
-        c.arc(x + d / 2, y + d / 2, d / 2 + 3, 0, Math.PI * 2);
+        c.arc(x + d / 2, y + d / 2, d / 2 + 2, 0, Math.PI * 2); // outline 2px preto (original)
         c.fillStyle = "#000";
         c.fill();
         c.beginPath();
         c.arc(x + d / 2, y + d / 2, d / 2, 0, Math.PI * 2);
         c.fillStyle = hv ? "#25b34a" : "#1a8f3a";
         c.fill();
+        c.beginPath();
+        c.arc(x + d / 2, y + d / 2, d / 2 - 1.5, 0, Math.PI * 2); // borda 3px branca POR DENTRO
         c.lineWidth = 3;
         c.strokeStyle = "#fff";
         c.stroke();
@@ -4316,12 +4568,13 @@
         c.restore();
       }
       function chooserBox(x, y, w, h, label, size = 24) {
-        rr(x - 3, y - 3, w + 6, h + 6, 12);
+        rr(x - 2, y - 2, w + 4, h + 4, 12); // outline 2px preto (original)
         c.fillStyle = "#000";
         c.fill();
         rr(x, y, w, h, 10);
         c.fillStyle = "#0a3a6a";
         c.fill();
+        rr(x + 1.5, y + 1.5, w - 3, h - 3, 8.5); // borda 3px branca POR DENTRO
         c.lineWidth = 3;
         c.strokeStyle = "#fff";
         c.stroke();
@@ -4435,135 +4688,185 @@
         return h ? `${h}:${p(m)}:${p(x)}` : `${m}:${p(x)}`;
       };
       function statsScreen() {
+        /* Etapa 9g: igual ao showBattleData() do original: um painel #0a1628 com borda dourada 2px,
+           cabeçalho "ESTATÍSTICAS" + duração + botões Olhar Mapa / Nova Partida à direita, quadro
+           CLASSIFICAÇÃO e grade de 2 colunas (nome, tempo vivo, status e objetivos lado a lado, com o
+           objetivo cumprido do campeão em destaque). Medidas do original multiplicadas por K para
+           ocupar a tela (o original usa até 1700px x 98vh). As animações de pulso não foram portadas
+           (o canvas só redesenha em mudanças). */
         btns = [];
         const end = G.gEnd || Date.now(),
-          nm = (i) => cfg.names[i] + (G.bot[i] ? " (BOT)" : "");
+          showTk = tanksOn(),
+          showPl = planesOn(),
+          blk = 1;
         const pd = Array.from({ length: cfg.n }, (_, i) => {
           const a = G.st[i];
-          return { i, a, alive: (a.el || end) - G.g0, t: cnt(i), s: solOf(i) };
+          const s = solOf(i),
+            tk = tkTot(i),
+            pl = G.pl[i] || 0;
+          return { i, a, alive: (a.el || end) - G.g0, t: cnt(i), s, tk, pl, pieces: s + tk + pl };
         });
-        const rk = pd.slice().sort((a, b) => b.alive - a.alive || b.t - a.t || b.s - a.s);
-        c.fillStyle = "rgba(3,8,18,.96)";
+        const rk = pd.slice().sort((a, b) => b.alive - a.alive || b.t - a.t || b.pieces - a.pieces);
+        const X0 = 20,
+          Y0 = 10,
+          W0 = 1880,
+          H0 = 1060;
+        /* objetivos de cada jogador (com o do campeão marcado) */
+        const objsOf = (d) => {
+          const win = d.i == G.win;
+          let os = (G.ob[d.i] || []).map((o) => ({ txt: String(o.txt).replace(/<br>/g, " "), win: win && G.winObj === o }));
+          if (win && !os.some((x) => x.win)) os.unshift({ txt: G.winObj ? String(G.winObj.txt).replace(/<br>/g, " ") : G.why || "", win: true });
+          return os;
+        };
+        const lay = (K) => {
+          const colW = (W0 - 40 * K - 8 * K) / 2;
+          let cards = pd.map((d) => {
+            const os = objsOf(d),
+              n = Math.max(1, os.length),
+              bw = (colW - 24 * K - (n - 1) * 8 * K) / n,
+              lines = os.map((o) => {
+                const pre = (o.win ? "✔ OBJETIVO CUMPRIDO " : "") + (os.length > 1 ? "Objetivo X: " : "");
+                return wrapL(pre + o.txt, bw - 28 * K, 12 * K, 6).length;
+              }),
+              oh = (Math.max(1, ...lines) * 12 * 1.3 + 8 + 4) * K;
+            return { d, os, bw, oh, h: (14 + 22 + 5) * K + oh };
+          });
+          const rows = [];
+          for (let k = 0; k < cards.length; k += 2) rows.push(Math.max(cards[k].h, cards[k + 1] ? cards[k + 1].h : 0));
+          const rankH = (8 + 20 + 6 + 16) * K + rk.length * 27 * K;
+          const tot = 14 * K + 40 * K + rankH + 10 * K + rows.reduce((s, h) => s + h, 0) + (rows.length - 1) * 8 * K + 14 * K;
+          return { K, colW, cards, rows, rankH, tot };
+        };
+        let L = lay(1);
+        L = lay(Math.max(1, Math.min(1.7, H0 / L.tot)));
+        if (L.tot > H0) L = lay(L.K * (H0 / L.tot));
+        const K = L.K;
+        c.fillStyle = "rgba(0,0,0,.9)";
         c.fillRect(0, 0, 1920, 1080);
-        TX("DADOS DA BATALHA", 960, 50, 46, "#ffd400", "center", 1);
-        TX("Duração total da partida: " + fmtD(end - G.g0), 960, 96, 22, "#9ac", "center");
-        rr(60, 120, 1800, 64 + rk.length * 40, 12);
-        c.fillStyle = "rgba(255,221,0,.06)";
+        const ph = Math.min(H0, L.tot),
+          py = 540 - ph / 2;
+        rr(X0, py, W0, ph, 14);
+        c.fillStyle = "#0a1628";
         c.fill();
         c.lineWidth = 2;
         c.strokeStyle = "#ffdd00";
         c.stroke();
-        TX("CLASSIFICAÇÃO", 960, 146, 24, "#ffdd00", "center", 1);
+        const lx = X0 + 20 * K,
+          iw = W0 - 40 * K;
+        let yy = py + 14 * K;
+        /* cabeçalho */
+        c.letterSpacing = "1px";
+        TX("ESTATÍSTICAS", lx, yy + 18 * K, 26 * K, "#ffdd00", "left", blk);
+        c.letterSpacing = "0px";
+        TX("Duração total da partida: " + fmtD(end - G.g0), lx + tw("ESTATÍSTICAS", 26 * K) + 20 * K, yy + 18 * K, 13 * K, "#9ac", "left");
+        const bh = 34 * K,
+          bwN = tw("Nova Partida", 13 * K) + 36 * K,
+          bwO = tw("Olhar Mapa", 13 * K) + 36 * K;
+        B(lx + iw - bwN, yy + 1 * K, bwN, bh, "Nova Partida", () => {
+          showStats = 0;
+          scr = "menu";
+          hover = "";
+        }, { z: 13 * K, bg: "#1a2a00", borderColor: "#ffdd00", textColor: "#ffdd00", k: "st-new" });
+        B(lx + iw - bwN - 10 * K - bwO, yy + 1 * K, bwO, bh, "Olhar Mapa", () => {
+          showStats = 0;
+          G.look = 1;
+        }, { z: 13 * K, bg: "#0a1e2a", borderColor: "#7fc9ff", textColor: "#7fc9ff", k: "st-look" });
+        yy += 40 * K + 10 * K;
+        /* CLASSIFICAÇÃO */
+        const rH = L.rankH - 16 * K;
+        rr(lx, yy, iw, rH, 10 * K);
+        c.fillStyle = "rgba(255,221,0,0.06)";
+        c.fill();
+        c.lineWidth = 1;
+        c.strokeStyle = "#ffdd00";
+        c.stroke();
+        TX("CLASSIFICAÇÃO", 960, yy + 18 * K, 14 * K, "#ffdd00", "center", blk);
+        let ry = yy + 34 * K;
         rk.forEach((r, k) => {
-          const y = 172 + k * 40;
-          rr(80, y, 1760, 34, 7);
-          c.fillStyle = "rgba(0,0,0,.3)";
+          rr(lx + 12 * K, ry, iw - 24 * K, 24 * K, 7 * K);
+          c.fillStyle = "rgba(0,0,0,0.22)";
           c.fill();
-          TX(k + 1 + "º", 120, y + 17, 22, "#fff", "center", 1);
+          const cy = ry + 12 * K;
+          TX(k + 1 + "º", lx + 34 * K, cy, 14 * K, "#fff", "center", blk);
           c.beginPath();
-          c.arc(165, y + 17, 9, 0, 7);
+          c.arc(lx + 60 * K, cy, 5 * K, 0, 7);
           c.fillStyle = COL[r.i];
           c.fill();
-          c.lineWidth = 2;
+          c.lineWidth = 1;
           c.strokeStyle = "#fff";
           c.stroke();
-          TX(nm(r.i), 185, y + 17, 22, COL[r.i], "left", 1);
-          TX(
-            `Tempo vivo: ${fmtD(r.alive)}     Territórios: ${r.t}     Soldados: ${r.s}`,
-            1820,
-            y + 17,
-            20,
-            "#cfe0ff",
-            "right",
-          );
+          TX(cfg.names[r.i], lx + 73 * K, cy, 13 * K, COL[r.i], "left", blk);
+          const parts = [`Tempo vivo no Jogo: ${fmtD(r.alive)}`, `Territórios: ${r.t}`, `Soldados: ${r.s}`];
+          if (showTk) parts.push(`Tanques: ${r.tk}`);
+          if (showPl) parts.push(`Aviões: ${r.pl}`);
+          let rx = lx + iw - 21 * K;
+          for (let j = parts.length - 1; j >= 0; j--) {
+            TX(parts[j], rx, cy, 12 * K, "#cfe0ff", "right");
+            rx -= tw(parts[j], 12 * K) + 18 * K;
+          }
+          ry += 27 * K;
         });
-        const y0 = 200 + rk.length * 40,
-          cw = 580,
-          ch = Math.min(330, (1080 - y0 - 130) / 2 - 10);
-        pd.forEach((d, k) => {
-          const x = 60 + (k % 3) * (cw + 30),
-            y = y0 + ((k / 3) | 0) * (ch + 14),
-            win = d.i == G.win;
-          rr(x, y, cw, ch, 12);
-          c.fillStyle = "#0a1628";
+        yy += rH + 10 * K;
+        /* grade de 2 colunas */
+        L.cards.forEach((cd, k) => {
+          const d = cd.d,
+            win = d.i == G.win,
+            col = k % 2,
+            row = (k / 2) | 0,
+            x = lx + col * (L.colW + 8 * K),
+            y = yy + L.rows.slice(0, row).reduce((s, h) => s + h + 8 * K, 0),
+            h = L.rows[row];
+          rr(x, y, L.colW, h, 10 * K);
+          c.fillStyle = win ? "rgba(255,221,0,0.05)" : "rgba(255,255,255,0.03)";
           c.fill();
-          c.lineWidth = win ? 5 : 2;
+          c.lineWidth = win ? 3 : 1;
           c.strokeStyle = COL[d.i];
           c.stroke();
-          TX(nm(d.i), x + 18, y + 28, 26, COL[d.i], "left", 1);
+          const hy = y + 7 * K + 11 * K;
+          c.beginPath();
+          c.arc(x + 18 * K, hy, 6 * K, 0, 7);
+          c.fillStyle = COL[d.i];
+          c.fill();
+          c.lineWidth = 1;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          TX(cfg.names[d.i], x + 32 * K, hy, 16 * K, COL[d.i], "left", blk);
+          TX("Tempo vivo: " + fmtD(d.alive), x + 40 * K + tw(cfg.names[d.i], 16 * K), hy, 11 * K, "#9ac", "left", blk);
           const [st, sc] = win
             ? ["★ CAMPEÃO", "#ffdd00"]
             : d.a.el
-              ? ["Eliminado por " + PN[d.a.by], "#ff6a6a"]
+              ? ["Eliminado por " + (cfg.names[d.a.by] ?? "?"), "#ff6a6a"]
               : ["Sobreviveu até o fim", "#7fd97f"];
-          TX(st, x + cw - 18, y + 28, 20, sc, "right", 1);
-          let yy = y + 60;
-          TX("Objetivo:", x + 18, yy, 18, "#ffdd00");
-          yy += 24;
-          for (const o of G.ob[d.i]) {
-            for (const q of wrapL(o.txt.replace(/<br>/g, " "), cw - 36, 17, 2)) {
-              TX(q, x + 18, yy, 17, "#fff");
-              yy += 21;
-            }
-            if (yy > y + ch - 110) break;
-          }
-          const by = y + ch - 88,
-            bw = (cw - 36 - 24) / 3;
-          [
-            ["SOLDADOS", "Pico", d.a.pkS, "Final", d.s],
-            ["TERRITÓRIOS", "Pico", d.a.pkT, "Final", d.t],
-            ["COMBATE", "Ataques", d.a.at, "Conquistas", d.a.cq],
-          ].forEach(([L, a, av, b, bv], j) => {
-            const bx = x + 18 + j * (bw + 12);
-            rr(bx, by, bw, 76, 8);
-            c.fillStyle = "rgba(255,255,255,.06)";
+          TX(st, x + L.colW - 12 * K, hy, 12 * K, sc, "right", blk);
+          let ox = x + 12 * K;
+          const oy = y + (14 + 22 + 5) * K - 7 * K;
+          if (!cd.os.length) TX("—", ox, oy + 10 * K, 11 * K, "#889", "left");
+          cd.os.forEach((o, j) => {
+            rr(ox, oy, cd.bw, cd.oh, 7 * K);
+            c.fillStyle = o.win ? "rgba(255,221,0,0.13)" : "rgba(0,0,0,0.2)";
             c.fill();
-            c.lineWidth = 1;
-            c.strokeStyle = "rgba(255,255,255,.2)";
+            c.lineWidth = o.win ? 2 : 1;
+            c.strokeStyle = o.win ? "#ffdd00" : "#557";
             c.stroke();
-            TX(L, bx + bw / 2, by + 16, 15, "#ffdd00", "center");
-            TX(a + ": " + av, bx + bw / 2, by + 40, 17, "#8ef7ff", "center");
-            TX(b + ": " + bv, bx + bw / 2, by + 62, 17, "#7fd97f", "center");
+            const pre = cd.os.length > 1 ? `Objetivo ${j + 1}: ` : "",
+              head = (o.win ? "✔ OBJETIVO CUMPRIDO " : "") + pre,
+              ls = wrapL(head + o.txt, cd.bw - 28 * K, 12 * K, 6);
+            ls.forEach((q, n) => {
+              const ty = oy + 6 * K + n * 12 * 1.3 * K + 7.8 * K;
+              /* primeira linha: rótulos amarelos e o texto na cor normal */
+              if (n == 0 && head) {
+                const H = translateCanvasText(head).toUpperCase().trim();
+                if (q.startsWith(H)) {
+                  TX(H, ox + 14 * K, ty, (o.win ? 10 : 11) * K, "#ffdd00", "left", o.win ? blk : 0);
+                  TX(q.slice(H.length), ox + 14 * K + tw(H + " ", (o.win ? 10 : 11) * K), ty, 12 * K, o.win ? "#fff" : "#cfe", "left");
+                  return;
+                }
+              }
+              TX(q, ox + 14 * K, ty, 12 * K, o.win ? "#fff" : "#cfe", "left");
+            });
+            ox += cd.bw + 8 * K;
           });
-          TX("Tempo vivo: " + fmtD(d.alive), x + cw - 18, by - 14, 16, "#9ac", "right");
         });
-        B(
-          500,
-          990,
-          280,
-          70,
-          "Olhar Mapa",
-          () => {
-            showStats = 0;
-            G.look = 1;
-          },
-          { z: 26, bg: "#0a3a5a" },
-        );
-        B(
-          820,
-          990,
-          280,
-          70,
-          "Nova Partida",
-          () => {
-            showStats = 0;
-            start();
-          },
-          { z: 26 },
-        );
-        B(
-          1140,
-          990,
-          280,
-          70,
-          "Voltar ao Menu",
-          () => {
-            showStats = 0;
-            scr = "menu";
-            hover = "";
-          },
-          { z: 26, bg: "#5a3a00" },
-        );
       }
       /* ===== ZOOM E ARRASTE DO MAPA + NOME DOS TERRITÓRIOS (portado do jogo original) =====
    20 níveis de zoom para dentro e 5 para fora (passo 1.08), igual ao original.
@@ -4596,6 +4899,10 @@
         tex.needsUpdate = true;
         syncVRMapTransform();
       }
+      function redrawPan() {
+        if (VR_MAP_3D_LIGHT) syncVRMapTransform();
+        else redraw();
+      }
       function zoomAt(d, sx = 960, sy = 540) {
         const nl = Math.max(ZMIN, Math.min(ZMAX, zLv + d));
         if (nl == zLv) return;
@@ -4609,8 +4916,15 @@
         VB.w = nw;
         zLv = nl;
         clampVB();
-        redraw();
+        /* Etapa 9d: no modo leve, cada passo de zoom só move o mapa 3D; a HUD (texto "Zoom") é
+           redesenhada UMA vez, 180 ms depois do último passo (stick do VR gera vários passos seguidos). */
+        if (VR_MAP_3D_LIGHT) {
+          syncVRMapTransform();
+          clearTimeout(zoomHudT);
+          zoomHudT = setTimeout(redraw, 180);
+        } else redraw();
       }
+      let zoomHudT = 0;
       function resetZoom() {
         zLv = 0;
         VB.x = 0;
@@ -4797,6 +5111,37 @@
         const f = (L - cum[i - 1]) / Math.max(1e-6, cum[i] - cum[i - 1]);
         return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * f, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * f, Math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0])];
       }
+      /* Etapa 9a: durante a animação do ataque (G.fx) só a seta/explosão 3D mudam; a HUD em canvas não.
+         Então em vez de draw() completo (que refaz a HUD toda a cada quadro) só atualiza os objetos 3D.
+         Mesma lógica do bloco G.fx de draw(). Só é usada com VR_MAP_3D_LIGHT. */
+      function vrFxTick() {
+        const fx = G && G.fx;
+        if (!fx) return;
+        const M = G.M;
+        if (!fx.F) {
+          const g = connGeom(M, fx.s, fx.t);
+          fx.F = g ? fxPath(g) : null;
+          fx.fl = fx.F ? Math.max(380, Math.min(700, 300 + 11 * Math.sqrt(fx.F.total))) : 0;
+        }
+        const el = performance.now() - fx.t0,
+          F = fx.F;
+        vrFxHide();
+        if (F && el < fx.fl + 550) {
+          if (el < fx.fl) {
+            const L = F.total * (el / fx.fl),
+              [px, py, ang] = fxAt(F, L),
+              op = Math.max(0, Math.min(1, L / 40, (F.total - L) / 40));
+            vrFxArrow(px, py, ang, op);
+          } else {
+            const e2 = (el - fx.fl) / 550;
+            if (fx.cq && vrBurst && !fx.burst) {
+              fx.burst = 1; // etapa 9i: conquista = explosão do original
+              vrBurstStart(F.pts[F.pts.length - 1][0], F.pts[F.pts.length - 1][1]);
+            }
+            if (!(fx.cq && vrBurst)) vrFxBoom(F.pts[F.pts.length - 1][0], F.pts[F.pts.length - 1][1], e2 * (fx.cq ? 120 : 70), e2);
+          }
+        } else G.fx = null;
+      }
       function draw() {
         btns = [];
         OVR = [];
@@ -4804,23 +5149,26 @@
           stUpd();
           if (scr == "win" && !G.gEnd) G.gEnd = Date.now();
         }
-        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.setTransform(VR_CANVAS_K, 0, 0, VR_CANVAS_K, 0, 0);
         if (scr == "menu") {
           menu();
           return;
         }
-        c.fillStyle = "#5bbcd8";
-        c.fillRect(0, 0, 1920, 1080);
+        if (VR_MAP_3D_FILLS) c.clearRect(0, 0, 1920, 1080); // mar = vrSea (3D)
+        else {
+          c.fillStyle = "#5bbcd8";
+          c.fillRect(0, 0, 1920, 1080);
+        }
         const M = G.M,
           J = M.J;
         {
           const zs = zsc();
-          c.setTransform(zs, 0, 0, zs, -VB.x * zs, -VB.y * zs);
+          c.setTransform(zs * VR_CANVAS_K, 0, 0, zs * VR_CANVAS_K, -VB.x * zs * VR_CANVAS_K, -VB.y * zs * VR_CANVAS_K);
         }
         c.setLineDash([6, 6]);
         c.lineWidth = 1.6;
         c.strokeStyle = "rgba(0,0,0,.55)";
-        for (const [a, b] of M.Q.concat(M === D.A ? CONN_ALT.map((q) => [q[0], q[1]]) : [])) {
+        for (const [a, b] of VR_MAP_3D_LINES ? [] : M.Q.concat(M === D.A ? CONN_ALT.map((q) => [q[0], q[1]]) : [])) {
           const g = connGeom(M, a, b);
           if (!g) continue;
           c.beginPath();
@@ -4834,8 +5182,10 @@
         for (const t of G.T) {
           const o = G.own[t],
             hid = G.fillHid && G.fillHid.has(t);
-          c.fillStyle = hid ? "rgba(160,170,180,.45)" : COL[o];
-          c.fill(P2[t], "evenodd");
+          if (!VR_MAP_3D_FILLS) {
+            c.fillStyle = hid ? "rgba(160,170,180,.45)" : COL[o];
+            c.fill(P2[t], "evenodd");
+          } // com VR_MAP_3D_FILLS a cor vem de syncVRFills() (3D)
           const tgt =
               G.sel &&
               G.sel != t &&
@@ -4872,7 +5222,8 @@
                           ? "#ff2222"
                           : "#33ff33"
                         : "#111";
-          c.stroke(P2[t]);
+          if (VR_MAP_3D_STROKES) vrSetStroke(t, c.lineWidth, c.strokeStyle);
+          else c.stroke(P2[t]);
         }
         if (G.ph == "R" && !G.bot[G.cur] && cpLeft() > 0) {
           c.save();
@@ -4880,7 +5231,12 @@
           c.lineWidth = 5;
           c.strokeStyle = "#ffdd00";
           for (const x of G.cp)
-            if (x.n) for (const t of M.K[x.k].t) if (G.own[t] == G.cur) c.stroke(P2[t]);
+            if (x.n)
+              for (const t of M.K[x.k].t)
+                if (G.own[t] == G.cur) {
+                  if (VR_MAP_3D_STROKES) vrSetOverlay(t, "d", "#ffdd00");
+                  else c.stroke(P2[t]);
+                }
           c.restore();
         }
         if (G.ph == "R" && !G.bot[G.cur] && totPend() == 0 && G.ts) {
@@ -4889,14 +5245,20 @@
           c.lineWidth = 5;
           c.strokeStyle = "#ffdd55";
           for (const t of G.T)
-            if (G.own[t] == G.cur && !(G.ts.mode == "factory" && G.fac[t])) c.stroke(P2[t]);
+            if (G.own[t] == G.cur && !(G.ts.mode == "factory" && G.fac[t]) && !(G.ts.mode == "planeFactory" && G.pfac[t])) {
+              if (VR_MAP_3D_STROKES) vrSetOverlay(t, "d", "#ffdd55");
+              else c.stroke(P2[t]);
+            }
           c.restore();
         }
         for (const t of G.fl || []) {
           c.lineWidth = 7;
           c.strokeStyle = "#ffdd00";
-          c.stroke(P2[t]);
+          if (VR_MAP_3D_STROKES) vrSetOverlay(t, "7", "#ffdd00");
+          else c.stroke(P2[t]);
         }
+        if (VR_MAP_3D_STROKES) vrStrokeEnd();
+        if (VR_MAP_3D_FX) vrFxHide();
         if (G.fx) {
           // Seta laranja (contorno amarelo, brilho) que voa do atacante ao atacado seguindo a mesma
           // curva da linha pontilhada — igual ao original (_flyArrow / shotTrace).
@@ -4914,6 +5276,8 @@
               const L = F.total * (el / G.fx.fl),
                 [px, py, ang] = fxAt(F, L),
                 op = Math.max(0, Math.min(1, L / 40, (F.total - L) / 40));
+              if (VR_MAP_3D_FX) vrFxArrow(px, py, ang, op);
+              else {
               c.save();
               c.globalAlpha = op;
               c.translate(px, py);
@@ -4931,10 +5295,13 @@
               c.strokeStyle = "#fff7b3";
               c.stroke();
               c.restore();
+              }
             } else {
               const e2 = (el - G.fx.fl) / 550,
                 r = e2 * (G.fx.cq ? 120 : 70),
                 g2 = c.createRadialGradient(bx, by, 0, bx, by, Math.max(1, r));
+              if (VR_MAP_3D_FX) vrFxBoom(bx, by, r, e2);
+              else {
               g2.addColorStop(0, `rgba(255,255,200,${1 - e2})`);
               g2.addColorStop(0.4, `rgba(255,150,0,${0.9 * (1 - e2)})`);
               g2.addColorStop(1, "rgba(200,0,0,0)");
@@ -4942,6 +5309,7 @@
               c.beginPath();
               c.arc(bx, by, Math.max(1, r), 0, 7);
               c.fill();
+              }
             }
           } else G.fx = null;
         }
@@ -4949,7 +5317,7 @@
           const lm = lmet(),
             sn = showNames(),
             gap = Math.round(lm.ls * 0.85);
-          for (const t of G.T) {
+          for (const t of VR_MAP_3D_LABELS ? [] : G.T) { // etapa 7: com 3D, vrSyncLabels() desenha estes rótulos
             const [x, y] = M.C[t];
             if (sn) {
               const p = t.split(" "),
@@ -4982,7 +5350,7 @@
             }
           }
         }
-        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.setTransform(VR_CANVAS_K, 0, 0, VR_CANVAS_K, 0, 0);
         TITLE(912, 43, 46, 1);
         const ov = anyOv() || scr == "win";
         const tl = TL[RS[2].charCodeAt(0) - 65],
@@ -5256,25 +5624,62 @@
             col = COL[G.win],
             hype = world
               ? [
-                  ["Conquistou o mundo, seu bucêêêêt.", "#ffdd55", 30],
-                  ["ABSURDO. MÍTICO. TOTAL.", "#8ef7ff", 26],
-                  ["Não sobrou pedra sobre pedra.", "#ffd6f5", 24],
-                  ["DOMÍNIO GLOBAL SEM MISERICÓRDIA.", "#ffffff", 24],
+                  /* etapa 9h: fonte, brilho (text-shadow), rotação e espaçamento iguais ao hype do original */
+                  ["Conquistou o mundo, seu bucêêêêt.", "#ffdd55", 30, "Impact, Haettenschweiler, 'Arial Black', sans-serif", "#ff7a00", 18, -4, 0, ""],
+                  ["ABSURDO. MÍTICO. TOTAL.", "#8ef7ff", 26, "'Trebuchet MS', Arial, sans-serif", "#00d0ff", 16, 0, 3, ""],
+                  ["Não sobrou pedra sobre pedra.", "#ffd6f5", 24, "Georgia, serif", "#ff44cc", 14, 0, 0, "italic "],
+                  ["DOMÍNIO GLOBAL SEM MISERICÓRDIA.", "#ffffff", 24, "Verdana, sans-serif", "#ffffff", 14, 0, 2, ""],
                 ]
-              : [["Você é o bichão mermo em doido!", "#ffffff", 28]],
+              : [["Você é o bichão mermo em doido!", "#ffffff", 28, "Arial", "rgba(255,255,255,0.35)", 16, 0, 0, ""]],
             hh = 330 + hype.length * 44,
             y0 = (1080 - hh) / 2;
           c.fillStyle = "rgba(0,0,0,.85)";
           c.fillRect(0, 0, 1920, 1080);
+          /* etapa 9h: sombra da caixa (box-shadow 0 8px 40px rgba(0,0,0,.9)) */
+          c.save();
+          c.shadowColor = "rgba(0,0,0,0.9)";
+          c.shadowBlur = 40;
+          c.shadowOffsetY = 8;
           rr(660, y0, 600, hh, 14);
           c.fillStyle = "#0a1628";
           c.fill();
+          c.restore();
+          /* etapa 9h: listras diagonais douradas (repeating-linear-gradient 135deg, opacity .15) */
+          c.save();
+          rr(660, y0, 600, hh, 14);
+          c.clip();
+          c.globalAlpha = 0.15;
+          c.fillStyle = "rgba(255,215,0,0.18)";
+          c.translate(960, y0 + hh / 2);
+          c.rotate(Math.PI / 4);
+          const sd = Math.hypot(600, hh) / 2 + 28;
+          for (let k = -sd; k < sd; k += 28) c.fillRect(k + 14, -sd, 14, sd * 2);
+          c.restore();
+          rr(660, y0, 600, hh, 14);
           c.lineWidth = 3;
           c.strokeStyle = col;
           c.stroke();
-          TX(String(cfg.names[G.win]), 960, y0 + 50, 44, col, "center", 1);
-          TX(world ? "VITORIA APOCALIPTICA!" : "VITORIA!", 960, y0 + 108, 36, "#ffdd00", "center", 1);
-          hype.forEach(([q, cl, z], i) => TX(q, 960, y0 + 165 + i * 44, z, cl, "center", 1));
+          /* etapa 9h: texto com brilho colorido (text-shadow 0 0 Npx cor) */
+          const GTX = (q, x, y, z, cl, font, glow, blur, rot = 0, ls = 0, sty = "") => {
+            c.save();
+            c.translate(x, y);
+            if (rot) c.rotate((rot * Math.PI) / 180);
+            c.font = `${sty}${z}px ${font}`;
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            if ("letterSpacing" in c) c.letterSpacing = ls + "px";
+            q = translateCanvasText(q);
+            c.shadowColor = glow;
+            c.shadowBlur = blur;
+            c.fillStyle = cl;
+            c.fillText(q, 0, 0);
+            c.fillText(q, 0, 0);
+            if ("letterSpacing" in c) c.letterSpacing = "0px";
+            c.restore();
+          };
+          GTX(String(cfg.names[G.win]), 960, y0 + 50, 44, col, "Arial", col, 18);
+          GTX(world ? "VITORIA APOCALIPTICA!" : "VITORIA!", 960, y0 + 108, 36, "#ffdd00", "Arial", "rgba(0,0,0,0)", 0, 0, 2);
+          hype.forEach(([q, cl, z, f, gl, bl, rot, ls, sty], i) => GTX(q, 960, y0 + 165 + i * 44, z, cl, f, gl, bl, rot, ls, sty));
           const yb = y0 + 165 + hype.length * 44;
           TX(world ? "Objetivo concluido e o mundo inteiro ajoelhou." : "Objetivo concluido.", 960, yb + 4, 22, "#dfe8ff", "center");
           wrapL(obj, 540, 20, 2).forEach((q, i) => TX(q, 960, yb + 40 + i * 26, 20, "#aec", "center"));
@@ -5422,154 +5827,213 @@
             bg: canFire ? "#1a8f3a" : "#333",
           });
         } else if (showCards && scr == "game" && !showObj) {
+          /* Etapa 9f: tela de troca de cartas igual ao original (renderCardsForTradePanel + cardHTML +
+             cardsTipsHTML + formatTradeBonusMessage): painel azul #0a3a6a com borda branca/preta, dicas,
+             caixa "Essa Troca vale", mensagem verde/vermelha, cartas 200x262 com silhueta do continente,
+             botões "Fechar sem trocar" (vermelho) e "Trocar cartas" (verde). Lógica (doTrade/mustTrade) igual. */
           const vp = G.bot[G.cur] ? 0 : G.cur,
-            cs = G.cards[vp],
+            cs = G.cards[vp] || [],
             my = vp == G.cur && !G.bot[G.cur] && G.ph == "R";
           btns = [];
-          PANEL(370, 35, 1180, 1000);
-          T("Cartas Território — " + PN[vp], 960, 82, 40, COL[vp]);
-          T(
-            `Máximo de cartas: ${maxCards() > 99 ? "Livre" : maxCards()}   ·   Próxima troca vale: ${tradeBonusFor(G.tc + 1)} soldados   ·   Cartas no baralho: ${G.deck.length}`,
-            960,
-            132,
-            20,
-            "#cfe3f5",
-          );
-          const w = 170,
-            h = 250,
-            gp = 16,
-            cols = 5;
-          if (!cs.length)
-            T(
-              "Você ainda não tem cartas. Conquiste ao menos 1 território no turno para ganhar uma.",
+          const px = 370,
+            pw = 1180,
+            py = 30,
+            ph = 1020,
+            lx = px + 30;
+          PANEL(px, py, pw, ph);
+          let yy = py + 34;
+          TX("Troque 3 Cartas Território por Soldados:", 960, yy, 20, "#cfe6ff", "center", 1);
+          yy += 30;
+          const tips = [
+            [". Como Trocar Cartas?", "#aec"],
+            ["3 Cartas de Continentes diferentes, ou,", "#aec"],
+            ["3 Cartas de Continente igual.", "#aec"],
+            [". Ganhe Bônus de 10% de Soldados, por cada Carta que você possuir o Território no momento da Troca.", "#aec"],
+            [". Todos os Soldados da Troca são distribuídos em qualquer Território de sua posse.", "#aec"],
+            [". O Mínimo de Bônus é 1 Soldado por Carta que você possua o Território.", "#aec"],
+          ];
+          for (const [s, col] of tips)
+            for (const q of wrapL(s, pw - 60, 16, 2)) {
+              TX(q, lx, yy, 16, col, "left", 1);
+              yy += 25.6;
+            }
+          yy += 8;
+          /* caixa "Essa Troca vale" (#0a1a0a, borda branca 3px + contorno preto 3px) */
+          rr(lx - 3, yy - 3, pw - 54, 62, 11);
+          c.lineWidth = 3;
+          c.strokeStyle = "#000";
+          c.stroke();
+          rr(lx, yy, pw - 60, 56, 8);
+          c.fillStyle = "#0a1a0a";
+          c.fill();
+          c.lineWidth = 3;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          {
+            const a = "Essa Troca vale: ",
+              b = `${tradeBonusFor(G.tc + 1)} Soldados`,
+              wa = tw(a, 19),
+              wb = tw(b, 19),
+              x0 = 960 - (wa + wb) / 2;
+            TX(a, x0, yy + 28, 19, "#ffdd00", "left", 1);
+            TX(b, x0 + wa, yy + 28, 19, "#44ff44", "left", 1);
+          }
+          yy += 56 + 22;
+          /* mensagem de validade (2 linhas, 18px) */
+          const sel = G.csel.map((i) => cs[i]).filter(Boolean),
+            three = sel.length == 3,
+            ok = three && tripleOk(...sel),
+            r = ok && tradeReward(vp, sel);
+          let vm = [];
+          if (three && ok) {
+            if (r.bonus <= 0)
+              vm = [`Total: ${r.total} soldados.`, "Não tem direito a Bônus, nenhum território das Cartas é de sua Posse."];
+            else {
+              const pb = Math.floor((r.base * r.own * 10) / 100),
+                usedMin = r.bonus === r.own && r.own > pb;
+              vm = [
+                "Bônus: " +
+                  (usedMin
+                    ? `min. 1/carta (${r.own} cartas com território) = ${r.bonus} Soldado bônus`
+                    : `${r.own * 10}% de ${r.base} = ${pb} Soldado bônus`),
+                `Total: ${r.base}+${r.bonus}= ${r.total} soldados.`,
+              ];
+            }
+          } else if (three || G.tradeFlash) vm = ["Precisa ser 3 do mesmo continente ou 3 de continentes diferentes"];
+          vm.forEach((q, j) => TX(q, 960, yy + j * 24, 18, three && ok ? "#44ff44" : "#ff4444", "center", 1));
+          yy += 2 * 24 + 6;
+          if (!my)
+            TX(
+              G.bot[G.cur] ? "Cartas do jogador humano (Vermelho)." : "Trocas só podem ser feitas na fase de Reforço.",
               960,
-              340,
-              28,
-              "#9db89d",
+              yy - 30,
+              18,
+              "#7fa9c9",
+              "center",
+              1,
             );
-          cs.slice(0, 10).forEach((cd, i) => {
-            const x = 960 - (cols * (w + gp) - gp) / 2 + (i % cols) * (w + gp),
-              y = 190 + Math.floor(i / cols) * (h + 16),
-              sel = G.csel.includes(i),
-              k = "cd" + i,
-              hv = hover == "b:" + k;
+          /* cartas: 200x262 (+ padding 17/10 e borda 3) = 226x~302, margem 10, até 5 por linha */
+          const btnY = py + ph - 100,
+            n = cs.length,
+            perRow = Math.min(5, Math.max(1, n)),
+            rows = Math.max(1, Math.ceil(n / 5)),
+            cw0 = 226,
+            ch0 = 302,
+            gap0 = 20,
+            k = Math.min(1, (btnY - 16 - yy) / (rows * ch0 + (rows - 1) * gap0)),
+            cw = cw0 * k,
+            ch = ch0 * k,
+            gap = gap0 * k;
+          if (!n) TX("Sem cartas ainda.", 960, yy + 40, 18, "#9db89d", "center", 1);
+          cs.forEach((cd, i) => {
+            const row = Math.floor(i / 5),
+              inRow = Math.min(5, n - row * 5),
+              x = 960 - (inRow * cw + (inRow - 1) * gap) / 2 + (i % 5) * (cw + gap),
+              y = yy + row * (ch + gap),
+              isSel = G.csel.includes(i),
+              kk = "cd" + i,
+              hv = hover == "b:" + kk,
+              cont = cd.joker ? "CORINGA" : cd.cont || contOf(cd.t) || "?",
+              bg = isSel ? "rgba(68,255,68,0.12)" : cd.joker ? "#06260f" : CONT_BG[cont] || "#1a1a1a",
+              bd = isSel ? "#44ff44" : cd.joker ? "#1fa84a" : CONT_BORDER[cont] || "#444",
+              shortC = cd.joker ? "Qualquer Continente" : cont.replace("América do Norte", "Am. Norte").replace("América do Sul", "Am. Sul");
             if (my)
               btns.push({
                 x,
                 y,
-                w,
-                h,
-                k,
+                w: cw,
+                h: ch,
+                k: kk,
                 fn: () => {
                   const j = G.csel.indexOf(i);
-                  j >= 0 ? G.csel.splice(j, 1) : G.csel.length < 3 && G.csel.push(i);
+                  if (j >= 0) {
+                    G.csel.splice(j, 1);
+                    G.tradeFlash = 0;
+                  } else if (G.csel.length < 3) {
+                    /* igual ao original (tc): a 3ª carta inválida não entra e pisca a mensagem vermelha */
+                    if (G.csel.length == 2 && !tripleOk(...[...G.csel, i].map((q) => cs[q]))) {
+                      G.tradeFlash = 1;
+                      return;
+                    }
+                    G.csel.push(i);
+                    G.tradeFlash = 0;
+                  }
                 },
               });
-            const yy = y - (sel ? 20 : 0);
-            rr(x, yy, w, h, 10);
-            c.fillStyle = cd.joker ? "#5a3a00" : "#efe6cf";
+            c.save();
+            if (isSel) {
+              c.shadowColor = "rgba(68,255,68,0.7)";
+              c.shadowBlur = 12 * k;
+            }
+            rr(x, y, cw, ch, 9 * k);
+            c.fillStyle = isSel ? "#0a1a0a" : "#0a3a6a";
             c.fill();
-            if (hv) {
-              c.fillStyle = "rgba(255,255,255,.25)";
+            c.restore();
+            rr(x, y, cw, ch, 9 * k);
+            c.fillStyle = bg;
+            c.fill();
+            if (hv && my) {
+              c.fillStyle = "rgba(255,255,255,.12)";
               c.fill();
             }
-            c.lineWidth = sel ? 7 : 3;
-            c.strokeStyle = sel ? "#33ff33" : "#222";
+            rr(x + 1.5 * k, y + 1.5 * k, cw - 3 * k, ch - 3 * k, 7.5 * k);
+            c.lineWidth = 3 * k;
+            c.strokeStyle = bd;
             c.stroke();
-            if (cd.joker) {
-              T("★", x + w / 2, yy + 100, 90, "#ffdd00");
-              T("CORINGA", x + w / 2, yy + 190, 26, "#ffdd00");
-            } else {
-              const o = G.own[cd.t];
-              c.fillStyle = COL[o];
-              c.fillRect(x + 10, yy + 10, w - 20, 26);
-              W(cd.t, x + 12, yy + 70, w - 24, 20, 26, "#fff", 4);
-              W(cd.cont, x + 12, yy + 200, w - 24, 16, 20, "#ffdd00", 2);
-              if (o == vp) T("SEU", x + w / 2, yy + 23, 16, "#fff");
-            }
-          });
-          if (cs.length > 10) T(`+ ${cs.length - 10} cartas`, 960, 720, 18, "#cfe3f5");
-          let y2 = 748;
-          T(
-            "Como trocar: 3 cartas de continentes diferentes, ou 3 do mesmo continente (Coringa vale qualquer um).",
-            960,
-            y2,
-            24,
-            "#aec",
-          );
-          T(
-            "Bônus de 10% por carta cujo território é seu (mínimo 1 soldado por carta). Soldados da troca vão para qualquer território seu.",
-            960,
-            y2 + 36,
-            22,
-            "#aec",
-          );
-          if (my) {
-            const ok = G.csel.length == 3 && tripleOk(...G.csel.map((i) => cs[i])),
-              r =
-                ok &&
-                tradeReward(
-                  vp,
-                  G.csel.map((i) => cs[i]),
-                );
-            T(
-              G.csel.length < 3
-                ? `Selecione 3 cartas (${G.csel.length}/3)`
-                : ok
-                  ? `Troca válida: ${r.base} + bônus ${r.bonus} = ${r.total} soldados`
-                  : "Combinação inválida",
-              960,
-              830,
-              26,
-              ok ? "#33ff33" : G.csel.length == 3 ? "#ff5555" : "#fff",
+            const em = 69 * k; // emoji 63 * 1.1
+            drawSil(cont, x + cw / 2 - em * 0.75, y + 20 * k, em * 1.5, em);
+            let ty = y + 20 * k + em + 6 * k;
+            const tz = 21 * k,
+              cz = 23 * k,
+              inner = 200 * k;
+            const tl = wrapL(cd.joker ? "CORINGA" : cd.t, inner, tz, 3);
+            tl.forEach((q, j) => OT(q, x + cw / 2, ty + j * tz * 1.3 + tz * 0.65, tz, isSel ? "#fff" : "#ccffff", "center"));
+            ty += tl.length * tz * 1.3 + 6 * k;
+            c.fillStyle = isSel ? "rgba(68,255,68,0.5)" : bd;
+            c.fillRect(x + 13 * k, ty, cw - 26 * k, Math.max(1, k));
+            const sl = wrapL(shortC, inner, cz, 2);
+            sl.forEach((q, j) =>
+              OT(q, x + cw / 2, ty + 6 * k + j * cz * 1.2 + cz * 0.6, cz, isSel ? "rgba(255,255,255,0.9)" : "#ccffee", "center"),
             );
+          });
+          const mt = my && mustTrade(vp);
+          const closeFn = () => {
+            if (!mt) {
+              showCards = 0;
+              G.csel = [];
+              G.tradeFlash = 0;
+            }
+          };
+          if (my) {
+            B(960 - 7 - 300, btnY, 300, 66, mt ? "Troca obrigatória" : "Fechar sem trocar", closeFn, {
+              z: 19,
+              bg: mt ? "#5a1010" : "#c0392b",
+              k: "tr-close",
+            });
             B(
-              560,
-              872,
-              380,
-              82,
-              "Trocar Cartas",
+              967,
+              btnY,
+              300,
+              66,
+              "Trocar cartas",
               () => {
-                if (!ok) return;
+                if (G.csel.length !== 3) {
+                  addLog("Selecione exatamente 3 cartas");
+                  return;
+                }
+                if (!ok) {
+                  addLog("Combinação inválida para troca!");
+                  return;
+                }
                 const rr2 = doTrade(vp, G.csel);
+                G.tradeFlash = 0;
                 G.msg = `Trocou 3 cartas por ${rr2.total} soldados! Reforços restantes: ${G.pend}`;
                 addLog(PN[vp] + " " + G.msg);
                 if (!mustTrade(vp)) showCards = 0;
               },
-              { z: 32, bg: ok ? "#1a8f3a" : "#333" },
+              { z: 19, bg: "#1a8f3a", k: "tr-do" },
             );
-          } else
-            T(
-              G.bot[G.cur]
-                ? "Cartas do jogador humano (Vermelho)."
-                : "Trocas só podem ser feitas na fase de Reforço.",
-              960,
-              830,
-              22,
-              "#7fa9c9",
-            );
-          const mt = my && mustTrade(vp);
-          B(
-            my ? 980 : 760,
-            872,
-            380,
-            82,
-            mt ? "Troca obrigatória" : "Fechar",
-            () => {
-              if (!mt) showCards = 0;
-            },
-            { z: 32, bg: mt ? "#5a1010" : undefined },
-          );
-          T("Cartas dos jogadores:", 960, 982, 20, "#7fa9c9");
-          for (let i = 0; i < cfg.n; i++)
-            if (cnt(i))
-              T(
-                `${PN[i]}: ${G.cards[i].length}`,
-                960 + (i - (cfg.n - 1) / 2) * 200,
-                1015,
-                18,
-                COL[i],
-              );
+          } else B(960 - 150, btnY, 300, 66, "Fechar", closeFn, { z: 19, bg: "#c0392b", k: "tr-close" });
         }
         SCAREA = {};
         if (showObj && scr == "game") {
@@ -5604,7 +6068,13 @@
       }
       const key = (h) => (h ? (h.b ? "b:" + h.b.k : "t:" + h.t) : "");
       function onHover(x, y) {
-        const k = key(pick(x, y));
+        const h = pick(x, y);
+        let k = key(h);
+        /* Território: o destaque agora é um objeto 3D — não redesenha o canvas nem reenvia a textura. */
+        if (h && h.t) {
+          vrHoverT(h.t);
+          k = "";
+        } else vrHoverT(null);
         if (k != hover) {
           hover = k;
           draw();
@@ -5912,6 +6382,7 @@
       R.setSize(innerWidth, innerHeight);
       R.xr.enabled = true;
       R.xr.setReferenceSpaceType("local-floor");
+      R.localClippingEnabled = true; // permite recortar o destaque 3D dentro da área da tela do cinema
       R.xr.setFoveation(0); // 0 = no fixed foveation; keep the screen edges at full render resolution.
       document.body.append(R.domElement, VRButton.createButton(R));
       const scene = new THREE.Scene();
@@ -5964,13 +6435,25 @@
       const tex = new THREE.CanvasTexture(S);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.generateMipmaps = false;
+      tex.premultiplyAlpha = VR_MAP_3D_FILLS; // canvas com partes transparentes (mapa fica visível por trás)
       tex.minFilter = THREE.LinearFilter;
       tex.anisotropy = 4;
       box(10, 5.7, 0.15, 0, 3.15, -8.95, M_(0x000000));
       const screen = new THREE.Mesh(
         new THREE.PlaneGeometry(9.6, 5.4),
-        new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
+        VR_MAP_3D_FILLS
+          ? new THREE.MeshBasicMaterial({
+              map: tex,
+              toneMapped: false,
+              transparent: true,
+              depthWrite: false,
+              blending: THREE.CustomBlending, // textura pré-multiplicada
+              blendSrc: THREE.OneFactor,
+              blendDst: THREE.OneMinusSrcAlphaFactor,
+            })
+          : new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }),
       );
+      screen.renderOrder = 1000;
       screen.position.set(0, 3.15, -8.85);
       scene.add(screen);
 
@@ -5979,6 +6462,7 @@
         VR_MAP_H = 5.4,
         VR_MAP_SCALE = VR_MAP_W / 1920,
         VR_MAP_Z = -8.82,
+        VR_SCREEN_Y = 3.15,
         vrSvgLoader = new SVGLoader(),
         vrHitMaterial = new THREE.MeshBasicMaterial({
           side: THREE.DoubleSide,
@@ -5987,19 +6471,1196 @@
         });
       let vrMapGroup = null,
         vrMapSource = null,
-        vrTerritoryMeshes = [];
+        vrTerritoryMeshes = [],
+        vrHL = {},
+        vrHLCur = null,
+        vrFillGroup = null,
+        vrFillMesh = {},
+        vrStrokeGroup = null,
+        vrStrokeMesh = {},
+        vrStrokeOv = {},
+        vrStrokePts = {},
+        vrStrokeIdx = {},
+        vrStrokeGeo = {},
+        vrStrokeWant = {},
+        vrStrokeOvWant = {};
+      let vrLabelGroup = null,
+        vrLabels = {};
+      const vrStrokeMats = {};
+      const VR_FILL_Z = -8.86,
+        VR_STROKE_Z = -8.855,
+        VR_LABEL_Z = -8.8525, // entre as bordas (-8.855) e a tela/HUD (-8.850): painéis e avisos ficam por cima dos rótulos
+        /* recorte nas bordas da tela do cinema (usado por fills e destaque) */
+        vrClip = [
+          new THREE.Plane(new THREE.Vector3(1, 0, 0), VR_MAP_W / 2),
+          new THREE.Plane(new THREE.Vector3(-1, 0, 0), VR_MAP_W / 2),
+          new THREE.Plane(new THREE.Vector3(0, 1, 0), -(3.15 - VR_MAP_H / 2)),
+          new THREE.Plane(new THREE.Vector3(0, -1, 0), 3.15 + VR_MAP_H / 2),
+        ],
+        vrSea = VR_MAP_3D_FILLS
+          ? new THREE.Mesh(
+              new THREE.PlaneGeometry(VR_MAP_W, VR_MAP_H),
+              new THREE.MeshBasicMaterial({ color: 0x5bbcd8, toneMapped: false }),
+            )
+          : null;
+      /* Etapa 9p: deslocamento do "levante" (território suspenso) no plano do mapa, em px de 1920.
+         Mesmo vetor do original (9px, -11px). Em 3D o dy negativo sobe na tela porque o grupo do
+         mapa tem scale.y negativo. Interruptor seguro: VR_LIFT_3D. */
+      const VR_LIFT_3D = true, VR_LIFT_DX = 9, VR_LIFT_DY = -11;
+      /* Etapa 9q: escurecer (dim veil) os territórios NÃO envolvidos quando há escolha de alvo —
+         igual ao .terr-dim-veil/.dim do original (~0.5 de brilho) e ao mar escurecido. */
+      const VR_DIM_3D = true;
+      if (vrSea) {
+        vrSea.position.set(0, 3.15, -8.865);
+        vrSea.visible = false;
+        scene.add(vrSea);
+      }
+      /* Destaque 3D (hover) dos territórios: branco 30% igual ao canvas, recortado nas bordas da tela. */
+      const vrHLMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.3,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        clippingPlanes: vrClip,
+      });
       function syncVRMapTransform() {
         if (!vrMapGroup) return;
         const zs = zsc();
         vrMapGroup.position.set(
           -VR_MAP_W / 2 - VB.x * zs * VR_MAP_SCALE,
-          VR_MAP_H / 2 + VB.y * zs * VR_MAP_SCALE,
+          VR_SCREEN_Y + VR_MAP_H / 2 + VB.y * zs * VR_MAP_SCALE, // centro da tela está em y=3.15 (antes faltava, mapa ficava 3,15 m abaixo)
           VR_MAP_Z,
         );
         vrMapGroup.scale.set(zs * VR_MAP_SCALE, -zs * VR_MAP_SCALE, 1);
         vrMapGroup.updateMatrixWorld(true);
+        if (vrFillGroup) {
+          vrFillGroup.position.set(vrMapGroup.position.x, vrMapGroup.position.y, VR_FILL_Z);
+          vrFillGroup.scale.copy(vrMapGroup.scale);
+          vrFillGroup.updateMatrixWorld(true);
+        }
+        if (vrStrokeGroup) {
+          vrStrokeGroup.position.set(vrMapGroup.position.x, vrMapGroup.position.y, VR_STROKE_Z);
+          vrStrokeGroup.scale.copy(vrMapGroup.scale);
+          vrStrokeGroup.updateMatrixWorld(true);
+        }
+        if (vrLabelGroup) {
+          vrLabelGroup.position.set(vrMapGroup.position.x, vrMapGroup.position.y, VR_LABEL_Z);
+          vrLabelGroup.scale.copy(vrMapGroup.scale);
+          vrLabelGroup.updateMatrixWorld(true);
+        }
       }
-      function clearVRHighlight() {}
+      /* Etapa 4: cor do dono de cada território (e "escondido" = cinza 45%) em 3D. Todo quadro, só
+         troca a cor quando o estado muda. */
+      /* ===== ETAPA 9p: TERRITÓRIOS SUSPENSOS (levantados) — paridade com o "levante" do original =====
+         No original o território selecionado / origem de ataque / alvo de ataque / alvo de avião /
+         alvo de míssil sobe (9px, -11px) com sombra 3D e "rastro" de extrusão, parecendo flutuar.
+         Em 3D subimos os meshes de preenchimento, borda, destaque e rótulo em (VR_LIFT_DX, VR_LIFT_DY)
+         no plano do mapa e deixamos no chão uma placa de sombra escura (na posição original), que
+         aparece no vão criado pelo deslocamento — o efeito de "suspenso". Fica na MESMA altura Z das
+         camadas (abaixo da tela/HUD). Interruptor: VR_LIFT_3D. */
+      let vrLiftShadow = {};
+      /* ===== ETAPA 9r: LEVANTE NA DISTRIBUIÇÃO DE REFORÇOS (fases R e P1) =====
+         No original (renderMap) os territórios suspensos são:
+           isSel (G.af) | isAtk | isRf | isPlaneTarget | isMissileTarget | isMissileCand | isReinfLift
+         As seis primeiras já existiam aqui (9p/9q). Faltava a ÚLTIMA: isReinfLift — a colocação
+         de soldados de direito (reinfLiftMap), em que TODOS os territórios onde o jogador humano
+         PODE colocar sobem (9px,-11px) e o resto do mapa escurece (reinfDimTerritories).
+         Situações cobertas aqui (iguais às do original):
+           - fase P1 (1ª Rodada) com soldados iniciais a distribuir -> todos os seus territórios;
+           - fase R com reforços pendentes (G.pend > 0) -> todos os seus territórios;
+           - fase R só com bônus de continente pendente (G.cp) -> os seus territórios desses
+             continentes (o original usa os territórios do continente da vez, regra 06-A);
+           - fase R, reforços já colocados e passo de tanques/fábricas (G.ts) -> os territórios
+             válidos para o passo (fábrica: os que ainda não têm fábrica).
+         OBS: no original havia a tela das setinhas (chooser) que mantinha SÓ um território suspenso;
+         aqui a escolha é feita clicando no próprio território, então não há essa sub-fase. */
+      function vrReinfEligible() {
+        const out = new Set();
+        if (!G || !G.M || scr != "game") return out;
+        if (G.bot && G.bot[G.cur]) return out; // só o jogador humano (cp.human no original)
+        if (G.ph !== "R" && G.ph !== "P1") return out;
+        const owns = G.T.filter((t) => G.own[t] === G.cur);
+        if (G.ph === "P1") {
+          if (totPend() > 0) for (const t of owns) out.add(t);
+          return out;
+        }
+        if (G.pend > 0) {
+          for (const t of owns) out.add(t);
+        } else if (cpLeft() > 0) {
+          for (const x of G.cp || [])
+            if (x.n)
+              for (const t of (G.M.K[x.k] && G.M.K[x.k].t) || [])
+                if (G.own[t] === G.cur) out.add(t);
+        } else if (G.ts) {
+          for (const t of owns) {
+            if (G.ts.mode === "factory" && G.fac[t]) continue;
+            if (G.ts.mode === "planeFactory" && G.pfac[t]) continue;
+            out.add(t);
+          }
+        }
+        return out;
+      }
+      function vrLiftedSet() {
+        const set = new Set();
+        if (!G || scr != "game") return set;
+        const J = (G.M && G.M.J) || {};
+        // Território selecionado: sobe ele + os ALVOS válidos (vizinhos inimigos no ataque; vizinhos
+        // seus no reagrupamento; TODOS os seus no reagrupamento "livre"), como no original.
+        if (G.sel && G.own[G.sel] === G.cur) {
+          set.add(G.sel);
+          const nb = J[G.sel] || [];
+          if (G.ph === "A") {
+            for (const n of nb) if (G.own[n] !== G.cur) set.add(n);
+          } else if (G.ph === "F") {
+            if (RS[8] === "B") for (const t of G.T) if (G.own[t] === G.cur) set.add(t);
+            else for (const n of nb) if (G.own[n] === G.cur) set.add(n);
+          }
+        }
+        if (G.fx) {
+          if (G.fx.s) set.add(G.fx.s);
+          if (G.fx.t) set.add(G.fx.t);
+        }
+        if (G.airMode) for (const t of G.T) if (G.own[t] !== G.cur && ptsOf(t) > 1) set.add(t);
+        if (G.airTarget) set.add(G.airTarget);
+        // Igual ao original: com o modo MÍSSEIS ativo sobem apenas os alvos que o jogador tem CARTA
+        // (_missileTargets = missileCardTargets()), não todos os inimigos.
+        if (G.missileMode && G.ph === "A") {
+          const mt = missileCardTargets();
+          for (const t of G.T) if (mt && mt[t]) set.add(t);
+        }
+        if (G.missileStrikeTarget) set.add(G.missileStrikeTarget);
+        if (G.missileTarget) set.add(G.missileTarget);
+        // Etapa 9r: reforços (fases R/P1) — a situação que faltava do original.
+        for (const t of vrReinfEligible()) set.add(t);
+        return set;
+      }
+      function vrDimActive() {
+        if (!G || scr != "game") return false;
+        if (G.sel || G.fx || G.airMode || G.missileMode || G.missileStrikeTarget) return true;
+        // Etapa 9r: durante a colocação de reforços o resto do mapa e o mar também escurecem
+        // (reinfDimTerritories + waterDim do original).
+        return vrReinfEligible().size > 0;
+      }
+      function vrLiftShadowFor(t) {
+        let s = vrLiftShadow[t];
+        const fm = vrFillMesh[t];
+        if (!s && fm) {
+          s = new THREE.Mesh(
+            fm.geometry,
+            new THREE.MeshBasicMaterial({
+              color: 0x000000,
+              transparent: true,
+              opacity: 0.42,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              toneMapped: false,
+              clippingPlanes: vrClip,
+            }),
+          );
+          s.renderOrder = fm.renderOrder - 0.5; // logo ABAIXO do preenchimento do território
+          s.frustumCulled = false;
+          s.visible = false;
+          if (vrFillGroup) vrFillGroup.add(s);
+          vrLiftShadow[t] = s;
+        }
+        return s;
+      }
+      function syncVRLift() {
+        if (!vrFillGroup || !G || scr == "menu") return;
+        const lift = VR_LIFT_3D ? vrLiftedSet() : null;
+        for (const t of G.T) {
+          const up = !!(lift && lift.has(t)),
+            dx = up ? VR_LIFT_DX : 0,
+            dy = up ? VR_LIFT_DY : 0,
+            fm = vrFillMesh[t],
+            st = vrStrokeMesh[t],
+            ov = vrStrokeOv[t],
+            hl = vrHL[t];
+          if (fm) {
+            fm.position.set(dx, dy, 0);
+            fm.userData.lb = [dx, dy];
+          }
+          if (st) {
+            st.position.set(dx, dy, 0);
+            st.userData.lb = [dx, dy];
+          }
+          if (ov) {
+            ov.position.set(dx, dy, 0);
+            ov.userData.lb = [dx, dy];
+          }
+          if (hl) hl.position.set(dx, dy, hl.position.z);
+          const L = vrLabels[t];
+          if (L && L.mesh && L.mesh.userData.base) {
+            const lx = L.mesh.userData.base[0] + dx,
+              ly = L.mesh.userData.base[1] + dy;
+            L.mesh.position.set(lx, ly, 0);
+            L.mesh.userData.lb = [lx, ly];
+          }
+          const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
+          if (sh) {
+            sh.visible = up;
+            sh.position.set(0, 0, 0);
+          }
+        }
+      }
+      function syncVRFills() {
+        if (!vrSea) return;
+        const on = !!G && scr != "menu" && !!vrFillGroup;
+        vrSea.visible = on;
+        if (vrFillGroup) vrFillGroup.visible = on;
+        if (vrStrokeGroup) vrStrokeGroup.visible = on;
+        if (!on) return;
+        const lift = VR_LIFT_3D ? vrLiftedSet() : null;
+        const dimOn = VR_DIM_3D && vrDimActive();
+        vrSea.material.color.setHex(0x5bbcd8);
+        if (dimOn) vrSea.material.color.multiplyScalar(0.38); // mar escurece como o #waterLayer.dim
+        for (const t of G.T) {
+          const m = vrFillMesh[t];
+          if (!m) continue;
+          const hid = !!(G.fillHid && G.fillHid.has(t)),
+            dim = dimOn && !(lift && lift.has(t)),
+            k = (hid ? "h" : G.own[t]) + (dim ? "|d" : "");
+          if (m.userData.k === k) continue;
+          m.userData.k = k;
+          m.material.color.set(hid ? "#a0aab4" : COL[G.own[t]]);
+          m.material.opacity = hid ? 0.45 : 1;
+          if (dim) {
+            m.material.color.multiplyScalar(0.5);
+            m.material.opacity *= 0.8;
+          }
+        }
+      }
+      /* Etapa 7: rótulos dos territórios em 3D. Cada território tem UM plano com um mini-canvas (nome +
+         ícones + número + marcadores), desenhado com as MESMAS funções do original (T, TN, TK,
+         drawTankIcons) trocando temporariamente `c`. O mini-canvas só é redesenhado quando muda algo
+         (número, dono, ícones, zoom...), no máximo VR_LABEL_BUDGET por quadro. Pan não redesenha nada. */
+      const VR_LABEL_BUDGET = 12;
+      function vrDrawLabel(L, t, lm, sn, dens) {
+        const gap = Math.round(lm.ls * 0.85),
+          HW = Math.ceil(lm.ls * 6),
+          UP = Math.ceil(Math.max(lm.no + gap + lm.ls, lm.ls * 4.2) + 8),
+          DN = Math.ceil(lm.ls * 3),
+          W = Math.ceil(2 * HW * dens),
+          H = Math.ceil((UP + DN) * dens),
+          cv = L.cv;
+        if (cv.width !== W || cv.height !== H) {
+          cv.width = W;
+          cv.height = H;
+          L.tex.dispose(); // tamanho mudou (zoom): textura recriada
+        }
+        const g = cv.getContext("2d"),
+          c0 = c;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, W, H);
+        g.setTransform(dens, 0, 0, dens, HW * dens, UP * dens);
+        c = g;
+        try {
+          if (sn) {
+            const p = t.split(" "),
+              ny = -lm.no;
+            if (p.length > 1) {
+              TN(p[0], 0, ny - gap, lm.ls, lm.lst);
+              TN(p.slice(1).join(" "), 0, ny, lm.ls, lm.lst);
+            } else TN(t, 0, ny, lm.ls, lm.lst);
+          }
+          if (!(G.fillHid && G.fillHid.has(t))) {
+            drawTankIcons(t, 0, 0, lm);
+            T(G.n[t], 0, 0, lm.cs);
+            if (G.airMode && G.airTarget === t)
+              T(
+                "✈",
+                -lm.cs * 1.45,
+                lm.cs * 0.7,
+                Math.max(20, lm.ls * 0.9 * ({ P: 0.72, M: 1, G: 1.28 }[planeSize] || 1)),
+                "#fff",
+              );
+            if (G.missileStrikeTarget === t) {
+              T("🚀", -lm.cs * 1.45, lm.cs * 0.7, Math.max(20, lm.ls * 0.9), "#ffdd00");
+              T(G.missileStrikePts, -lm.cs * 1.45, -lm.cs * 0.7, Math.max(18, lm.ls * 0.8), "#ffdd00");
+            }
+          }
+        } finally {
+          c = c0;
+        }
+        L.tex.needsUpdate = true;
+        L.mesh.scale.set(2 * HW, -(UP + DN), 1); // y negativo: o grupo do mapa já tem y invertido
+        const _bx = G.M.C[t][0],
+          _by = G.M.C[t][1] + (DN - UP) / 2;
+        L.mesh.userData.base = [_bx, _by]; // base sem levante (etapa 9p soma o deslocamento)
+        L.mesh.position.set(_bx, _by, 0);
+      }
+      function vrSyncLabels() {
+        if (!vrLabelGroup) return;
+        const on = !!G && scr != "menu";
+        vrLabelGroup.visible = on;
+        if (!on) return;
+        const lm = lmet(),
+          sn = showNames(),
+          zs = zsc(),
+          dens = Math.min(3, Math.max(1, zs)),
+          ev = evoLv();
+        let budget = VR_LABEL_BUDGET;
+        for (const t of G.T) {
+          if (!G.M.C[t]) continue;
+          const o = G.own[t],
+            hid = !!(G.fillHid && G.fillHid.has(t)),
+            sig = [
+              dens.toFixed(2),
+              lm.ls,
+              lm.cs,
+              sn ? 1 : 0,
+              hid ? 1 : 0,
+              o,
+              G.n[t],
+              G.fac[t] ? 1 : 0,
+              G.pfac && G.pfac[t] ? 1 : 0,
+              tkOf(t),
+              ev,
+              factorySize,
+              tankSize,
+              planeSize,
+              cfg.lang,
+              G.airMode && G.airTarget === t ? 1 : 0,
+              G.missileStrikeTarget === t ? "m" + G.missileStrikePts : 0,
+              ICO.f[o] ? 1 : 0,
+              ICO.v[o] ? 1 : 0,
+              ICO.pf[o] ? 1 : 0,
+            ].join("|");
+          let L = vrLabels[t];
+          if (!L) {
+            const cv = document.createElement("canvas");
+            cv.width = cv.height = 2;
+            const tx = new THREE.CanvasTexture(cv);
+            tx.colorSpace = THREE.SRGBColorSpace;
+            tx.generateMipmaps = false;
+            tx.minFilter = THREE.LinearFilter;
+            tx.anisotropy = 4;
+            const mesh = new THREE.Mesh(
+              new THREE.PlaneGeometry(1, 1),
+              new THREE.MeshBasicMaterial({
+                map: tx,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                toneMapped: false,
+                clippingPlanes: vrClip,
+              }),
+            );
+            mesh.renderOrder = 900;
+            mesh.frustumCulled = false;
+            vrLabelGroup.add(mesh);
+            L = vrLabels[t] = { cv, tex: tx, mesh, sig: "" };
+          }
+          if (L.sig !== sig) {
+            if (budget <= 0) continue; // fica para o próximo quadro
+            budget--;
+            L.sig = sig;
+            vrDrawLabel(L, t, lm, sn, dens);
+          }
+          L.mesh.visible = true;
+        }
+      }
+      /* Etapa 5: bordas em 3D. Cada borda é uma fita (triângulos) gerada do contorno do território, com
+         largura em unidades do mapa (o grupo já escala com o zoom, igual ao lineWidth do canvas dentro
+         do setTransform). Geometrias são criadas sob demanda e guardadas por (território, tipo). */
+      const vrEmptyGeo = new THREE.BufferGeometry();
+      function vrStrokeMat(color) {
+        return (
+          vrStrokeMats[color] ||
+          (vrStrokeMats[color] = new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            clippingPlanes: vrClip,
+          }))
+        );
+      }
+      function vrDashify(pts, on, off) {
+        const out = [];
+        let cur = [pts[0].clone()],
+          drawing = true,
+          left = on;
+        for (let i = 1; i < pts.length; i++) {
+          let a = pts[i - 1].clone();
+          const b = pts[i];
+          let d = a.distanceTo(b);
+          while (d > left) {
+            a.lerp(b, left / d);
+            d = a.distanceTo(b);
+            if (drawing) {
+              cur.push(a.clone());
+              out.push(cur);
+              cur = [];
+            } else cur = [a.clone()];
+            drawing = !drawing;
+            left = drawing ? on : off;
+          }
+          left -= d;
+          if (drawing) cur.push(b.clone());
+        }
+        if (drawing && cur.length > 1) out.push(cur);
+        return out;
+      }
+      function vrGetStrokeGeo(t, kind) {
+        const cache = vrStrokeGeo[t] || (vrStrokeGeo[t] = {});
+        if (kind in cache) return cache[kind];
+        const subs = vrStrokePts[t] || [],
+          dashed = kind == "d",
+          style = SVGLoader.getStrokeStyle(dashed ? 5 : +kind, "#fff", "round", dashed ? "butt" : "round"),
+          parts = [];
+        for (const pts of subs) {
+          if (pts.length < 2) continue;
+          const lines = dashed ? vrDashify(pts, 10, 6) : [pts];
+          for (const l of lines) {
+            const g = l.length > 1 ? SVGLoader.pointsToStroke(l, style, 8, 0.1) : null;
+            if (g && g.getAttribute("position") && g.getAttribute("position").count) parts.push(g);
+          }
+        }
+        let geo = null;
+        if (parts.length) {
+          geo = parts.length == 1 ? parts[0] : mergeGeometries(parts);
+          if (parts.length > 1) for (const g of parts) g.dispose();
+        }
+        return (cache[kind] = geo);
+      }
+      function vrSetStroke(t, w, color) {
+        vrStrokeWant[t] = [w, color];
+      }
+      function vrSetOverlay(t, kind, color) {
+        vrStrokeOvWant[t] = [kind, color];
+      }
+      function vrStrokeEnd() {
+        if (!vrStrokeGroup || !G) return;
+        for (const t of G.T) {
+          if (!(t in vrStrokeIdx)) continue;
+          for (const ov of [false, true]) {
+            const want = (ov ? vrStrokeOvWant : vrStrokeWant)[t],
+              store = ov ? vrStrokeOv : vrStrokeMesh;
+            let m = store[t];
+            if (!want) {
+              if (m) m.visible = false;
+              continue;
+            }
+            const key = want[0] + "|" + want[1];
+            if (!m) {
+              m = new THREE.Mesh(new THREE.BufferGeometry(), vrStrokeMat(want[1]));
+              m.renderOrder = (ov ? 500 : 0) + vrStrokeIdx[t];
+              m.frustumCulled = false;
+              vrStrokeGroup.add(m);
+              store[t] = m;
+            }
+            if (m.userData.k !== key) {
+              m.userData.k = key;
+              const geo = vrGetStrokeGeo(t, String(want[0]));
+              m.geometry = geo || vrEmptyGeo;
+              m.material = vrStrokeMat(want[1]);
+            }
+            m.visible = true;
+          }
+        }
+        vrStrokeWant = {};
+        vrStrokeOvWant = {};
+      }
+      /* Etapa 6a: linhas pontilhadas de conexão (rgba(0,0,0,.55), 1.6, tracejado 6/6) em uma só malha. */
+      function vrBuildConn(M) {
+        const list = M.Q.concat(M === D.A ? CONN_ALT.map((q) => [q[0], q[1]]) : []),
+          style = SVGLoader.getStrokeStyle(1.6, "#000", "round", "butt"),
+          parts = [];
+        for (const [a, b] of list) {
+          const g = connGeom(M, a, b);
+          if (!g) continue;
+          const pts = [];
+          for (let i = 0; i <= 64; i++) {
+            const q = connPt(g, i / 64);
+            pts.push(new THREE.Vector2(q[0], q[1]));
+          }
+          for (const l of vrDashify(pts, 6, 6)) {
+            const geo = l.length > 1 ? SVGLoader.pointsToStroke(l, style, 6, 0.05) : null;
+            if (geo && geo.getAttribute("position") && geo.getAttribute("position").count) parts.push(geo);
+          }
+        }
+        if (!parts.length) return null;
+        const geo = mergeGeometries(parts);
+        for (const g of parts) g.dispose();
+        const mesh = new THREE.Mesh(
+          geo,
+          new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0.55,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            clippingPlanes: vrClip,
+          }),
+        );
+        mesh.position.z = -0.002; // atrás dos preenchimentos
+        mesh.renderOrder = -1;
+        mesh.frustumCulled = false;
+        return mesh;
+      }
+      /* Etapa 6b: seta laranja e explosão do ataque (G.fx). Chamados por draw() a cada quadro da animação. */
+      let vrFx = null;
+      function vrFxInit(group) {
+        const mk = (color, extra) =>
+            new THREE.MeshBasicMaterial({
+              color,
+              transparent: true,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              toneMapped: false,
+              clippingPlanes: vrClip,
+              ...extra,
+            }),
+          pts = [[-40, -3.5], [-10, -3.5], [-10, -11], [14, 0], [-10, 11], [-10, 3.5], [-40, 3.5]].map(
+            ([x, y]) => new THREE.Vector2(x, y),
+          ),
+          fillGeo = new THREE.ShapeGeometry(new THREE.Shape(pts)),
+          lineGeo = SVGLoader.pointsToStroke(
+            pts.concat([pts[0].clone()]),
+            SVGLoader.getStrokeStyle(2.5, "#fff", "round", "round"),
+            8,
+            0.05,
+          ),
+          glow = new THREE.Mesh(fillGeo, mk(0xffcc33)),
+          fill = new THREE.Mesh(fillGeo, mk(0xff6633)),
+          line = new THREE.Mesh(lineGeo, mk(0xfff7b3)),
+          arrow = new THREE.Group();
+        glow.scale.set(1.35, 1.9, 1);
+        glow.renderOrder = 800;
+        fill.renderOrder = 801;
+        line.renderOrder = 802;
+        arrow.add(glow, fill, line);
+        arrow.position.z = 0.002;
+        arrow.visible = false;
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 128;
+        const cx = cv.getContext("2d"),
+          gr = cx.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gr.addColorStop(0, "rgba(255,255,200,1)");
+        gr.addColorStop(0.4, "rgba(255,150,0,0.9)");
+        gr.addColorStop(1, "rgba(200,0,0,0)");
+        cx.fillStyle = gr;
+        cx.fillRect(0, 0, 128, 128);
+        const tx = new THREE.CanvasTexture(cv);
+        tx.colorSpace = THREE.SRGBColorSpace;
+        const boom = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mk(0xffffff, { map: tx }));
+        boom.renderOrder = 803;
+        boom.position.z = 0.003;
+        boom.visible = false;
+        group.add(arrow, boom);
+        vrFx = { arrow, boom, glow, fill, line };
+        vrBurstInit(group, mk, tx);
+      }
+      /* Etapa 9i: explosão da conquista igual ao explosionAt() do original (CSS boomCore/boomRing/
+         boomSpark/boomDebris + flyingDebris 600 ms depois), feita em 3D: núcleo, 2 anéis, 35 faíscas,
+         18 destroços giratórios, 25 destroços voando longe e 15 fumaças. Tudo em InstancedMesh (poucos
+         draw calls) e animado por vrBurstTick() no loop, sem tocar no canvas. Interruptor: VR_MAP_3D_BURST. */
+      const VR_MAP_3D_BURST = true;
+      /* Etapa 9j: tremor dos territórios no ataque igual ao shakeTerritory() do original (keyframes CSS
+         shakeAtk/shakeDef/shakeFast; short = 250 ms, fast = 1000 ms). Só desloca as malhas 3D do território
+         (cor, borda, contorno extra e rótulo); não toca no canvas. Interruptor: VR_MAP_3D_SHAKE. */
+      const VR_MAP_3D_SHAKE = true;
+      const VR_SHAKE_KF = {
+        atk: [[0, 0], [-12, 4], [10, -6], [-8, 10], [12, -4], [-10, 8], [8, -12], [-12, 6], [10, -8], [-6, 10], [0, 0]],
+        def: [[0, 0], [12, -4], [-10, 6], [8, -10], [-12, 4], [10, -8], [-8, 12], [12, -6], [-10, 8], [6, -10], [0, 0]],
+        fast: [[0, 0]].concat(Array.from({ length: 19 }, (_, i) => (i % 2 ? [15, -10] : [-15, 10])), [[0, 0]]),
+      };
+      let vrShakes = {};
+      function vrShake(t, type) {
+        if (!VR_MAP_3D_SHAKE || !t) return;
+        const kf = type == "fast" ? "fast" : type == "short-def" || type == "def" ? "def" : "atk",
+          dur = type == "fast" ? 1000 : type == "short-atk" || type == "short-def" || type == "short" ? 250 : 500;
+        vrShakes[t] = { kf, dur, t0: performance.now() };
+      }
+      function vrShakeMeshes(t) {
+        const L = vrLabels[t];
+        return [vrFillMesh[t], vrStrokeMesh[t], vrStrokeOv[t], L && L.mesh].filter(Boolean);
+      }
+      function vrShakeTick() {
+        const now = performance.now();
+        for (const t in vrShakes) {
+          const S2 = vrShakes[t],
+            p = (now - S2.t0) / S2.dur,
+            K = VR_SHAKE_KF[S2.kf];
+          let dx = 0, dy = 0;
+          if (p < 1) {
+            const f = p * (K.length - 1), i = Math.floor(f), u = f - i, A = K[i], B2 = K[Math.min(i + 1, K.length - 1)];
+            dx = A[0] + (B2[0] - A[0]) * u;
+            dy = A[1] + (B2[1] - A[1]) * u;
+          }
+          for (const m of vrShakeMeshes(t)) {
+            const lb = m.userData.lb || [0, 0]; // base do levante (etapa 9p) definida por syncVRLift
+            m.position.x = lb[0] + dx;
+            m.position.y = lb[1] + dy;
+          }
+          if (p >= 1) delete vrShakes[t];
+        }
+      }
+      let vrBurst = null; // 1º da lista (compatibilidade: "vrBurst" indica que o efeito existe)
+      let vrBursts = []; // etapa 9k: até 3 explosões ao mesmo tempo (míssil = min(pontos,3) x explosionAt)
+      const vrEaseOut = (p) => 1 - Math.pow(1 - Math.max(0, Math.min(1, p)), 2.2);
+      function vrBurstInit(group, mk, glowTex) {
+        vrBurst = null;
+        vrBursts = [];
+        if (!VR_MAP_3D_BURST) return;
+        for (let k = 0; k < 3; k++) vrBurstInit1(group, mk, glowTex);
+        vrBurst = vrBursts[0];
+      }
+      function vrBurstInit1(group, mk, glowTex) {
+        const g = new THREE.Group();
+        g.position.z = 0.004;
+        g.visible = false;
+        const circ = new THREE.CircleGeometry(1, 20),
+          core = new THREE.Mesh(circ, mk(0xfff8c0)),
+          coreGlow = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mk(0xff9800, { map: glowTex })),
+          ring1 = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), mk(0xff5520)),
+          ring2 = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), mk(0xffd23a)),
+          sparks = new THREE.InstancedMesh(circ, mk(0xffd23a), 35),
+          debris = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.5), mk(0xffaa00), 18),
+          fly = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.6), mk(0xffffff), 25),
+          smoke = new THREE.InstancedMesh(circ, mk(0x646464, { opacity: 0.6 }), 15);
+        const flyCols = ["#ff6600", "#ff8800", "#ffaa00", "#ffcc00", "#ff3300", "#666", "#888"];
+        for (let i = 0; i < 25; i++) fly.setColorAt(i, new THREE.Color(flyCols[i % flyCols.length]).convertSRGBToLinear());
+        [smoke, fly, debris, sparks, ring1, ring2, coreGlow, core].forEach((m, i) => {
+          m.renderOrder = 804 + i;
+          m.frustumCulled = false;
+          g.add(m);
+        });
+        group.add(g);
+        vrBursts.push({ g, core, coreGlow, ring1, ring2, sparks, debris, fly, smoke, t0: 0, on: false, P: null, m4: new THREE.Matrix4(), q: new THREE.Quaternion(), v: new THREE.Vector3(), sc: new THREE.Vector3(), e: new THREE.Euler() });
+      }
+      function vrBurstStart(cx, cy) {
+        if (!vrBursts.length) return;
+        // usa uma explosão livre; se todas estiverem ativas, reinicia a mais antiga
+        const B = vrBursts.find((b) => !b.on) || vrBursts.reduce((a, b) => (b.t0 < a.t0 ? b : a));
+        const R = Math.random,
+          P = { sp: [], db: [], fl: [], sm: [] };
+        for (let i = 0; i < 35; i++) {
+          const a = (i / 35) * Math.PI * 2 + (R() - 0.5) * 0.5, r = 60 + R() * 140;
+          P.sp.push([Math.cos(a) * r, Math.sin(a) * r, 3 + R() * 6, R() * 0.15]);
+        }
+        for (let i = 0; i < 18; i++) {
+          const a = (i / 18) * Math.PI * 2 + (R() - 0.5) * 0.4, r = 90 + R() * 170;
+          P.db.push([Math.cos(a) * r, Math.sin(a) * r, 7 + R() * 12, R() * 0.2]);
+        }
+        for (let i = 0; i < 25; i++) {
+          const an = R() * Math.PI * 2, d = 200 + R() * 600;
+          P.fl.push([(R() - 0.5) * 100, (R() - 0.5) * 100, Math.cos(an) * d, Math.sin(an) * d, 4 + R() * 10, R() * 1080, R() * 0.3]);
+        }
+        for (let i = 0; i < 15; i++) {
+          const an = -Math.PI / 2 + (R() - 0.5) * 0.8, d = 150 + R() * 300;
+          P.sm.push([(R() - 0.5) * 80, (R() - 0.5) * 80, Math.cos(an) * d, Math.sin(an) * d, 8 + R() * 15, 0.2 + R() * 0.4]);
+        }
+        B.P = P;
+        B.g.position.x = cx;
+        B.g.position.y = cy;
+        B.t0 = performance.now();
+        B.on = true;
+        B.g.visible = true;
+        vrBurstTick1(B);
+      }
+      function vrBurstTick() {
+        for (const B of vrBursts) vrBurstTick1(B);
+      }
+      function vrBurstTick1(B) {
+        if (!B || !B.on) return;
+        const t = (performance.now() - B.t0) / 1000,
+          P = B.P,
+          { m4, q, v, sc, e } = B,
+          set = (im, i, x, y, sx, sy, rot) => {
+            e.set(0, 0, rot || 0);
+            q.setFromEuler(e);
+            v.set(x, y, 0);
+            sc.set(Math.max(1e-4, sx), Math.max(1e-4, sy), 1);
+            m4.compose(v, q, sc);
+            im.setMatrixAt(i, m4);
+          };
+        if (t > 3.9) {
+          B.on = false;
+          B.g.visible = false;
+          return;
+        }
+        // núcleo: r 5 -> 120 em 0.95 s, opacidade 1 -> 0.9 (60%) -> 0
+        const pc = Math.min(1, t / 0.95), rc = 5 + 115 * vrEaseOut(pc), oc = pc < 0.6 ? 1 - (pc / 0.6) * 0.1 : 0.9 * (1 - (pc - 0.6) / 0.4);
+        B.core.visible = B.coreGlow.visible = pc < 1;
+        B.core.scale.set(rc, rc, 1);
+        B.core.material.opacity = oc;
+        B.coreGlow.scale.set(rc + 25, rc + 25, 1);
+        B.coreGlow.material.opacity = oc;
+        // anéis: r 8 -> 200, traço 12 -> 1, opacidade 0.9 -> 0 (1.1 s e 0.9 s com atraso 0.12 s)
+        [[B.ring1, 1.1, 0], [B.ring2, 0.9, 0.12]].forEach(([m, dur, dl]) => {
+          const p = Math.max(0, Math.min(1, (t - dl) / dur)), k = vrEaseOut(p), r = 8 + 192 * k, w = 12 - 11 * k;
+          m.visible = t >= dl && p < 1;
+          m.geometry.dispose();
+          m.geometry = new THREE.RingGeometry(Math.max(0.1, r - w / 2), r + w / 2, 48);
+          m.material.opacity = 0.9 * (1 - p);
+        });
+        // faíscas (1.2 s) e destroços giratórios (1.4 s, 720°)
+        let os = 0;
+        P.sp.forEach(([dx, dy, sz, dl], i) => {
+          const p = Math.max(0, Math.min(1, (t - dl) / 1.2)), k = vrEaseOut(p), s2 = sz * (1 - 0.85 * k);
+          set(B.sparks, i, dx * k, dy * k, s2, s2, 0);
+          os += 1 - p;
+        });
+        B.sparks.material.opacity = os / P.sp.length;
+        B.sparks.visible = t < 1.4;
+        B.sparks.instanceMatrix.needsUpdate = true;
+        let od = 0;
+        P.db.forEach(([dx, dy, sz, dl], i) => {
+          const p = Math.max(0, Math.min(1, (t - dl) / 1.4)), k = vrEaseOut(p), s2 = sz * (1 - 0.7 * k);
+          set(B.debris, i, dx * k, dy * k, s2, s2, k * 4 * Math.PI);
+          od += p < 0.5 ? 1 - 0.4 * p : 0.8 * (1 - (p - 0.5) / 0.5);
+        });
+        B.debris.material.opacity = od / P.db.length;
+        B.debris.visible = t < 1.6;
+        B.debris.instanceMatrix.needsUpdate = true;
+        // 600 ms depois: destroços voando pelo mapa e fumaça subindo (3 s)
+        const t2 = t - 0.6;
+        B.fly.visible = B.smoke.visible = t2 >= 0;
+        if (t2 >= 0) {
+          let of = 0;
+          P.fl.forEach(([sx, sy, ex, ey, sz, rot, dl], i) => {
+            const p = Math.max(0, Math.min(1, (t2 - dl) / 3)), k = vrEaseOut(p);
+            set(B.fly, i, sx + ex * k, sy + ey * k, sz, sz, (rot * k * Math.PI) / 180);
+            of += p < 0.2 ? 1 : 1 - (p - 0.2) / 0.8;
+          });
+          B.fly.material.opacity = of / P.fl.length;
+          B.fly.instanceMatrix.needsUpdate = true;
+          let om = 0;
+          P.sm.forEach(([sx, sy, ex, ey, sz, dl], i) => {
+            const p = Math.max(0, Math.min(1, (t2 - dl) / 3)), k = vrEaseOut(p);
+            set(B.smoke, i, sx + ex * k, sy + ey * k, sz, sz * 0.7, 0);
+            om += p < 0.2 ? 1 : 1 - (p - 0.2) / 0.8;
+          });
+          B.smoke.material.opacity = (0.6 * om) / P.sm.length;
+          B.smoke.instanceMatrix.needsUpdate = true;
+        }
+      }
+      /* =====================================================================================
+         ETAPA 9n: PÁSSARO (perdiz) e SATÉLITE voando/caindo em 3D (igual ao shootDownEntity).
+         No original: createFlyingPlane (satélite) aparece a cada 2 min, no máximo 1 por vez;
+         createFlyingPerdiz (pássaro) existe mas o original NÃO o instancia (mantido por paridade,
+         disponível mas fora da programação automática). Clicar no voador o derruba: cai em 1,5 s
+         até o centro de um território do jogador humano que tenha >1 soldado, explode, treme forte
+         e ele PERDE 1 soldado (som + log + toast). Aqui os voadores são planos 3D em vrFlyGroup,
+         em ESPAÇO DE TELA fixo (não seguem pan/zoom do mapa), na frente do canvas (z -8.80),
+         clicáveis com o ponteiro VR (gatilho) ou com o mouse. Interruptor: VR_FLY_3D.
+         ===================================================================================== */
+      const VR_FLY_3D = true;
+      const VR_FLY_Z = -8.8;
+      let vrFlyGroup = null,
+        vrFlyers = [],
+        vrFlyMeshes = [],
+        vrFlyTimer0 = null,
+        vrFlyTimer = null;
+      function vrFlyGroupInit() {
+        if (vrFlyGroup) return;
+        vrFlyGroup = new THREE.Group();
+        vrFlyGroup.position.set(
+          -960 * VR_MAP_SCALE,
+          VR_SCREEN_Y + 540 * VR_MAP_SCALE,
+          VR_FLY_Z,
+        );
+        vrFlyGroup.scale.set(VR_MAP_SCALE, -VR_MAP_SCALE, 1);
+        scene.add(vrFlyGroup);
+      }
+      function vrDrawBird(g) {
+        const ell = (cx, cy, rx, ry) => {
+            g.beginPath();
+            g.ellipse(cx, cy, rx, ry, 0, 0, 7);
+            g.fill();
+          },
+          circ = (cx, cy, r) => {
+            g.beginPath();
+            g.arc(cx, cy, r, 0, 7);
+            g.fill();
+          };
+        g.lineJoin = "round";
+        g.fillStyle = "#8B7355";
+        ell(0, 3, 20, 9);
+        g.fillStyle = "#6B5344";
+        ell(0, 5, 18, 7);
+        g.fillStyle = "#7A6348";
+        g.beginPath();
+        g.moveTo(16, 3);
+        g.quadraticCurveTo(28, 0, 32, -5);
+        g.quadraticCurveTo(24, 3, 16, 3);
+        g.fill();
+        g.beginPath();
+        g.moveTo(16, 3);
+        g.quadraticCurveTo(30, 3, 34, 8);
+        g.quadraticCurveTo(24, 6, 16, 3);
+        g.fill();
+        g.fillStyle = "#A08060";
+        ell(-6, -6, 14, 6);
+        ell(6, -6, 14, 6);
+        g.strokeStyle = "#5A4030";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(-18, -6);
+        g.quadraticCurveTo(-26, -9, -32, -6);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(-15, -6);
+        g.quadraticCurveTo(-24, -7, -30, -3);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(18, -6);
+        g.quadraticCurveTo(26, -9, 32, -6);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(15, -6);
+        g.quadraticCurveTo(24, -7, 30, -3);
+        g.stroke();
+        g.fillStyle = "#8B7355";
+        circ(-18, 0, 7);
+        g.fillStyle = "#9A8470";
+        ell(-10, 2, 5, 4);
+        g.fillStyle = "#4A3020";
+        g.beginPath();
+        g.moveTo(-25, 0);
+        g.lineTo(-32, -2);
+        g.lineTo(-25, 2);
+        g.closePath();
+        g.fill();
+        g.fillStyle = "#111";
+        circ(-21, -2, 2);
+        g.strokeStyle = "#D4A574";
+        g.lineWidth = 0.5;
+        g.beginPath();
+        g.arc(-21, -2, 2.5, 0, 7);
+        g.stroke();
+        g.strokeStyle = "#CC9933";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(-5, 10);
+        g.lineTo(-8, 14);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(5, 10);
+        g.lineTo(8, 14);
+        g.stroke();
+      }
+      function vrDrawSat(g) {
+        const circ = (cx, cy, r) => {
+          g.beginPath();
+          g.arc(cx, cy, r, 0, 7);
+          g.fill();
+        };
+        // painéis solares (esquerda/direita) com grade branca
+        g.fillStyle = "#1a4a8a";
+        g.strokeStyle = "#fff";
+        g.lineWidth = 1;
+        g.fillRect(-120, -15, 95, 30);
+        g.strokeRect(-120, -15, 95, 30);
+        g.fillRect(25, -15, 95, 30);
+        g.strokeRect(25, -15, 95, 30);
+        g.lineWidth = 0.5;
+        [-120, -96, -72, -48].forEach((x) => {
+          g.beginPath();
+          g.moveTo(x, -15);
+          g.lineTo(x, 15);
+          g.stroke();
+        });
+        [25, 48, 72, 96].forEach((x) => {
+          g.beginPath();
+          g.moveTo(x, -15);
+          g.lineTo(x, 15);
+          g.stroke();
+        });
+        g.beginPath();
+        g.moveTo(-120, 0);
+        g.lineTo(-25, 0);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(25, 0);
+        g.lineTo(120, 0);
+        g.stroke();
+        // corpo
+        g.fillStyle = "#505868";
+        g.strokeStyle = "#333";
+        g.lineWidth = 2;
+        g.fillRect(-25, -25, 50, 50);
+        g.strokeRect(-25, -25, 50, 50);
+        g.fillStyle = "#687078";
+        g.fillRect(-20, -20, 40, 40);
+        // antena
+        g.fillStyle = "#a0a8b0";
+        circ(0, 0, 12);
+        g.strokeStyle = "#333";
+        g.lineWidth = 1;
+        g.beginPath();
+        g.arc(0, 0, 12, 0, 7);
+        g.stroke();
+        g.strokeStyle = "#a0a8b0";
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(0, 0);
+        g.lineTo(0, -40);
+        g.stroke();
+        g.fillStyle = "#ff4444";
+        circ(0, -40, 4);
+      }
+      function vrCreateFlyer(kind) {
+        if (!VR_FLY_3D || !G || scr != "game") return null;
+        vrFlyGroupInit();
+        const bird = kind == "bird";
+        // satélite: no máximo 1 por vez (como o original)
+        if (!bird && vrFlyers.some((F) => F.kind == "sat" && !F.falling)) return null;
+        const dirs = bird
+          ? [
+              { sx: -50, sy: Math.random() * 800 + 100, ex: 1970, ey: Math.random() * 800 + 100, angle: 0 },
+              { sx: 1970, sy: Math.random() * 800 + 100, ex: -50, ey: Math.random() * 800 + 100, angle: 180 },
+              { sx: Math.random() * 1600 + 100, sy: -50, ex: Math.random() * 1600 + 100, ey: 1130, angle: 90 },
+              { sx: Math.random() * 1600 + 100, sy: 1130, ex: Math.random() * 1600 + 100, ey: -50, angle: -90 },
+              { sx: -50, sy: -50, ex: 1970, ey: 1130, angle: 45 },
+              { sx: 1970, sy: -50, ex: -50, ey: 1130, angle: 135 },
+              { sx: -50, sy: 1130, ex: 1970, ey: -50, angle: -45 },
+              { sx: 1970, sy: 1130, ex: -50, ey: -50, angle: -135 },
+            ]
+          : [
+              { sx: -150, sy: Math.random() * 700 + 150, ex: 2150, ey: Math.random() * 700 + 150, angle: 0 },
+              { sx: 2150, sy: Math.random() * 700 + 150, ex: -150, ey: Math.random() * 700 + 150, angle: 180 },
+              { sx: Math.random() * 1500 + 150, sy: -150, ex: Math.random() * 1500 + 150, ey: 1250, angle: 90 },
+              { sx: Math.random() * 1500 + 150, sy: 1250, ex: Math.random() * 1500 + 150, ey: -150, angle: -90 },
+            ];
+        const dir = dirs[(Math.random() * dirs.length) | 0];
+        const spec = bird
+          ? { W: 80, H: 48, PS: 4, cw: 320, ch: 192, draw: vrDrawBird }
+          : { W: 250, H: 90, PS: 3, cw: 750, ch: 270, draw: vrDrawSat };
+        const cv = document.createElement("canvas");
+        cv.width = spec.cw;
+        cv.height = spec.ch;
+        const gg = cv.getContext("2d");
+        gg.clearRect(0, 0, spec.cw, spec.ch);
+        gg.save();
+        gg.translate(spec.cw / 2, spec.ch / 2);
+        gg.scale(spec.PS, spec.PS);
+        spec.draw(gg);
+        gg.restore();
+        const tx = new THREE.CanvasTexture(cv);
+        tx.colorSpace = THREE.SRGBColorSpace;
+        tx.generateMipmaps = false;
+        tx.minFilter = THREE.LinearFilter;
+        tx.anisotropy = 4;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({
+            map: tx,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            clippingPlanes: vrClip,
+          }),
+        );
+        mesh.renderOrder = 2500;
+        mesh.frustumCulled = false;
+        mesh.scale.set(spec.W, -spec.H, 1); // y negativo: grupo do voador tem y invertido
+        mesh.position.set(dir.sx, dir.sy, 0);
+        mesh.rotation.z = -(dir.angle * Math.PI) / 180;
+        const F = {
+          kind: bird ? "bird" : "sat",
+          dir,
+          W: spec.W,
+          H: spec.H,
+          mesh,
+          cv,
+          x: dir.sx,
+          y: dir.sy,
+          t0: performance.now(),
+          dur: bird ? 12000 + Math.random() * 6000 : 25000 + Math.random() * 10000,
+          falling: false,
+          fall: null,
+        };
+        mesh.userData.flyer = F;
+        vrFlyGroup.add(mesh);
+        vrFlyers.push(F);
+        vrFlyMeshes.push(mesh);
+        return F;
+      }
+      /* Jogador humano local (mesma regra do _satelliteClicker(): quem clica é quem perde a peça). */
+      function vrHumanPlayer() {
+        if (!G) return null;
+        let p = -1;
+        if (G.bot) {
+          const i = G.bot.findIndex((b) => !b);
+          if (i >= 0) p = i;
+        }
+        if (p < 0) p = G.cur;
+        const alive = (k) => k != null && G.T.some((t) => G.own[t] == k);
+        if (!alive(p) && alive(G.cur)) p = G.cur;
+        return p;
+      }
+      function vrRemoveOnePiece(preselected) {
+        if (!G) return;
+        const p = vrHumanPlayer();
+        if (p == null) return;
+        const cands = () => G.T.filter((t) => G.own[t] == p && G.n[t] > 1);
+        let t = preselected;
+        if (!t || G.own[t] != p || G.n[t] <= 1) {
+          const c = cands();
+          t = c.length ? c[(Math.random() * c.length) | 0] : null;
+        }
+        if (t) {
+          G.n[t]--;
+          addLog(cfg.names[p] + " perdeu 1 soldado ao derrubar o satélite! (" + t + ")");
+          showToast([[["Você perdeu 1 soldado! (" + t + ")", "#fff"]]], 4000);
+          draw();
+          tex.needsUpdate = true;
+          vrShake(t, "def");
+        } else {
+          addLog(cfg.names[p] + " derrubou o satélite, mas não tinha soldados para perder!");
+          showToast([[["Sem soldados para perder!", "#fff"]]], 4000);
+          draw();
+          tex.needsUpdate = true;
+        }
+      }
+      function vrShootDown(F) {
+        if (!F || F.falling) return;
+        soundFall();
+        const p = vrHumanPlayer();
+        const cands = p == null ? [] : G.T.filter((t) => G.own[t] == p && G.n[t] > 1);
+        const victim = cands.length ? cands[(Math.random() * cands.length) | 0] : null;
+        const sx = F.x,
+          sy = F.y;
+        let tx, ty;
+        if (victim && G.M.C[victim]) {
+          tx = G.M.C[victim][0];
+          ty = G.M.C[victim][1];
+        } else {
+          tx = sx + (Math.random() - 0.5) * 200;
+          ty = sy + 400 + Math.random() * 300;
+        }
+        F.falling = true;
+        F.fall = { t0: performance.now(), startX: sx, startY: sy, tx, ty, victim };
+      }
+      function vrFlyRemove(i, impact) {
+        const F = vrFlyers[i];
+        if (!F) return;
+        if (vrFlyGroup) vrFlyGroup.remove(F.mesh);
+        F.mesh.geometry.dispose();
+        if (F.mesh.material.map) F.mesh.material.map.dispose();
+        F.mesh.material.dispose();
+        vrFlyers.splice(i, 1);
+        const j = vrFlyMeshes.indexOf(F.mesh);
+        if (j >= 0) vrFlyMeshes.splice(j, 1);
+        if (impact && F.fall) {
+          const v = F.fall.victim;
+          if (v && G.M.C[v]) {
+            soundExplosion();
+            vrShake(v, "fast");
+            vrBurstStart(G.M.C[v][0], G.M.C[v][1]);
+            vrRemoveOnePiece(v);
+          } else vrRemoveOnePiece(null);
+        }
+      }
+      function vrFlyTick() {
+        if (!vrFlyGroup) return;
+        const on = VR_FLY_3D && !!G && scr == "game";
+        vrFlyGroup.visible = on;
+        if (!on) return;
+        const now = performance.now();
+        for (let i = vrFlyers.length - 1; i >= 0; i--) {
+          const F = vrFlyers[i],
+            m = F.mesh;
+          if (F.falling) {
+            const p = Math.min(1, (now - F.fall.t0) / 1500),
+              k = p * p,
+              dx = F.fall.tx - F.fall.startX,
+              dy = F.fall.ty - F.fall.startY,
+              arc = Math.sin(p * Math.PI) * -40;
+            F.x = F.fall.startX + dx * k;
+            F.y = F.fall.startY + dy * k + arc;
+            m.position.set(F.x, F.y, 0);
+            m.rotation.z = -((720 * p * Math.PI) / 180);
+            const sc = 1 - 0.7 * p;
+            m.scale.set(F.W * sc, -F.H * sc, 1);
+            if (p >= 1) vrFlyRemove(i, true);
+          } else {
+            const pr = (now - F.t0) / F.dur;
+            if (pr >= 1) {
+              vrFlyRemove(i, false);
+              continue;
+            }
+            F.x = F.dir.sx + (F.dir.ex - F.dir.sx) * pr;
+            F.y =
+              F.dir.sy +
+              (F.dir.ey - F.dir.sy) * pr +
+              Math.sin((now - F.t0) * (F.kind == "bird" ? 0.003 : 0.0005)) * (F.kind == "bird" ? 5 : 10);
+            m.position.set(F.x, F.y, 0);
+          }
+        }
+      }
+      /* Acerto do voador pelo ponteiro VR (usa o ray já configurado por aim()) e pelo mouse. */
+      function vrFlyHitRay() {
+        if (!VR_FLY_3D || !vrFlyMeshes.length) return null;
+        const h = ray.intersectObjects(vrFlyMeshes, false)[0];
+        return h ? h.object.userData.flyer : null;
+      }
+      function vrFlyHitCtl(k) {
+        if (!VR_FLY_3D || !vrFlyMeshes.length) return null;
+        tm.identity().extractRotation(k.matrixWorld);
+        ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
+        ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
+        const h = ray.intersectObjects(vrFlyMeshes, false)[0];
+        return h ? h.object.userData.flyer : null;
+      }
+      function vrFlyReset() {
+        if (vrFlyTimer0) clearTimeout(vrFlyTimer0);
+        if (vrFlyTimer) clearInterval(vrFlyTimer);
+        vrFlyTimer0 = vrFlyTimer = null;
+        for (let i = vrFlyers.length - 1; i >= 0; i--) vrFlyRemove(i, false);
+      }
+      function vrStartFlyingEntities() {
+        vrFlyReset();
+        if (!VR_FLY_3D) return;
+        // satélite: 1º após 2 min, depois a cada 2 min (igual ao startFlyingEntities do original)
+        vrFlyTimer0 = setTimeout(() => vrCreateFlyer("sat"), 120000);
+        vrFlyTimer = setInterval(() => vrCreateFlyer("sat"), 120000);
+      }
+      function vrFxHide() {
+        if (!vrFx) return;
+        vrFx.arrow.visible = false;
+        vrFx.boom.visible = false;
+      }
+      function vrFxArrow(px, py, ang, op) {
+        if (!vrFx) return;
+        vrFx.arrow.visible = true;
+        vrFx.boom.visible = false;
+        vrFx.arrow.position.x = px;
+        vrFx.arrow.position.y = py;
+        vrFx.arrow.rotation.z = ang;
+        vrFx.glow.material.opacity = 0.4 * op;
+        vrFx.fill.material.opacity = op;
+        vrFx.line.material.opacity = op;
+      }
+      function vrFxBoom(bx, by, r, e2) {
+        if (!vrFx) return;
+        vrFx.arrow.visible = false;
+        vrFx.boom.visible = true;
+        vrFx.boom.position.x = bx;
+        vrFx.boom.position.y = by;
+        const rr = Math.max(1, r);
+        vrFx.boom.scale.set(rr, rr, 1);
+        vrFx.boom.material.opacity = Math.max(0, 1 - e2);
+      }
+      function clearVRHighlight() {
+        for (const k in vrHL) vrHL[k].visible = false;
+        vrHLCur = null;
+      }
+      function vrHoverT(t) {
+        if (t && !mapOn()) t = null;
+        if (t === vrHLCur) return;
+        if (vrHLCur && vrHL[vrHLCur]) vrHL[vrHLCur].visible = false;
+        vrHLCur = t || null;
+        if (t && vrHL[t]) vrHL[t].visible = true;
+      }
       function buildVRHitMap(M) {
         if (vrMapSource === M && vrMapGroup) {
           syncVRMapTransform();
@@ -6008,9 +7669,42 @@
         if (vrMapGroup) {
           clearVRHighlight();
           scene.remove(vrMapGroup);
+          if (vrStrokeGroup) {
+            scene.remove(vrStrokeGroup);
+            for (const t in vrStrokeGeo)
+              for (const k in vrStrokeGeo[t]) if (vrStrokeGeo[t][k]) vrStrokeGeo[t][k].dispose();
+          }
+          if (vrFillGroup) {
+            scene.remove(vrFillGroup);
+            for (const k in vrFillMesh) vrFillMesh[k].material.dispose();
+            for (const t in vrLiftShadow) vrLiftShadow[t].material.dispose(); // etapa 9p
+          }
           for (const m of vrTerritoryMeshes) m.geometry.dispose();
         }
+        if (vrLabelGroup) {
+          scene.remove(vrLabelGroup);
+          for (const k in vrLabels) {
+            vrLabels[k].tex.dispose();
+            vrLabels[k].mesh.geometry.dispose();
+            vrLabels[k].mesh.material.dispose();
+          }
+        }
+        vrLabels = {};
+        vrLabelGroup = VR_MAP_3D_LABELS ? new THREE.Group() : null;
         vrTerritoryMeshes = [];
+        vrHL = {};
+        vrHLCur = null;
+        vrFillMesh = {};
+        vrLiftShadow = {}; // etapa 9p: sombras do levante recriadas junto com o mapa
+        vrStrokeMesh = {};
+        vrStrokeOv = {};
+        vrStrokePts = {};
+        vrStrokeIdx = {};
+        vrStrokeGeo = {};
+        vrStrokeWant = {};
+        vrStrokeOvWant = {};
+        vrFillGroup = VR_MAP_3D_FILLS ? new THREE.Group() : null;
+        vrStrokeGroup = VR_MAP_3D_STROKES ? new THREE.Group() : null;
         const entries = Object.entries(M.P),
           svg =
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">' +
@@ -6026,10 +7720,45 @@
           mesh.layers.set(1);
           g.add(mesh);
           vrTerritoryMeshes.push(mesh);
+          if (vrStrokeGroup) {
+            vrStrokePts[entries[i][0]] = paths[i].subPaths.map((sp) => sp.getPoints(8));
+            vrStrokeIdx[entries[i][0]] = i;
+          }
+          const hl = new THREE.Mesh(mesh.geometry, vrHLMat);
+          hl.position.z = 0.01;
+          hl.renderOrder = 2000;
+          hl.visible = false;
+          g.add(hl);
+          vrHL[entries[i][0]] = hl;
+          if (vrFillGroup) {
+            const fm = new THREE.Mesh(
+              mesh.geometry,
+              new THREE.MeshBasicMaterial({
+                color: 0x888888,
+                transparent: true,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                toneMapped: false,
+                clippingPlanes: vrClip,
+              }),
+            );
+            fm.renderOrder = i; // mesma ordem de pintura do canvas (os de trás primeiro)
+            vrFillGroup.add(fm);
+            vrFillMesh[entries[i][0]] = fm;
+          }
         }
         vrMapGroup = g;
         vrMapSource = M;
         scene.add(g);
+        if (vrFillGroup && VR_MAP_3D_LINES) {
+          const cm = vrBuildConn(M);
+          if (cm) vrFillGroup.add(cm);
+        }
+        vrFx = null;
+        if (vrStrokeGroup && VR_MAP_3D_FX) vrFxInit(vrStrokeGroup);
+        if (vrFillGroup) scene.add(vrFillGroup);
+        if (vrStrokeGroup) scene.add(vrStrokeGroup);
+        if (vrLabelGroup) scene.add(vrLabelGroup);
         syncVRMapTransform();
       }
       /* ===== SOM 3D (portado do jogo original; sai da tela do cinema) ===== */
@@ -6156,6 +7885,11 @@
         k.add(ln);
         k.userData.ln = ln;
         k.addEventListener("selectstart", () => {
+          const f = vrFlyHitCtl(k); // etapa 9n: derrubar pássaro/satélite com o gatilho
+          if (f) {
+            vrShootDown(f);
+            return;
+          }
           const h = aim(k);
           if (!h) return;
           if (pickScreenButton(h.x, h.y)) {
@@ -6204,6 +7938,7 @@
         if (R.xr.isPresenting || e.button !== 0) return;
         mPanned = false;
         const h = scrHit(e);
+        if (vrFlyHitRay()) return; // etapa 9n: clique no voador não inicia pan
         if (h && mapOn() && !inOvr(h.x, h.y) && !(pick(h.x, h.y) || {}).b)
           mDrag = { sx: h.x, sy: h.y, vx: VB.x, vy: VB.y };
       });
@@ -6220,7 +7955,7 @@
             VB.x = mDrag.vx - dx / zs;
             VB.y = mDrag.vy - dy / zs;
             clampVB();
-            redraw();
+            redrawPan();
             return;
           }
         }
@@ -6236,7 +7971,13 @@
           return;
         }
         const h = scrHit(e);
-        if (h) onClick(h.x, h.y);
+        if (!h) return;
+        const f = vrFlyHitRay(); // etapa 9n: derrubar pássaro/satélite com o mouse
+        if (f) {
+          vrShootDown(f);
+          return;
+        }
+        onClick(h.x, h.y);
       });
       R.domElement.addEventListener(
         "wheel",
@@ -6283,9 +8024,14 @@
           draw();
           tex.needsUpdate = true;
         }
+        vrBurstTick(); // etapa 9i: explosão da conquista (continua depois que G.fx acaba)
+        vrFlyTick(); // etapa 9n: pássaro/satélite voando e caindo
         if (G && G.fx && scr == "game") {
-          draw();
-          tex.needsUpdate = true;
+          if (VR_MAP_3D_LIGHT) vrFxTick(); // etapa 9a: só seta/explosão 3D, sem redesenhar a HUD
+          else {
+            draw();
+            tex.needsUpdate = true;
+          }
         }
         if (scr == "win") {
           if (!wonS) {
@@ -6293,6 +8039,12 @@
             soundWin();
           }
         } else wonS = 0;
+        if (vrHLCur && !mapOn()) vrHoverT(null);
+        syncVRMapTransform(); // também cobre resetZoom(), que muda VB sem chamar redraw()
+        syncVRFills();
+        vrSyncLabels(); // etapa 7
+        syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
+        vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
         if (s) {
@@ -6361,7 +8113,7 @@
               VB.x = vGrab.mx - h.x / zs;
               VB.y = vGrab.my - h.y / zs;
               clampVB();
-              if (ox != VB.x || oy != VB.y) redraw();
+              if (ox != VB.x || oy != VB.y) redrawPan();
             }
           }
           let hk = null;
@@ -6371,6 +8123,7 @@
             if (h && !hk) hk = h;
           }
           if (hk) onHover(hk.x, hk.y);
+          else vrHoverT(null);
         }
         R.render(scene, cam);
       });
