@@ -180,6 +180,55 @@
            [x] 19. FEITO (pedido: letras difíceis de ler): VR_CANVAS_K 2/3 -> 1 (HUD 1920x1080), VR_LABEL_DENS_MIN = 1.5 (nomes e números dos
                   territórios), VR_XR_SCALE = 1.2 (setFramebufferScaleFactor) e anisotropia 8. Se o FPS cair, ver ordem de redução no comentário
                   acima de VR_CANVAS_K.
+           [x] 20. FEITO: (a) território suspenso agora é pintado por cima dos vizinhos (renderOrder +400 no preenchimento e na borda),
+                  corrigindo a cor "apagada"; (b) removidos os contornos amarelos pontilhados de direito (continente / Tanques / Fábricas),
+                  que não existem no original (VR_DASH_OVERLAYS = false); Tanques e Fábricas usam o mesmo levante dos soldados (vrReinfEligible).
+           [x] 21. FEITO (pedido: andar para a ESQUERDA travava): (a) hover do ponteiro limitado (só quando o ponto muda >1,5px,
+                  máx. 1x/40 ms) e preferindo a mão DIREITA (a esquerda anda) — antes pick()+draw()+upload da textura 1920x1080
+                  rodavam quase todo quadro enquanto o controle andava junto com o jogador; (b) limite das paredes agora na posição
+                  da CABEÇA (desliza na parede), (c) zona morta suave do stick. Não muda regras. TESTAR no Quest.
+           [x] 22. FEITO (auditoria estática, sem alterar código): reforço por turno (mín. 3, territórios/2), bônus de continente
+                  (Mapas A e B), bônus parcial da regra 05-B (só Mapa A) e sequência de troca de cartas 4,6,8,10,12,15,+5
+                  conferidos contra o original: IDÊNTICOS. Ainda por conferir em partida real: dados/ataque, cartas por
+                  conquista, objetivos e condições de vitória.
+           [x] 23. FEITO (auditoria estática, sem alterar código): COMBATE conferido contra attack() do original: modo A (2x1 e
+                  1x1 no último ponto, mín. 3 pontos), dados B (3x2) e C (3x3), dados ordenados e comparados par a par, empate
+                  favorece a defesa, mínimo de peças para atacar, tropas a mover após conquista (mín. 1, máx. 3), carta ao fim do
+                  turno e limiar de conquistas das regras 10 B/C/D (5/7/10) = 2 cartas, eliminação (cartas e aviões passam ao
+                  vencedor). IDÊNTICOS. Pendente: objetivos e condições de vitória, e jogo real no Quest.
+           [x] 24. FEITO (auditoria de objetivos/vitória): objAch (dom25, t20s3, c07-c12, eliminar cor X ou 25 territórios),
+                  vitória por mundo inteiro e ordem das cores (EI) = original. ÚNICA divergência achada e corrigida: o botão OK da
+                  passagem de tropas pós-conquista não chamava checkWin() (o original chama), atrasando a vitória do objetivo
+                  t20s3 até o próximo clique. Agora chama. Pendente: jogo real no Quest.
+           [x] 25. FEITO (auditoria AVIÕES e MÍSSEIS, sem alterar código): níveis de evolução (EVO_STEP 15), fábrica de aviões no 1º
+                  turno e 1 avião por fábrica a partir do 2º, rodada de ataque aéreo (modo A 2x1/1x1; B/C com dados), dano máx.
+                  pontos-1, perda de pontos de avião acumulada (planeDmg), IA dos bots (25/50/75/100% por nível), pontos do
+                  míssil (floor(0,2 x cartas x troca), mín. 1), disparo em série, nunca destrói território, cartas só saem ao
+                  disparar: IDÊNTICOS. ÚNICA DIFERENÇA ENCONTRADA: em confirmMissileTrade o VR recusava míssil com menos de 2 pontos no
+                  modo A (2x1). REMOVIDA a trava a pedido do dono (agora igual ao original: confirma e gasta as cartas sem dano;
+                  se causar frustração, basta reinserir o if (RS[7]==="A" && pts<2) em confirmMissileTrade).
+           [x] 26. FEITO (auditoria da TROCA DE CARTAS): validade do trio (3 do mesmo continente, 3 de continentes diferentes ou com
+                  Coringa), recompensa (base + max(cartas suas, 10% por carta)), 2 Coringas no baralho, limites de cartas = original.
+                  DIVERGÊNCIA CORRIGIDA: o Coringa do VR não tinha special:true (o original tem), então no modo Míssil dava para
+                  usar Coringa como 2ª/3ª carta; o original proíbe. Agora buildDeck marca special:1 (só afeta as checagens de míssil).
+           [x] 27. FEITO (auditoria do REAGRUPAMENTO): limites (pontos livres - recebidos), Tanques/Soldados/Pontos, conversão
+                  tanque->soldado, modo Livre (regra 09 B) = original. DIVERGÊNCIA CORRIGIDA no fluxo de cliques da fase F: com
+                  origem selecionada, clicar nela de novo agora DESMARCA e clicar em destino inválido CANCELA (antes mantinha a
+                  origem / trocava de origem direto). Nada de regra mudou, só o fluxo de cliques.
+           [x] 28. FEITO (auditoria da DISTRIBUIÇÃO INICIAL e REFORÇOS): preenchimento por continente sorteado com rodízio de donos,
+                  3 soldados por jogador do último ao primeiro, avanço automático da 1ª rodada, reforço por continente de direito,
+                  fábricas/tanques = original. DIVERGÊNCIA CORRIGIDA: clicar na ÁGUA (clickWater do original) não fazia nada no
+                  VR; agora (vrClickWater, chamado por onClick) desliga o modo Avião/Míssil, retira o Míssil suspenso, cancela o
+                  ataque (fase A) ou o reagrupamento (fase F). Também removida a frase antiga "Clique em Passar a Vez" da 1ª rodada.
+           [x] 29. TESTE AUTOMÁTICO (navegador headless, sem óculos): abre, menu OK, INICIAR JOGO -> confirmação SIM -> mapa 3D com
+                  cores, rótulos, linhas e HUD aparecem, ZERO erros no console. Nada de código foi alterado. Resta só o teste no Quest real.
+           [x] 30. FEITO (pedido: TREMEDEIRA ao andar olhando a tela): causa mais provável = texturas SEM mipmaps (tela 1920x1080 e rótulos
+                  desenhados em resolução maior que a exibida => cintilam quando a cabeça se move). Agora todas usam mipmaps
+                  (LinearMipmapLinear) e anisotropia 16 na tela; câmera near 0,05->0,15 / far 60->40 (menos z-fighting entre as camadas do
+                  mapa, separadas por 5 mm); hover parado de 250 ms -> 700 ms (menos picos de CPU). Se ainda tremer = FPS baixo: ver ordem
+                  de redução em VR_XR_SCALE / VR_LABEL_DENS_MIN / VR_CANVAS_K. TESTAR no Quest.
+           [x] 31. FEITO: materiais da sala (piso, paredes, poltronas) Standard -> Lambert (mesma aparência, menos GPU). Medição headless: lógica do
+                  jogo < 1 ms/quadro, então o gargalo possível é GPU (VR_XR_SCALE, camadas transparentes, MSAA). Nenhuma regra mudou.
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1043,6 +1092,9 @@
       /* Etapa 19 (NITIDEZ): HUD de volta a 1920x1080 (K=1), rótulos dos territórios com densidade mínima VR_LABEL_DENS_MIN,
          e resolução do render do óculos VR_XR_SCALE. Se o FPS cair, baixe nesta ordem: VR_XR_SCALE 1.2 -> 1.0,
          VR_LABEL_DENS_MIN 1.5 -> 1, VR_CANVAS_K 1 -> 0.8. Se quiser ainda mais nítido: K = 1.25 e VR_XR_SCALE = 1.5. */
+      /* Etapa 20: o original NÃO tem contornos amarelos pontilhados nos territórios de direito (continente/tanques/fábricas):
+         ele só suspende (levante) e escurece o resto. false = igual ao original. */
+      const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
       const VR_LABEL_DENS_MIN = 1.5;
       const VR_XR_SCALE = 1.2;
@@ -2268,7 +2320,7 @@
       };
       function buildDeck() {
         const d = G.T.map((t) => ({ t, cont: contOf(t) }));
-        d.push({ t: "CORINGA", joker: 1 }, { t: "CORINGA", joker: 1 });
+        d.push({ t: "CORINGA", joker: 1, special: 1 }, { t: "CORINGA", joker: 1, special: 1 }); // etapa 26: special como no original (coringa não vira míssil)
         return d.sort(() => Math.random() - 0.5);
       }
       const maxCards = () => ({ A: 5, B: 7, C: 10, D: 1e9 })[RS[6]] ?? 5,
@@ -2387,11 +2439,6 @@
           !missileCardCanAttack(first)
         ) {
           G.msg = "Escolha uma primeira carta que indique um território inimigo atacável.";
-          addLog(G.msg);
-          return;
-        }
-        if (RS[7] === "A" && pts < 2) {
-          G.msg = "No modo 2 para 1, o míssil precisa de pelo menos 2 pontos.";
           addLog(G.msg);
           return;
         }
@@ -3195,7 +3242,7 @@
           vrPop([t]); // etapa 11a
           addLog(`+${n} em ${t} (${L} restante${L === 1 ? "" : "s"})`);
           if (G.ph == "P1")
-            G.msg = G.pend ? `1ª Rodada: faltam ${G.pend} soldado(s).` : 'Posicionamento concluído. Clique em "Passar a Vez".';
+            G.msg = G.pend ? `1ª Rodada: faltam ${G.pend} soldado(s).` : "Posicionamento concluído."; // etapa 28: a vez passa sozinha (não há botão)
           else
             G.msg = L
               ? `Reforços restantes: ${L}` +
@@ -3361,21 +3408,17 @@
           else G.sel = null;
         } else {
           const source = G.sel;
-          const available = source
-            ? ptsOf(source) - 1 - ((G.fortReceived && G.fortReceived[source]) || 0)
-            : 0;
-          const ok =
-            me &&
-            source &&
-            source != t &&
-            (free() || J[source].includes(t)) &&
-            available > 0;
-          // Regra 09: igual ao original, em cada fase de Reagrupamento pode-se mover várias
-          // vezes, desde que cada destino seja vizinho da origem (modo A) ou qualquer território
-          // seu (modo B "Livre"). O original NÃO trava a um único movimento (não tem G.fp);
-          // por isso a cláusula antiga "!G.fp" foi removida para manter a paridade.
-          if (ok) {
-            openFortifyChooser(source, t);
+          /* etapa 27: fluxo de cliques igual ao original (Regra 09). Com origem selecionada: clicar de novo nela
+             desmarca; território seu vizinho (ou qualquer um no modo Livre) abre a passagem de tropas (a checagem de
+             tropas livres fica em openFortifyChooser, como em fortify()); qualquer outro clique CANCELA o reagrupamento
+             (não troca de origem direto). O original NÃO trava a um único movimento por fase (sem G.fp). */
+          if (source) {
+            if (t === source) G.sel = null;
+            else if (me && (free() || J[source].includes(t))) openFortifyChooser(source, t);
+            else {
+              G.sel = null;
+              addLog("Reagrupamento cancelado.");
+            }
           } else {
             const movable = ptsOf(t) - 1 - ((G.fortReceived && G.fortReceived[t]) || 0);
             const canStart = free() || J[t].some((neighbor) => G.own[neighbor] == G.cur);
@@ -5790,7 +5833,7 @@
           if (VR_MAP_3D_STROKES) vrSetStroke(t, c.lineWidth, c.strokeStyle);
           else c.stroke(P2[t]);
         }
-        if (G.ph == "R" && !G.bot[G.cur] && cpLeft() > 0) {
+        if (VR_DASH_OVERLAYS && G.ph == "R" && !G.bot[G.cur] && cpLeft() > 0) {
           c.save();
           c.setLineDash([10, 6]);
           c.lineWidth = 5;
@@ -5804,7 +5847,7 @@
                 }
           c.restore();
         }
-        if (G.ph == "R" && !G.bot[G.cur] && totPend() == 0 && G.ts) {
+        if (VR_DASH_OVERLAYS && G.ph == "R" && !G.bot[G.cur] && totPend() == 0 && G.ts) {
           c.save();
           c.setLineDash([10, 6]);
           c.lineWidth = 5;
@@ -6137,6 +6180,7 @@
             G.msg = "Moveu " + v.n + " soldado(s) para " + v.t + ".";
             if (ptsOf(v.s) < mn()) G.sel = null;
             G.mv = null;
+            checkWin(); // etapa 24: como o original (checkWin(cp) após mover as tropas da conquista; objetivo t20s3)
           });
         }
         if (G.fortify && scr == "game") {
@@ -6664,9 +6708,39 @@
           tex.needsUpdate = true;
         }
       }
+      /* etapa 28: clickWater() do original. Clicar na ÁGUA (nem botão nem território) desliga o modo Avião/Míssil,
+         retira o Míssil suspenso (cartas voltam à mão), cancela o ataque (fase A) ou o reagrupamento (fase F) em andamento. */
+      function vrClickWater(x, y) {
+        if (!G || scr != "game" || G.bot[G.cur] || G.rch || G.mv || G.fortify || G.hand || G.missileTrade) return;
+        if (modalOv() || inOvr(x, y)) return;
+        if (G.ph == "A" && G.airMode) {
+          soundSelector();
+          G.airMode = false;
+          G.airTarget = null;
+          addLog("Modo de Ataque com Aviões desativado.");
+        } else if (G.ph == "A" && G.missileMode) {
+          soundSelector();
+          G.missileMode = false;
+          addLog("Modo de Ataque com Mísseis desativado.");
+        } else if (G.ph == "A" && G.missileStrikeTarget) {
+          soundSelector();
+          cancelMissileArm();
+          addLog("Míssil Teleguiado retirado — as cartas voltaram para a sua mão.");
+        } else if (G.ph == "A" && G.sel) {
+          G.sel = null;
+          addLog("Ataque cancelado.");
+        } else if (G.ph == "F" && G.sel) {
+          soundSelector();
+          G.sel = null;
+          addLog("Reagrupamento cancelado.");
+        } else return;
+        hover = "";
+        draw();
+        tex.needsUpdate = true;
+      }
       function onClick(x, y) {
         const h = pick(x, y);
-        if (!h) return;
+        if (!h) return vrClickWater(x, y);
         h.b ? (soundSelector(), h.b.fn()) : clickT(h.t);
         hover = "";
         draw();
@@ -6896,7 +6970,7 @@
       document.body.append(R.domElement, VRButton.createButton(R));
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x05060c);
-      const cam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 60);
+      const cam = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.15, 40);
       cam.position.set(0, 1.6, 0);
       const rig = new THREE.Group();
       rig.add(cam);
@@ -6906,7 +6980,7 @@
       pl.position.set(0, 5, 2);
       scene.add(pl);
       const M_ = (col, o = {}) =>
-        new THREE.MeshStandardMaterial({ color: col, roughness: 0.85, ...o });
+        new THREE.MeshLambertMaterial({ color: col, ...o }); // etapa 31: Lambert (mais leve que Standard) na sala
       const box = (w, h, d, x, y, z, m, p = scene) => {
         const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
         o.position.set(x, y, z);
@@ -6943,10 +7017,10 @@
         for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
       const tex = new THREE.CanvasTexture(S);
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.generateMipmaps = false;
+      tex.generateMipmaps = true; // etapa 30: mipmaps = sem cintilar/tremer ao andar
       tex.premultiplyAlpha = VR_MAP_3D_FILLS; // canvas com partes transparentes (mapa fica visível por trás)
-      tex.minFilter = THREE.LinearFilter;
-      tex.anisotropy = 8;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.anisotropy = 16;
       box(10, 5.7, 0.15, 0, 3.15, -8.95, M_(0x000000));
       const screen = new THREE.Mesh(
         new THREE.PlaneGeometry(9.6, 5.4),
@@ -7230,6 +7304,16 @@
             st = vrStrokeMesh[t],
             ov = vrStrokeOv[t],
             hl = vrHL[t];
+          /* etapa 20: território suspenso é pintado POR CIMA dos vizinhos (antes ficava embaixo dos de índice maior,
+             que estão escurecidos/semitransparentes, e a cor parecia apagada). */
+          if (fm) {
+            if (fm.userData.ro0 === undefined) fm.userData.ro0 = fm.renderOrder;
+            fm.renderOrder = fm.userData.ro0 + (up ? 400 : 0);
+          }
+          if (st) {
+            if (st.userData.ro0 === undefined) st.userData.ro0 = st.renderOrder;
+            st.renderOrder = st.userData.ro0 + (up ? 400 : 0);
+          }
           if (fm) {
             fm.position.set(dx, dy, 0);
             fm.userData.lb = [dx, dy];
@@ -7252,6 +7336,7 @@
           }
           const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
           if (sh) {
+            if (fm) sh.renderOrder = fm.renderOrder - 0.5;
             sh.visible = up;
             sh.material.opacity = 0.42 * e;
             sh.position.set(0, 0, 0);
@@ -7430,8 +7515,8 @@
             cv.width = cv.height = 2;
             const tx = new THREE.CanvasTexture(cv);
             tx.colorSpace = THREE.SRGBColorSpace;
-            tx.generateMipmaps = false;
-            tx.minFilter = THREE.LinearFilter;
+            tx.generateMipmaps = true;
+            tx.minFilter = THREE.LinearMipmapLinearFilter;
             m = new THREE.Mesh(
               new THREE.PlaneGeometry(1, 1),
               new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, clippingPlanes: vrClip }),
@@ -7532,8 +7617,8 @@
             cv.width = cv.height = 2;
             const tx = new THREE.CanvasTexture(cv);
             tx.colorSpace = THREE.SRGBColorSpace;
-            tx.generateMipmaps = false;
-            tx.minFilter = THREE.LinearFilter;
+            tx.generateMipmaps = true;
+            tx.minFilter = THREE.LinearMipmapLinearFilter;
             tx.anisotropy = 4;
             const mesh = new THREE.Mesh(
               new THREE.PlaneGeometry(1, 1),
@@ -8143,8 +8228,8 @@
         gg.restore();
         const tx = new THREE.CanvasTexture(cv);
         tx.colorSpace = THREE.SRGBColorSpace;
-        tx.generateMipmaps = false;
-        tx.minFilter = THREE.LinearFilter;
+        tx.generateMipmaps = true;
+        tx.minFilter = THREE.LinearMipmapLinearFilter;
         tx.anisotropy = 4;
         const mesh = new THREE.Mesh(
           new THREE.PlaneGeometry(1, 1),
@@ -8951,7 +9036,10 @@
         f = new THREE.Vector3(),
         rt = new THREE.Vector3(),
         hp = new THREE.Vector3();
-      let snapped = false;
+      let snapped = false,
+        vrHvX = -1e9,
+        vrHvY = -1e9,
+        vrHvT0 = 0; // etapa 21: limitador do hover
       R.setAnimationLoop(() => {
         tick();
         if (G && G.toast && performance.now() > G.toast.until) {
@@ -9003,9 +9091,17 @@
             const x = g.axes[2] ?? g.axes[0] ?? 0,
               y = g.axes[3] ?? g.axes[1] ?? 0;
             if (cfg.walk && src.handedness == "left" && Math.hypot(x, y) > 0.15) {
-              rig.position.addScaledVector(f, -y * 2.2 * dt).addScaledVector(rt, x * 2.2 * dt);
-              rig.position.x = THREE.MathUtils.clamp(rig.position.x, -7.2, 7.2);
-              rig.position.z = THREE.MathUtils.clamp(rig.position.z, -8, 10.2);
+              /* etapa 21: zona morta suave (sem "arranque") e limite aplicado na CABEÇA, não na origem do rig
+                 (antes a cabeça podia bater na parede e a caminhada parecia travar). Desliza pelas paredes. */
+              const mag = Math.hypot(x, y),
+                k = Math.min(1, (mag - 0.15) / 0.85) / mag;
+              rig.position.addScaledVector(f, -y * k * 2.2 * dt).addScaledVector(rt, x * k * 2.2 * dt);
+              rig.updateMatrixWorld(true);
+              hp.setFromMatrixPosition(cam.matrixWorld);
+              const cx = THREE.MathUtils.clamp(hp.x, -7.2, 7.2),
+                cz = THREE.MathUtils.clamp(hp.z, -8, 10.2);
+              rig.position.x += cx - hp.x;
+              rig.position.z += cz - hp.z;
             }
             if (src.handedness == "right") {
               const kr = ctl.find((k) => k.userData.hand == "right"),
@@ -9053,14 +9149,34 @@
               if (ox != VB.x || oy != VB.y) redrawPan();
             }
           }
-          let hk = null;
+          let hk = null,
+            hkR = null;
           for (const k of ctl) {
             const h = aim(k);
             k.userData.ln.scale.z = h ? h.d : 3;
-            if (h && !hk) hk = h;
+            if (h) {
+              if (k.userData.hand == "right") hkR = h;
+              else if (!hk) hk = h;
+            }
           }
-          if (hk) onHover(hk.x, hk.y);
-          else vrHoverT(null);
+          hk = hkR || hk; // etapa 21: a mão esquerda é a de andar; o hover segue a direita quando ela mira a tela
+          if (hk) {
+            /* etapa 21: onHover (pick = isPointInPath em todos os territórios + draw() + textura) só roda
+               se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
+            const nowH = performance.now();
+            if (
+              (Math.abs(hk.x - vrHvX) + Math.abs(hk.y - vrHvY) > 1.5 && nowH - vrHvT0 >= 40) ||
+              nowH - vrHvT0 > 700
+            ) {
+              vrHvX = hk.x;
+              vrHvY = hk.y;
+              vrHvT0 = nowH;
+              onHover(hk.x, hk.y);
+            }
+          } else {
+            vrHvX = vrHvY = -1e9;
+            vrHoverT(null);
+          }
         }
         R.render(scene, cam);
       });
