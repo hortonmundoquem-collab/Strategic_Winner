@@ -229,6 +229,18 @@
                   de redução em VR_XR_SCALE / VR_LABEL_DENS_MIN / VR_CANVAS_K. TESTAR no Quest.
            [x] 31. FEITO: materiais da sala (piso, paredes, poltronas) Standard -> Lambert (mesma aparência, menos GPU). Medição headless: lógica do
                   jogo < 1 ms/quadro, então o gargalo possível é GPU (VR_XR_SCALE, camadas transparentes, MSAA). Nenhuma regra mudou.
+           [x] 32. FEITO (pedido): (a) destaque branco do hover mais claro (opacidade 0,3 -> 0,55) e colado no plano do mapa
+                  (z = -8,8495; antes 4 cm à frente = parecia flutuar); (b) imagem toda balançando ao andar = GPU no limite:
+                  VR_XR_SCALE 1.2 -> 1.0 e anisotropia da tela 16 -> 8. Se quiser texto mais nítido e o FPS aguentar, volte VR_XR_SCALE a 1.2.
+           [x] 33. FEITO (pedido): LEVANTE COM PROFUNDIDADE E ALTURA REAIS em VR. Todo território suspenso agora também avança VR_LIFT_Z (0,45 m)
+                  em direção ao espectador (preenchimento, borda, rótulo, bolha, destaque, malha de mira) e ganha PAREDES laterais
+                  (vrLiftWallFor: faixa vertical ao longo do contorno, cor do dono x0,55, cisalhada pela matriz = sobe junto com dx/dy/dz).
+                  Sombra de contato continua no plano do mapa. A mira (clique e hover do laser) usa as malhas 3D já levantadas
+                  (aimTerritory), então aponta o que se vê. VR_LIFT_Z = 0 volta ao levante só 2D. TESTAR no Quest (valor, FPS).
+           [x] 34. FEITO (pedido): o GATILHO também arrasta o mapa, como a garra (grip) e o mouse: segurar o gatilho em qualquer lugar do mapa
+                  (território ou água) e mexer a mão move o mapa (limite 28 px antes de virar arrasto). Sem mexer, o clique vale ao SOLTAR
+                  (igual ao mouse); segurar parado ainda repete (etapa 15). Botões da tela continuam clicando ao apertar. A garra segue igual.
+                  O mouse já arrastava em qualquer ponto do mapa. TESTAR no Quest (se o clique ficar "pulando", suba 28 para 40).
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1097,7 +1109,7 @@
       const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
       const VR_LABEL_DENS_MIN = 1.5;
-      const VR_XR_SCALE = 1.2;
+      const VR_XR_SCALE = 1.0; // etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
       let c = S.getContext("2d"); // let: a etapa 7 troca c temporariamente pelo mini-canvas de cada rótulo
@@ -6693,9 +6705,13 @@
         return null;
       }
       const key = (h) => (h ? (h.b ? "b:" + h.b.k : "t:" + h.t) : "");
+      let vrHoverCtlTerr; // undefined = sem laser (mouse): usa o ponto 2D
       function onHover(x, y) {
         vrCur = [x, y]; // etapa 12a: o tanque atacante encara o cursor
-        const h = pick(x, y);
+        let h = pick(x, y);
+        /* etapa 33: com territórios suspensos em profundidade, o território apontado é o que o laser acerta nas malhas 3D
+           (não o ponto 2D da tela). Botões continuam pelo ponto 2D. */
+        if (vrHoverCtlTerr !== undefined && !(h && h.b)) h = vrHoverCtlTerr ? { t: vrHoverCtlTerr } : null;
         let k = key(h);
         /* Território: o destaque agora é um objeto 3D — não redesenha o canvas nem reenvia a textura. */
         if (h && h.t) {
@@ -7020,7 +7036,7 @@
       tex.generateMipmaps = true; // etapa 30: mipmaps = sem cintilar/tremer ao andar
       tex.premultiplyAlpha = VR_MAP_3D_FILLS; // canvas com partes transparentes (mapa fica visível por trás)
       tex.minFilter = THREE.LinearMipmapLinearFilter;
-      tex.anisotropy = 16;
+      tex.anisotropy = 8;
       box(10, 5.7, 0.15, 0, 3.15, -8.95, M_(0x000000));
       const screen = new THREE.Mesh(
         new THREE.PlaneGeometry(9.6, 5.4),
@@ -7090,6 +7106,38 @@
          Mesmo vetor do original (9px, -11px). Em 3D o dy negativo sobe na tela porque o grupo do
          mapa tem scale.y negativo. Interruptor seguro: VR_LIFT_3D. */
       const VR_LIFT_3D = true, VR_LIFT_DX = 9, VR_LIFT_DY = -11;
+      /* Etapa 33: LEVANTE COM PROFUNDIDADE REAL. Além do deslocamento 2D do original (DX/DY), o território suspenso avança
+         VR_LIFT_Z metros em direção ao espectador (paralaxe/estéreo de verdade) e ganha PAREDES laterais (altura). A 5-9 m da
+         tela, menos de ~0,3 m quase não se enxerga em estéreo; por isso o valor é grande. Para ajustar: 0.25 (sutil) .. 0.8 (forte).
+         0 desliga profundidade e paredes (volta ao levante só 2D). */
+      const VR_LIFT_Z = 0.45;
+      let vrLiftWall = {}, vrHitByT = null, vrHitByTSrc = null, vrHitByTN = -1;
+      function vrLiftWallFor(t) {
+        let w = vrLiftWall[t];
+        if (w || !vrStrokePts[t] || !vrFillGroup) return w;
+        const pos = [];
+        for (const sp of vrStrokePts[t]) {
+          const n = sp.length;
+          for (let i = 0; i < n; i++) {
+            const p = sp[i], q = sp[(i + 1) % n];
+            if (p.x === q.x && p.y === q.y) continue;
+            pos.push(p.x, p.y, 0, q.x, q.y, 0, q.x, q.y, 1, p.x, p.y, 0, q.x, q.y, 1, p.x, p.y, 1);
+          }
+        }
+        if (!pos.length) return null;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+        w = new THREE.Mesh(
+          g,
+          new THREE.MeshBasicMaterial({ color: 0x444444, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, clippingPlanes: vrClip }),
+        );
+        w.matrixAutoUpdate = false;
+        w.frustumCulled = false;
+        w.visible = false;
+        vrFillGroup.add(w);
+        vrLiftWall[t] = w;
+        return w;
+      }
       /* Etapa 9q: escurecer (dim veil) os territórios NÃO envolvidos quando há escolha de alvo —
          igual ao .terr-dim-veil/.dim do original (~0.5 de brilho) e ao mar escurecido. */
       const VR_DIM_3D = true;
@@ -7102,7 +7150,7 @@
       const vrHLMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.3,
+        opacity: 0.55, // etapa 32: destaque mais claro (era 0.3)
         depthWrite: false,
         side: THREE.DoubleSide,
         toneMapped: false,
@@ -7303,7 +7351,8 @@
             fm = vrFillMesh[t],
             st = vrStrokeMesh[t],
             ov = vrStrokeOv[t],
-            hl = vrHL[t];
+            hl = vrHL[t],
+            dz = VR_LIFT_Z * e;
           /* etapa 20: território suspenso é pintado POR CIMA dos vizinhos (antes ficava embaixo dos de índice maior,
              que estão escurecidos/semitransparentes, e a cor parecia apagada). */
           if (fm) {
@@ -7315,24 +7364,47 @@
             st.renderOrder = st.userData.ro0 + (up ? 400 : 0);
           }
           if (fm) {
-            fm.position.set(dx, dy, 0);
-            fm.userData.lb = [dx, dy];
+            fm.position.set(dx, dy, dz);
+            fm.userData.lb = [dx, dy, dz];
           }
           if (st) {
-            st.position.set(dx, dy, 0);
-            st.userData.lb = [dx, dy];
+            st.position.set(dx, dy, dz);
+            st.userData.lb = [dx, dy, dz];
           }
           if (ov) {
-            ov.position.set(dx, dy, 0);
-            ov.userData.lb = [dx, dy];
+            ov.position.set(dx, dy, dz);
+            ov.userData.lb = [dx, dy, dz];
           }
-          if (hl) hl.position.set(dx, dy, hl.position.z);
+          if (hl) {
+            if (hl.userData.z0 === undefined) hl.userData.z0 = hl.position.z;
+            hl.position.set(dx, dy, hl.userData.z0 + dz);
+          }
+          if (vrHitByTSrc !== vrTerritoryMeshes || vrHitByTN !== vrTerritoryMeshes.length) {
+            vrHitByT = {};
+            for (const m of vrTerritoryMeshes) vrHitByT[m.userData.territory] = m;
+            vrHitByTSrc = vrTerritoryMeshes;
+            vrHitByTN = vrTerritoryMeshes.length;
+          }
+          const hm = vrHitByT[t];
+          if (hm) hm.position.set(dx, dy, dz); // a mira (laser) acerta o território onde ele aparece, já suspenso
+          const wl = up && VR_LIFT_Z > 0 ? vrLiftWallFor(t) : vrLiftWall[t];
+          if (wl) {
+            wl.visible = up && VR_LIFT_Z > 0;
+            if (wl.visible) {
+              wl.matrix.set(1, 0, dx, 0, 0, 1, dy, 0, 0, 0, dz, 0, 0, 0, 0, 1);
+              wl.matrixWorldNeedsUpdate = true;
+              if (fm) {
+                wl.renderOrder = fm.renderOrder - 0.25;
+                wl.material.color.copy(fm.material.color).multiplyScalar(0.55);
+              }
+            }
+          }
           const L = vrLabels[t];
           if (L && L.mesh && L.mesh.userData.base) {
             const lx = L.mesh.userData.base[0] + dx,
               ly = L.mesh.userData.base[1] + dy;
-            L.mesh.position.set(lx, ly, 0);
-            L.mesh.userData.lb = [lx, ly];
+            L.mesh.position.set(lx, ly, dz);
+            L.mesh.userData.lb = [lx, ly, dz];
           }
           const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
           if (sh) {
@@ -7558,8 +7630,9 @@
             lb = L && L.mesh.userData.lb,
             bs = L && L.mesh.userData.base,
             ox = lb && bs ? lb[0] - bs[0] : 0,
-            oy = lb && bs ? lb[1] - bs[1] : 0;
-          m.position.set(G.M.C[t][0] + ox + (isK ? tnx : 0), G.M.C[t][1] + oy + (isK ? tny : 0), 0.0005);
+            oy = lb && bs ? lb[1] - bs[1] : 0,
+            oz = (lb && lb[2]) || 0;
+          m.position.set(G.M.C[t][0] + ox + (isK ? tnx : 0), G.M.C[t][1] + oy + (isK ? tny : 0), 0.0005 + oz);
           m.scale.set(lm.cs * 4 * sc, -lm.cs * 2 * sc, 1);
           m.visible = true;
         }
@@ -8600,6 +8673,7 @@
             scene.remove(vrFillGroup);
             for (const k in vrFillMesh) vrFillMesh[k].material.dispose();
             for (const t in vrLiftShadow) vrLiftShadow[t].material.dispose(); // etapa 9p
+            for (const t in vrLiftWall) { vrLiftWall[t].material.dispose(); vrLiftWall[t].geometry.dispose(); } // etapa 33
           }
           for (const m of vrTerritoryMeshes) m.geometry.dispose();
         }
@@ -8620,6 +8694,8 @@
         vrHLCur = null;
         vrFillMesh = {};
         vrLiftShadow = {}; // etapa 9p: sombras do levante recriadas junto com o mapa
+        vrLiftWall = {}; // etapa 33: paredes do levante
+        vrHitByT = null;
         vrStrokeMesh = {};
         vrStrokeOv = {};
         vrStrokePts = {};
@@ -8649,7 +8725,7 @@
             vrStrokeIdx[entries[i][0]] = i;
           }
           const hl = new THREE.Mesh(mesh.geometry, vrHLMat);
-          hl.position.z = 0.01;
+          hl.position.z = -8.8495 - VR_MAP_Z; // etapa 32: colado na tela do mapa (antes ficava 4 cm na frente e parecia flutuar)
           hl.renderOrder = 2000;
           hl.visible = false;
           g.add(hl);
@@ -8780,6 +8856,7 @@
         ctl = [];
       ray.layers.enable(1);
       let vGrab = null,
+        vTrig = null, // etapa 34: gatilho segurado sobre o mapa (clique OU arrastar o mapa)
         zAcc = 0;
       function aim(k) {
         tm.identity().extractRotation(k.matrixWorld);
@@ -8904,6 +8981,15 @@
             vHoldStart({ b: pb }); // etapa 15
             return;
           }
+          /* etapa 34: GATILHO TAMBÉM ARRASTA O MAPA (como a garra/grip e o mouse): segurar o gatilho em qualquer ponto do
+             mapa (território ou água) e mexer a mão move o mapa. Se a mão quase não mexer, ao SOLTAR vale como clique. */
+          if (mapOn() && !inOvr(h.x, h.y)) {
+            vTrig = { k, x0: h.x, y0: h.y, moved: false };
+            const t0 = aimTerritory(k);
+            vHoldFired = false;
+            vHoldStart(t0 ? { t: t0 } : null, G && G.sel); // segurar para repetir (igual ao mouse)
+            return;
+          }
           const t = aimTerritory(k);
           if (t) {
             const from = G && G.sel; // origem antes do clique (etapa 15: ataque repetido)
@@ -8914,13 +9000,36 @@
             vHoldStart({ t }, from);
           } else onClick(h.x, h.y);
         });
-        k.addEventListener("selectend", vHoldStop);
+        k.addEventListener("selectend", () => {
+          vHoldStop();
+          const p = vTrig && vTrig.k === k ? vTrig : null;
+          if (!p) return;
+          vTrig = null;
+          if (p.moved) {
+            if (vGrab && vGrab.k === k && vGrab.trig) vGrab = null;
+            return;
+          }
+          if (vHoldFired) {
+            vHoldFired = false; // já repetiu segurando: soltar não conta como clique
+            return;
+          }
+          const h = aim(k);
+          if (!h) return;
+          const t = aimTerritory(k);
+          if (t) {
+            clickT(t);
+            hover = "";
+            draw();
+            tex.needsUpdate = true;
+          } else onClick(h.x, h.y);
+        });
         k.addEventListener("connected", (e) => {
           k.userData.hand = e.data && e.data.handedness;
         });
         k.addEventListener("disconnected", () => {
           k.userData.hand = null;
           if (vGrab && vGrab.k === k) vGrab = null;
+          if (vTrig && vTrig.k === k) vTrig = null;
         });
         k.addEventListener("squeezestart", () => {
           const h = aim(k);
@@ -9137,6 +9246,15 @@
               } else if (Math.abs(x) < 0.3) snapped = false;
             }
           }
+          if (vTrig && !vTrig.moved && !vGrab) {
+            const h2 = aim(vTrig.k);
+            if (h2 && Math.hypot(h2.x - vTrig.x0, h2.y - vTrig.y0) > 28) {
+              vTrig.moved = true; // mexeu a mão com o gatilho apertado: vira arrastar o mapa
+              vHoldStop();
+              const zs = zsc();
+              vGrab = { k: vTrig.k, mx: VB.x + vTrig.x0 / zs, my: VB.y + vTrig.y0 / zs, trig: true };
+            }
+          }
           if (vGrab) {
             const h = aim(vGrab.k);
             if (h) {
@@ -9150,16 +9268,24 @@
             }
           }
           let hk = null,
-            hkR = null;
+            hkR = null,
+            hkK = null,
+            hkRK = null;
           for (const k of ctl) {
             const h = aim(k);
             k.userData.ln.scale.z = h ? h.d : 3;
             if (h) {
-              if (k.userData.hand == "right") hkR = h;
-              else if (!hk) hk = h;
+              if (k.userData.hand == "right") {
+                hkR = h;
+                hkRK = k;
+              } else if (!hk) {
+                hk = h;
+                hkK = k;
+              }
             }
           }
-          hk = hkR || hk; // etapa 21: a mão esquerda é a de andar; o hover segue a direita quando ela mira a tela
+          hk = hkR || hk;
+          if (hkR) hkK = hkRK; // etapa 21: a mão esquerda é a de andar; o hover segue a direita quando ela mira a tela
           if (hk) {
             /* etapa 21: onHover (pick = isPointInPath em todos os territórios + draw() + textura) só roda
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
@@ -9171,7 +9297,9 @@
               vrHvX = hk.x;
               vrHvY = hk.y;
               vrHvT0 = nowH;
+              vrHoverCtlTerr = hkK ? aimTerritory(hkK) || null : undefined; // etapa 33: território pela malha 3D (profundidade)
               onHover(hk.x, hk.y);
+              vrHoverCtlTerr = undefined;
             }
           } else {
             vrHvX = vrHvY = -1e9;
