@@ -283,6 +283,10 @@
            [x] 41. FEITO (pedido): (a) escuro ainda mais escuro (VR_DARK_TERR 0.78, VR_DARK_SEA 0.88); (b) conquista: o território conquistado já
                   mostra o soldado a mover (prévia +n / -n, vrMvDelta), como setPreviewArmies do original; (c) botões − e + de zoom removidos (⟲ só
                   aparece com a vista alterada); (d) arrastar o mapa em qualquer zoom (clampVB com margem VR_PAN_MARGIN).
+           [x] 42. FEITO (pedido): (a) com a tela de passar peças aberta só os envolvidos ficam suspensos: reforço/direito = o escolhido, conquista =
+                  atacante + conquistado, reagrupamento = origem + destino (vrLiftedSetRaw, e o resto escurece); (b) hover = mesma cor do dono mais
+                  viva (VR_HOVER_SAT/LIGHT), sem véu branco; (c) fábricas, tanques e pontos de tanque escurecem junto (ctx.filter brightness no
+                  rótulo, sig inclui o nível de escuro); (d) escuro +20% (VR_DARK_TERR 0.93, VR_DARK_SEA 0.96).
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -7322,6 +7326,22 @@
       function vrLiftedSetRaw() {
         const set = new Set();
         if (!G || scr != "game") return set;
+        /* etapa 42: com a tela de passar peças aberta, SÓ os territórios envolvidos ficam suspensos (os demais descem):
+           reforço/direito = o escolhido; conquista = atacante + conquistado; reagrupamento = origem + destino. */
+        if (G.rch) {
+          set.add(G.rch.t);
+          return set;
+        }
+        if (G.mv) {
+          set.add(G.mv.s);
+          set.add(G.mv.t);
+          return set;
+        }
+        if (G.fortify) {
+          set.add(G.fortify.from);
+          set.add(G.fortify.to);
+          return set;
+        }
         const J = (G.M && G.M.J) || {};
         // Território selecionado: sobe ele + os ALVOS válidos (vizinhos inimigos no ataque; vizinhos
         // seus no reagrupamento; TODOS os seus no reagrupamento "livre"), como no original.
@@ -7364,7 +7384,7 @@
       }
       function vrDimActiveRaw() {
         if (!G || scr != "game") return false;
-        if (G.sel || G.fx || G.airMode || G.missileMode || G.missileStrikeTarget) return true;
+        if (G.sel || G.fx || G.mv || G.fortify || G.rch || G.airMode || G.missileMode || G.missileStrikeTarget) return true;
         // Etapa 9r: durante a colocação de reforços o resto do mapa e o mar também escurecem
         // (reinfDimTerritories + waterDim do original).
         return vrReinfEligible().size > 0;
@@ -7788,8 +7808,11 @@
         B.mesh.visible = B.wLow > 0;
         B.mesh2.visible = B.icount > B.wLow;
       }
-      const VR_DARK_TERR = 0.78, // etapa 40: escurecimento dos territórios não envolvidos (era 0.5 -> 0.64 -> 0.78)
-        VR_DARK_SEA = 0.88, // etapa 40: escurecimento do mar (era 0.62)
+      const VR_DARK_TERR = 0.93, // etapa 40: escurecimento dos territórios não envolvidos (era 0.5 -> 0.64 -> 0.78)
+        VR_DARK_SEA = 0.96, // etapa 40: escurecimento do mar (era 0.62)
+        VR_HOVER_SAT = 1.35, // etapa 42: hover mais vivo (saturação)
+        VR_HOVER_LIGHT = 1.18, // e brilho
+        _hsl = { h: 0, s: 0, l: 0 },
         VR_HOVER_TINT = 0.12, // 0 = sem destaque, 0.12 = véu branco bem suave (era 55% de branco); aumente para clarear mais
         VR_WHITE = new THREE.Color(1, 1, 1);
       function syncVRFills() {
@@ -7827,7 +7850,11 @@
             m.material.color.multiplyScalar(1 - VR_DARK_TERR * kf);
             m.material.opacity *= 1 - 0.08 * kf;
           }
-          if (hv) m.material.color.lerp(VR_WHITE, VR_HOVER_TINT);
+          if (hv) {
+            /* etapa 42: hover = a MESMA cor do dono, só mais viva (mais saturada e um pouco mais clara), sem véu branco */
+            m.material.color.getHSL(_hsl);
+            m.material.color.setHSL(_hsl.h, Math.min(1, _hsl.s * VR_HOVER_SAT + 0.08), Math.min(0.9, _hsl.l * VR_HOVER_LIGHT + 0.02));
+          }
         }
       }
       /* Etapa 7: rótulos dos territórios em 3D. Cada território tem UM plano com um mini-canvas (nome +
@@ -7871,7 +7898,9 @@
             } else TN(t, 0, ny, lm.ls, lm.lst);
           }
           if (!(G.fillHid && G.fillHid.has(t))) {
+            if (vrLblDq) g.filter = "brightness(" + (1 - VR_DARK_TERR * (vrLblDq / 8)).toFixed(3) + ")"; // etapa 42: fábricas/tanques/pontos escurecem junto
             drawTankIcons(t, 0, 0, lm);
+            if (vrLblDq) g.filter = "none";
             if (!vrPopActive(t)) T(vrDispN(t), 0, 0, lm.cs); // prévia (setPreviewArmies); na bolha o número é outro plano
             if (G.airMode && G.airTarget === t) vrDrawPlaneSusp(lm); // etapa 13
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
@@ -8021,7 +8050,7 @@
       }
       /* etapa 38: a assinatura (sig) de 42 rótulos era montada TODO quadro (42 arrays + strings + closures = lixo e CPU).
          Agora roda no máx. a cada 100 ms; sem limite enquanto há bolha de número ou rótulos pendentes do orçamento. */
-      let vrLblT = 0, vrLblMore = false;
+      let vrLblT = 0, vrLblMore = false, vrLblDq = 0;
       function vrSyncLabels() {
         if (!vrLabelGroup) return;
         const on = !!G && scr != "menu";
@@ -8041,12 +8070,15 @@
           dens = Math.min(3, Math.max(VR_LABEL_DENS_MIN, zs)),
           ev = evoLv();
         let budget = VR_LABEL_BUDGET;
+        const liftL = vrDimK > 0 ? vrLiftedSet() : null;
         for (const t of G.T) {
           if (!G.M.C[t]) continue;
+          const dq = vrDimK > 0 && !(liftL && liftL.has(t)) ? Math.round(vrDimK * 8) : 0;
           const o = G.own[t],
             hid = !!(G.fillHid && G.fillHid.has(t)),
             sig = [
               dens.toFixed(2),
+              dq,
               lm.ls,
               lm.cs,
               sn ? 1 : 0,
@@ -8106,7 +8138,9 @@
             if (budget <= 0) { vrLblMore = true; continue; } // fica para o próximo quadro
             budget--;
             L.sig = sig;
+            vrLblDq = dq;
             vrDrawLabel(L, t, lm, sn, dens);
+            vrLblDq = 0;
           }
           L.mesh.visible = true;
         }
