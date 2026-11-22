@@ -263,6 +263,12 @@
            [x] 37. FEITO (pulando quadros no Quest): o custo é por OBJETO desenhado (x2 olhos). Preenchimentos, bordas, sombras/paredes do
                   levante e linhas (~100 objetos) agora saem numa ÚNICA malha (vrBatchSync, VR_BATCH). As malhas originais continuam mandando no
                   estado (cor, posição, ordem, visibilidade) e só deixam de ser desenhadas (layer 4). VR_BATCH = false volta ao antigo.
+           [x] 38. FEITO (pedido): (a) TREMEDEIRA ao andar olhando o mapa (no configurador não ocorre): causa = trabalho de CPU/lixo por quadro que
+                  só existe no mapa: sig de 42 rótulos montada todo quadro (agora a cada 100 ms), vrLiftedSet/vrDimActive recalculados 3x por
+                  quadro (agora cache de 50 ms) e hover chamando isPointInPath em ~42 contornos (agora só a malha 3D do laser; hover a cada
+                  50 ms, 130 ms enquanto anda). (b) hover: sem malha branca; o território fica ~12% mais claro na própria cor (VR_HOVER_TINT),
+                  no plano dele, abaixo dos suspensos. (c) arrastar mapa no VR = só GARRA esq./dir. (VR_TRIGGER_DRAGS_MAP = false); PC = segurar mouse.
+                  TESTAR no Quest. Se ainda tremer = GPU: VR_XR_SCALE / VR_LABEL_DENS_MIN (ver etapa 30/32).
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -279,6 +285,9 @@
          "buraco" ficar errado, ajustar em buildVRHitMap. Não usar localStorage. Manter y invertido
          (scale.y negativo) nos grupos do mapa. Ao terminar uma etapa, atualize este bloco.
          ===================================================================================== */
+      /* etapa 38 (pedido): no VR o mapa só é arrastado SEGURANDO A GARRA (grip) esquerda ou direita. O gatilho volta a só clicar.
+         No PC continua: segurar o botão do mouse e arrastar. (true = gatilho também arrasta, como na etapa 34) */
+      const VR_TRIGGER_DRAGS_MAP = false;
       const VR_MAP_3D_FILLS = true;
       /* Etapa 5: bordas em 3D. Em false, as bordas voltam a ser desenhadas no canvas (c.stroke). */
       const VR_MAP_3D_STROKES = VR_MAP_3D_FILLS;
@@ -6714,10 +6723,10 @@
           drawConfigPanel();
         }
       }
-      function pick(x, y) {
+      function pick(x, y, noTerr) {
         for (const b of btns)
           if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return { b };
-        if (scr == "game" && !modalOv() && !inOvr(x, y)) {
+        if (!noTerr && scr == "game" && !modalOv() && !inOvr(x, y)) {
           const zs = zsc(),
             mx = VB.x + x / zs,
             my = VB.y + y / zs;
@@ -6735,7 +6744,9 @@
       let vrHoverCtlTerr; // undefined = sem laser (mouse): usa o ponto 2D
       function onHover(x, y) {
         vrCur = [x, y]; // etapa 12a: o tanque atacante encara o cursor
-        let h = pick(x, y);
+        /* etapa 38: com o laser do VR o território vem da malha 3D (aimTerritory); isPointInPath em ~42 contornos a cada
+           hover era o maior custo de CPU ao andar olhando o mapa. Agora só botões são testados por ponto 2D. */
+        let h = pick(x, y, vrHoverCtlTerr !== undefined);
         /* etapa 33: com territórios suspensos em profundidade, o território apontado é o que o laser acerta nas malhas 3D
            (não o ponto 2D da tela). Botões continuam pelo ponto 2D. */
         if (vrHoverCtlTerr !== undefined && !(h && h.b)) h = vrHoverCtlTerr ? { t: vrHoverCtlTerr } : null;
@@ -7270,7 +7281,19 @@
         }
         return out;
       }
+      /* etapa 38: vrLiftedSet/vrDimActive eram recalculados 3x por quadro (alocando Sets = lixo = coletor de lixo = quadros pulados).
+         Agora o resultado vale por 50 ms (ou até mudar a partida/tela). Só visual; nenhuma regra muda. */
+      let vrLsC = null, vrLsT = -1e9, vrLsG = null, vrLsS = "", vrDaC = false, vrDaT = -1e9, vrDaG = null, vrDaS = "";
       function vrLiftedSet() {
+        const n = performance.now();
+        if (vrLsC && vrLsG === G && vrLsS === scr && n - vrLsT < 50) return vrLsC;
+        vrLsC = vrLiftedSetRaw();
+        vrLsT = n;
+        vrLsG = G;
+        vrLsS = scr;
+        return vrLsC;
+      }
+      function vrLiftedSetRaw() {
         const set = new Set();
         if (!G || scr != "game") return set;
         const J = (G.M && G.M.J) || {};
@@ -7305,6 +7328,15 @@
         return set;
       }
       function vrDimActive() {
+        const n = performance.now();
+        if (vrDaG === G && vrDaS === scr && n - vrDaT < 50) return vrDaC;
+        vrDaC = vrDimActiveRaw();
+        vrDaT = n;
+        vrDaG = G;
+        vrDaS = scr;
+        return vrDaC;
+      }
+      function vrDimActiveRaw() {
         if (!G || scr != "game") return false;
         if (G.sel || G.fx || G.airMode || G.missileMode || G.missileStrikeTarget) return true;
         // Etapa 9r: durante a colocação de reforços o resto do mapa e o mar também escurecem
@@ -7695,6 +7727,8 @@
         }
         B.mesh.visible = B.icount > 0;
       }
+      const VR_HOVER_TINT = 0.12, // 0 = sem destaque, 0.12 = véu branco bem suave (era 55% de branco); aumente para clarear mais
+        VR_WHITE = new THREE.Color(1, 1, 1);
       function syncVRFills() {
         if (!vrSea) return;
         const on = !!G && scr != "menu" && !!vrFillGroup;
@@ -7720,7 +7754,8 @@
           if (!m) continue;
           const hid = !!(G.fillHid && G.fillHid.has(t)),
             dim = kq > 0 && !(lift && lift.has(t)),
-            k = (hid ? "h" : G.own[t]) + (dim ? "|d" + kq : "");
+            hv = !hid && vrHLCur === t,
+            k = (hid ? "h" : G.own[t]) + (dim ? "|d" + kq : "") + (hv ? "|v" : "");
           if (m.userData.k === k) continue;
           m.userData.k = k;
           m.material.color.set(hid ? "#a0aab4" : COL[G.own[t]]);
@@ -7729,6 +7764,7 @@
             m.material.color.multiplyScalar(1 - 0.5 * kf);
             m.material.opacity *= 1 - 0.2 * kf;
           }
+          if (hv) m.material.color.lerp(VR_WHITE, VR_HOVER_TINT);
         }
       }
       /* Etapa 7: rótulos dos territórios em 3D. Cada território tem UM plano com um mini-canvas (nome +
@@ -7913,11 +7949,22 @@
           m.visible = true;
         }
       }
+      /* etapa 38: a assinatura (sig) de 42 rótulos era montada TODO quadro (42 arrays + strings + closures = lixo e CPU).
+         Agora roda no máx. a cada 100 ms; sem limite enquanto há bolha de número ou rótulos pendentes do orçamento. */
+      let vrLblT = 0, vrLblMore = false;
       function vrSyncLabels() {
         if (!vrLabelGroup) return;
         const on = !!G && scr != "menu";
         vrLabelGroup.visible = on;
         if (!on) return;
+        {
+          const nowL = performance.now();
+          let popOn = false;
+          for (const _k in vrPops) { popOn = true; break; }
+          if (!popOn && !vrLblMore && nowL - vrLblT < 100) return;
+          vrLblT = nowL;
+          vrLblMore = false;
+        }
         const lm = lmet(),
           sn = showNames(),
           zs = zsc(),
@@ -7986,7 +8033,7 @@
             L = vrLabels[t] = { cv, tex: tx, mesh, sig: "" };
           }
           if (L.sig !== sig) {
-            if (budget <= 0) continue; // fica para o próximo quadro
+            if (budget <= 0) { vrLblMore = true; continue; } // fica para o próximo quadro
             budget--;
             L.sig = sig;
             vrDrawLabel(L, t, lm, sn, dens);
@@ -8925,12 +8972,13 @@
         for (const k in vrHL) vrHL[k].visible = false;
         vrHLCur = null;
       }
+      /* etapa 38 (pedido): o destaque branco (malha extra por cima de tudo, renderOrder 2000) foi REMOVIDO. Agora o território
+         apontado apenas fica um pouco mais claro na PRÓPRIA cor de preenchimento (syncVRFills, VR_HOVER_TINT): fica no plano do
+         próprio território, ou seja, abaixo dos territórios suspensos, e some o custo de mais uma malha transparente. */
       function vrHoverT(t) {
         if (t && !mapOn()) t = null;
         if (t === vrHLCur) return;
-        if (vrHLCur && vrHL[vrHLCur]) vrHL[vrHLCur].visible = false;
         vrHLCur = t || null;
-        if (t && vrHL[t]) vrHL[t].visible = true;
       }
       function buildVRHitMap(M) {
         if (vrMapSource === M && vrMapGroup) {
@@ -8962,6 +9010,7 @@
           }
         }
         vrLabels = {};
+        vrLblT = 0;
         vrPopMesh = {};
         vrPops = {};
         vrLabelGroup = VR_MAP_3D_LABELS ? new THREE.Group() : null;
@@ -9259,7 +9308,7 @@
           }
           /* etapa 34: GATILHO TAMBÉM ARRASTA O MAPA (como a garra/grip e o mouse): segurar o gatilho em qualquer ponto do
              mapa (território ou água) e mexer a mão move o mapa. Se a mão quase não mexer, ao SOLTAR vale como clique. */
-          if (mapOn() && !inOvr(h.x, h.y)) {
+          if (VR_TRIGGER_DRAGS_MAP && mapOn() && !inOvr(h.x, h.y)) {
             vTrig = { k, x0: h.x, y0: h.y, moved: false };
             const t0 = aimTerritory(k);
             vHoldFired = false;
@@ -9424,7 +9473,8 @@
       let snapped = false,
         vrHvX = -1e9,
         vrHvY = -1e9,
-        vrHvT0 = 0; // etapa 21: limitador do hover
+        vrHvT0 = 0, // etapa 21: limitador do hover
+        vrWalkNow = false; // etapa 38: andando (stick esquerdo) = hover mais espaçado
       R.setAnimationLoop(() => {
         tick();
         if (G && G.toast && performance.now() > G.toast.until) {
@@ -9479,6 +9529,7 @@
             if (rt.lengthSq() < 1e-4) rt.set(-f.z, 0, f.x);
             rt.normalize();
           }
+          vrWalkNow = false;
           for (const src of s.inputSources) {
             const g = src.gamepad;
             if (!g) continue;
@@ -9487,6 +9538,7 @@
             if (cfg.walk && src.handedness == "left" && Math.hypot(x, y) > 0.15) {
               /* etapa 21: zona morta suave (sem "arranque") e limite aplicado na CABEÇA, não na origem do rig
                  (antes a cabeça podia bater na parede e a caminhada parecia travar). Desliza pelas paredes. */
+              vrWalkNow = true;
               const mag = Math.hypot(x, y),
                 k = Math.min(1, (mag - 0.15) / 0.85) / mag;
               rig.position.addScaledVector(f, -y * k * 2.2 * dt).addScaledVector(rt, x * k * 2.2 * dt);
@@ -9576,7 +9628,7 @@
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
             const nowH = performance.now();
             if (
-              (Math.abs(hk.x - vrHvX) + Math.abs(hk.y - vrHvY) > 1.5 && nowH - vrHvT0 >= 40) ||
+              (Math.abs(hk.x - vrHvX) + Math.abs(hk.y - vrHvY) > 1.5 && nowH - vrHvT0 >= (vrWalkNow ? 130 : 50)) ||
               nowH - vrHvT0 > 700
             ) {
               vrHvX = hk.x;
