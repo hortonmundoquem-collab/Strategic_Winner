@@ -29,6 +29,16 @@
       import { VRButton } from "three/addons/webxr/VRButton.js";
       import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
       import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+      /* etapa 36: o three.js desenha em DUAS passadas (verso + frente) todo material transparente com side: DoubleSide.
+         O mapa tem ~125 desses (preenchimentos, rótulos...), ou seja, ~125 draw calls extras por olho, sem ganho visual
+         (as peças são planas). Forçamos passada única em todos os materiais. Para voltar ao antigo: apague este bloco. */
+      Object.defineProperty(THREE.Material.prototype, "forceSinglePass", {
+        configurable: true,
+        get() {
+          return true;
+        },
+        set() {},
+      });
       /* =====================================================================================
          LEIA PRIMEIRO — INSTRUÇÕES PARA QUALQUER IA QUE CONTINUAR ESTE ARQUIVO
          =====================================================================================
@@ -244,10 +254,15 @@
            [x] 35. FEITO (pedido: VR trava no mapa, mas não no configurador): diagnóstico = o menu faz ~9 draw calls; o mapa chegava a ~300.
                   (a) 80 caixas das poltronas -> 2 malhas fundidas (-78 draw calls); (b) malhas invisíveis de clique estavam na layer 1,
                   que o WebXRManager do three renderiza SÓ no olho esquerdo (41 draw calls extras e olhos desiguais): agora layer 3
-                  (aimTerritory/ray.layers.enable(3)); (c) VR_FOVEATION = 0.5 (antes 0 = foveação desligada, GPU no máximo);
+                  (aimTerritory/ray.layers.enable(3)); (c) [DESFEITO na 36: VR_FOVEATION voltou a 0, 0.5 deixou as bordas borradas];
                   (d) na animação inicial de preenchimento do mapa não se redesenha/reenvia o canvas 1920x1080 a cada 100 ms.
                   Nenhuma regra mudou. TESTAR no Quest. Se ainda pesar: VR_FOVEATION 0.5 -> 1, ocultar territórios fora do zoom,
                   e fundir fills/bordas/rótulos (hoje 41+41+42 draw calls).
+           [x] 36. FEITO: (a) foveação de volta a 0 (qualidade original); (b) materiais transparentes DoubleSide eram desenhados em 2 passadas
+                  (259 draw calls reais para 141 objetos): forceSinglePass global, mesma imagem, ~metade das chamadas do mapa.
+           [x] 37. FEITO (pulando quadros no Quest): o custo é por OBJETO desenhado (x2 olhos). Preenchimentos, bordas, sombras/paredes do
+                  levante e linhas (~100 objetos) agora saem numa ÚNICA malha (vrBatchSync, VR_BATCH). As malhas originais continuam mandando no
+                  estado (cor, posição, ordem, visibilidade) e só deixam de ser desenhadas (layer 4). VR_BATCH = false volta ao antigo.
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1116,7 +1131,7 @@
       const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
       const VR_LABEL_DENS_MIN = 1.5;
-      const VR_FOVEATION = 0.5; // etapa 35: foveação fixa do Quest. Texto das bordas da tela perde um pouco de nitidez; centro continua nítido. 0 = antigo.
+      const VR_FOVEATION = 0; // etapa 35/36: 0 = igual ao original (sem foveação, qualidade máxima). Valores maiores economizam GPU mas borram as bordas.
       const VR_XR_SCALE = 1.0; // etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
@@ -7437,6 +7452,249 @@
         vrWaterFlashUntil = 0; // etapa 11d: _waterFlashActive do original (450 ms ao confirmar na fase R)
       let vrDimK = 0,
         vrDimT = 0; // etapa 10c: 0..1, escurece/clareia em 0,4 s (transition do .terr-path.dim original)
+      /* ===== ETAPA 37: FUSÃO (batching) DAS PEÇAS SIMPLES DO MAPA =====
+         Motivo: no Quest o custo do three.js é por OBJETO desenhado (e no VR cada objeto é processado 2x, um por olho).
+         Preenchimentos, bordas, sombras/paredes do levante e linhas pontilhadas eram ~100 objetos por olho. Agora uma
+         única malha (vrB.mesh, filha de vrFillGroup, vértices em cores RGBA) desenha todos eles de uma vez.
+         As malhas originais CONTINUAM existindo e mandando (cor, opacidade, posição, renderOrder, visible): a lógica
+         do jogo não mudou. Elas só deixam de ser desenhadas (layer 4) e a malha fundida copia o estado delas,
+         recalculando só o que mudou (pan/zoom não recalcula nada: ela se move junto com o grupo).
+         Ordem de pintura = renderOrder, depois grupo (preenchimento antes da borda), depois criação (igual ao three).
+         Interruptor: VR_BATCH = false volta ao desenho antigo (peça por peça). Se der erro, desliga sozinho. */
+      const VR_BATCH = true;
+      let vrBatchOn = VR_BATCH,
+        vrB = null,
+        vrBatchSeq = 0;
+      const vrBatchRecs = new WeakMap(),
+        _bM = new THREE.Matrix4(),
+        _bT = new THREE.Matrix4();
+      function vrBatchType(o) {
+        const m = o.material,
+          g = o.geometry;
+        return !!(
+          o.isMesh && !o.isInstancedMesh && m && m.isMeshBasicMaterial && !m.map && !m.alphaMap && !m.vertexColors &&
+          m.transparent && !m.depthWrite && m.depthTest && m.side === THREE.DoubleSide && m.blending === THREE.NormalBlending &&
+          o.renderOrder < 800 && g && g.drawRange.start === 0 && g.drawRange.count === Infinity && g.attributes.position
+        );
+      }
+      function vrBatchRelease() {
+        if (!vrB) return;
+        for (const r of vrB.recs) {
+          if (r.adopted) {
+            r.o.layers.mask = r.lm;
+            r.adopted = false;
+          }
+        }
+        if (vrB.mesh.parent) vrB.mesh.parent.remove(vrB.mesh);
+        vrB.geo.dispose();
+        vrB.mat.dispose();
+        vrB = null;
+      }
+      function vrBatchMakeGeo(vcap, icap) {
+        const geo = new THREE.BufferGeometry(),
+          pa = new THREE.BufferAttribute(new Float32Array(vcap * 3), 3),
+          ca = new THREE.BufferAttribute(new Float32Array(vcap * 4), 4),
+          ia = new THREE.BufferAttribute(new Uint32Array(icap), 1);
+        pa.setUsage(THREE.DynamicDrawUsage);
+        ca.setUsage(THREE.DynamicDrawUsage);
+        ia.setUsage(THREE.DynamicDrawUsage);
+        geo.setAttribute("position", pa);
+        geo.setAttribute("color", ca);
+        geo.setIndex(ia);
+        geo.setDrawRange(0, 0);
+        geo.userData.vcap = vcap;
+        geo.userData.icap = icap;
+        return geo;
+      }
+      function vrBatchSync() {
+        const root = vrFillGroup;
+        if (!vrBatchOn || !root) {
+          vrBatchRelease();
+          return;
+        }
+        if (vrB && vrB.root !== root) vrBatchRelease();
+        if (!vrB) {
+          const mat = new THREE.MeshBasicMaterial({
+              vertexColors: true,
+              transparent: true,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              toneMapped: false,
+              clippingPlanes: vrClip,
+            }),
+            geo = vrBatchMakeGeo(4096, 8192),
+            mesh = new THREE.Mesh(geo, mat);
+          mesh.frustumCulled = false;
+          mesh.renderOrder = 0;
+          mesh.visible = false;
+          root.add(mesh);
+          vrB = { root, mesh, geo, mat, recs: [], tmp: [], ord: [], ord2: [], vcount: 0, icount: 0 };
+        }
+        if (!root.visible) {
+          vrB.mesh.visible = false;
+          return;
+        }
+        const B = vrB,
+          L = B.tmp;
+        L.length = 0;
+        let needLayout = false,
+          sdz = 0;
+        if (vrStrokeGroup) sdz = vrStrokeGroup.position.z - root.position.z;
+        for (let gi = 0; gi < 2; gi++) {
+          const grp = gi ? vrStrokeGroup : root;
+          if (!grp) continue;
+          const kids = grp.children;
+          for (let i = 0; i < kids.length; i++) {
+            const o = kids[i];
+            if (o === B.mesh) continue;
+            let r = vrBatchRecs.get(o);
+            if (!r) {
+              if (!vrBatchType(o)) continue;
+              r = { o, rank: gi, id: vrBatchSeq++, adopted: false, lm: 1, geo: null, n: 0, off: 0, pv: -1, iv: -1, m: new Array(16).fill(0), cr: -1, cg: -1, cb: -1, co: -1, dPos: true, dCol: true };
+              vrBatchRecs.set(o, r);
+            }
+            if (!r.adopted) {
+              r.lm = o.layers.mask;
+              o.layers.set(4); // fora do render normal (a malha fundida desenha por ela)
+              r.adopted = true;
+              needLayout = true;
+            }
+            L.push(r);
+          }
+        }
+        if (L.length !== B.recs.length) needLayout = true;
+        else for (let i = 0; i < L.length; i++) if (L[i] !== B.recs[i]) { needLayout = true; break; }
+        for (let i = 0; i < L.length && !needLayout; i++) {
+          const r = L[i],
+            g = r.o.geometry,
+            pa = g.attributes.position;
+          if (g !== r.geo || (pa ? pa.count : 0) !== r.n) needLayout = true;
+        }
+        if (needLayout) {
+          let v = 0,
+            ic = 0;
+          for (const r of L) {
+            const g = r.o.geometry,
+              pa = g.attributes.position;
+            r.geo = g;
+            r.n = pa ? pa.count : 0;
+            r.off = v;
+            v += r.n;
+            ic += g.index ? g.index.count : r.n;
+            r.dPos = r.dCol = true;
+          }
+          B.recs = L.slice();
+          if (v > B.geo.userData.vcap || ic > B.geo.userData.icap) {
+            const old = B.geo;
+            B.geo = vrBatchMakeGeo(Math.ceil(v * 1.3) + 1024, Math.ceil(ic * 1.3) + 2048);
+            B.mesh.geometry = B.geo;
+            old.dispose();
+          }
+          B.ord.length = 0; // força reconstruir o índice
+          B.idxDirty = true;
+        }
+        const geo = B.geo,
+          pAtt = geo.attributes.position,
+          cAtt = geo.attributes.color,
+          P = pAtt.array,
+          C = cAtt.array,
+          recs = B.recs;
+        let nVis = 0;
+        const ord2 = B.ord2;
+        ord2.length = 0;
+        for (let k = 0; k < recs.length; k++) {
+          const r = recs[k],
+            o = r.o,
+            g = r.geo,
+            pa = g.attributes.position;
+          if (pa && r.pv !== pa.version) {
+            r.pv = pa.version;
+            r.dPos = true;
+          }
+          if (g.index && r.iv !== g.index.version) {
+            r.iv = g.index.version;
+            B.idxDirty = true;
+          }
+          if (o.matrixAutoUpdate) o.updateMatrix();
+          _bM.copy(o.matrix);
+          if (r.rank === 1) _bM.premultiply(_bT.makeTranslation(0, 0, sdz));
+          const e = _bM.elements,
+            m = r.m;
+          for (let j = 0; j < 16; j++) {
+            if (Math.abs(e[j] - m[j]) > 1e-12) {
+              r.dPos = true;
+              for (let q = 0; q < 16; q++) m[q] = e[q];
+              break;
+            }
+          }
+          const mt = o.material,
+            c = mt.color;
+          if (r.cr !== c.r || r.cg !== c.g || r.cb !== c.b || r.co !== mt.opacity) {
+            r.cr = c.r;
+            r.cg = c.g;
+            r.cb = c.b;
+            r.co = mt.opacity;
+            r.dCol = true;
+          }
+          if (r.n) {
+            if (r.dPos) {
+              const src = pa.array,
+                is = pa.itemSize,
+                a = m;
+              let w = r.off * 3;
+              for (let i = 0; i < r.n; i++) {
+                const x = src[i * is],
+                  y = src[i * is + 1],
+                  z = is > 2 ? src[i * is + 2] : 0;
+                P[w++] = a[0] * x + a[4] * y + a[8] * z + a[12];
+                P[w++] = a[1] * x + a[5] * y + a[9] * z + a[13];
+                P[w++] = a[2] * x + a[6] * y + a[10] * z + a[14];
+              }
+              pAtt.addUpdateRange(r.off * 3, r.n * 3);
+              pAtt.needsUpdate = true;
+              r.dPos = false;
+            }
+            if (r.dCol) {
+              let w = r.off * 4;
+              for (let i = 0; i < r.n; i++) {
+                C[w++] = r.cr;
+                C[w++] = r.cg;
+                C[w++] = r.cb;
+                C[w++] = r.co;
+              }
+              cAtt.addUpdateRange(r.off * 4, r.n * 4);
+              cAtt.needsUpdate = true;
+              r.dCol = false;
+            }
+            if (o.visible) ord2.push(r);
+          }
+        }
+        ord2.sort((a, b) => a.o.renderOrder - b.o.renderOrder || a.rank - b.rank || a.id - b.id);
+        let same = !B.idxDirty && ord2.length === B.ord.length;
+        if (same) for (let i = 0; i < ord2.length; i++) if (ord2[i] !== B.ord[i]) { same = false; break; }
+        if (!same) {
+          const ia = geo.index,
+            I = ia.array;
+          let w = 0;
+          for (const r of ord2) {
+            const gi = r.geo.index;
+            if (gi) {
+              const ar = gi.array;
+              for (let i = 0; i < gi.count; i++) I[w++] = ar[i] + r.off;
+            } else for (let i = 0; i < r.n; i++) I[w++] = r.off + i;
+          }
+          ia.clearUpdateRanges();
+          ia.needsUpdate = true;
+          geo.setDrawRange(0, w);
+          B.idxDirty = false;
+          const t = B.ord;
+          B.ord = ord2;
+          B.ord2 = t;
+          nVis = w;
+          B.icount = w;
+        }
+        B.mesh.visible = B.icount > 0;
+      }
       function syncVRFills() {
         if (!vrSea) return;
         const on = !!G && scr != "menu" && !!vrFillGroup;
@@ -9197,6 +9455,15 @@
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
         vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
+        if (vrBatchOn) {
+          try {
+            vrBatchSync(); // etapa 37: funde as peças simples do mapa (depois de lift/shake, que mexem nas posições)
+          } catch (e) {
+            console.error("vrBatchSync", e);
+            vrBatchOn = false; // se algo der errado, volta sozinho ao desenho antigo
+            vrBatchRelease();
+          }
+        } else if (vrB) vrBatchRelease();
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
         if (s) {
