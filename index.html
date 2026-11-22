@@ -269,6 +269,11 @@
                   50 ms, 130 ms enquanto anda). (b) hover: sem malha branca; o território fica ~12% mais claro na própria cor (VR_HOVER_TINT),
                   no plano dele, abaixo dos suspensos. (c) arrastar mapa no VR = só GARRA esq./dir. (VR_TRIGGER_DRAGS_MAP = false); PC = segurar mouse.
                   TESTAR no Quest. Se ainda tremer = GPU: VR_XR_SCALE / VR_LABEL_DENS_MIN (ver etapa 30/32).
+           [x] 39. FEITO (pedido): (a) nitidez: VR_XR_SCALE 1.0 -> 1.3, VR_LABEL_DENS_MIN 1.5 -> 2, anisotropia da tela 16 (se voltar a tremer: 1.15);
+                  (b) levante 50% menor (VR_LIFT_Z 0.225) e TODOS à mesma altura, subindo juntos (VR_LIFT_STAGGER = 0);
+                  (c) ordem de pintura: lote A (normais, ro 0) -> rótulos/bolhas de NÃO suspensos (450) -> lote B (suspensos, 500) ->
+                  rótulos dos suspensos (900) -> setas e explosão (950+) -> tela/HUD (1000). A malha fundida agora são 2 malhas
+                  com os mesmos buffers (vrBatchLink); (d) setas de ataque/reagrupamento e explosão na altura dos suspensos e por cima.
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1139,9 +1144,9 @@
          ele só suspende (levante) e escurece o resto. false = igual ao original. */
       const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
-      const VR_LABEL_DENS_MIN = 1.5;
+      const VR_LABEL_DENS_MIN = 2; // etapa 39: 1.5 -> 2 (letras mais nítidas)
       const VR_FOVEATION = 0; // etapa 35/36: 0 = igual ao original (sem foveação, qualidade máxima). Valores maiores economizam GPU mas borram as bordas.
-      const VR_XR_SCALE = 1.0; // etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
+      const VR_XR_SCALE = 1.3; // etapa 39: 1.0 -> 1.3 (imagem estava esfumaçada; se voltar a tremer, baixe para 1.15). etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
       let c = S.getContext("2d"); // let: a etapa 7 troca c temporariamente pelo mini-canvas de cada rótulo
@@ -7080,7 +7085,7 @@
       tex.generateMipmaps = true; // etapa 30: mipmaps = sem cintilar/tremer ao andar
       tex.premultiplyAlpha = VR_MAP_3D_FILLS; // canvas com partes transparentes (mapa fica visível por trás)
       tex.minFilter = THREE.LinearMipmapLinearFilter;
-      tex.anisotropy = 8;
+      tex.anisotropy = 16;
       box(10, 5.7, 0.15, 0, 3.15, -8.95, M_(0x000000));
       const screen = new THREE.Mesh(
         new THREE.PlaneGeometry(9.6, 5.4),
@@ -7154,7 +7159,7 @@
          VR_LIFT_Z metros em direção ao espectador (paralaxe/estéreo de verdade) e ganha PAREDES laterais (altura). A 5-9 m da
          tela, menos de ~0,3 m quase não se enxerga em estéreo; por isso o valor é grande. Para ajustar: 0.25 (sutil) .. 0.8 (forte).
          0 desliga profundidade e paredes (volta ao levante só 2D). */
-      const VR_LIFT_Z = 0.45;
+      const VR_LIFT_Z = 0.225; // etapa 39: 0.45 -> 0.225 (50% menos)
       let vrLiftWall = {}, vrHitByT = null, vrHitByTSrc = null, vrHitByTN = -1;
       function vrLiftWallFor(t) {
         let w = vrLiftWall[t];
@@ -7373,7 +7378,7 @@
          aqui um pouco mais lento e suave para o óculos. Para ajustar, mude as 2 constantes abaixo.
          A descida é instantânea (como no original). */
       const VR_LIFT_DUR = 0.5,
-        VR_LIFT_STAGGER = 0.06,
+        VR_LIFT_STAGGER = 0, // etapa 39: 0 = todos sobem juntos, sempre à mesma altura (era 0.06 = um depois do outro)
         VR_LIFT_STAGGER_MAX = 1.0; // tempo total máximo do escalonamento (muitos territórios de uma vez)
       let vrLiftSt = {};
       const vrLiftEase = (u) => 1 - Math.pow(1 - u, 3);
@@ -7470,6 +7475,7 @@
               ly = L.mesh.userData.base[1] + dy;
             L.mesh.position.set(lx, ly, dz);
             L.mesh.userData.lb = [lx, ly, dz];
+            L.mesh.renderOrder = up ? 900 : 450; // etapa 39: rótulo de território NÃO suspenso fica ABAIXO dos suspensos (lote B = 500)
           }
           const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
           if (sh) {
@@ -7518,9 +7524,22 @@
           }
         }
         if (vrB.mesh.parent) vrB.mesh.parent.remove(vrB.mesh);
+        if (vrB.mesh2.parent) vrB.mesh2.parent.remove(vrB.mesh2);
+        vrB.geo2.dispose();
         vrB.geo.dispose();
         vrB.mat.dispose();
         vrB = null;
+      }
+      /* etapa 39: 2ª malha que reaproveita os MESMOS buffers (posição/cor/índice) da 1ª, só com outra faixa de desenho.
+         Lote A (renderOrder 0) = peças normais; lote B (500) = peças suspensas. Entre os dois (450) ficam os rótulos dos
+         territórios não suspensos, que assim ficam ABAIXO dos suspensos. */
+      function vrBatchLink(geo) {
+        const g2 = new THREE.BufferGeometry();
+        g2.setAttribute("position", geo.attributes.position);
+        g2.setAttribute("color", geo.attributes.color);
+        g2.setIndex(geo.index);
+        g2.setDrawRange(0, 0);
+        return g2;
       }
       function vrBatchMakeGeo(vcap, icap) {
         const geo = new THREE.BufferGeometry(),
@@ -7560,10 +7579,17 @@
           mesh.renderOrder = 0;
           mesh.visible = false;
           root.add(mesh);
-          vrB = { root, mesh, geo, mat, recs: [], tmp: [], ord: [], ord2: [], vcount: 0, icount: 0 };
+          const geo2 = vrBatchLink(geo),
+            mesh2 = new THREE.Mesh(geo2, mat);
+          mesh2.frustumCulled = false;
+          mesh2.renderOrder = 500;
+          mesh2.visible = false;
+          root.add(mesh2);
+          vrB = { root, mesh, mesh2, geo, geo2, mat, recs: [], tmp: [], ord: [], ord2: [], vcount: 0, icount: 0, nl: -1, wLow: 0 };
         }
         if (!root.visible) {
           vrB.mesh.visible = false;
+          vrB.mesh2.visible = false;
           return;
         }
         const B = vrB,
@@ -7578,7 +7604,7 @@
           const kids = grp.children;
           for (let i = 0; i < kids.length; i++) {
             const o = kids[i];
-            if (o === B.mesh) continue;
+            if (o === B.mesh || o === B.mesh2) continue;
             let r = vrBatchRecs.get(o);
             if (!r) {
               if (!vrBatchType(o)) continue;
@@ -7620,6 +7646,10 @@
             const old = B.geo;
             B.geo = vrBatchMakeGeo(Math.ceil(v * 1.3) + 1024, Math.ceil(ic * 1.3) + 2048);
             B.mesh.geometry = B.geo;
+            const old2 = B.geo2;
+            B.geo2 = vrBatchLink(B.geo);
+            B.mesh2.geometry = B.geo2;
+            old2.dispose();
             old.dispose();
           }
           B.ord.length = 0; // força reconstruir o índice
@@ -7702,22 +7732,31 @@
           }
         }
         ord2.sort((a, b) => a.o.renderOrder - b.o.renderOrder || a.rank - b.rank || a.id - b.id);
-        let same = !B.idxDirty && ord2.length === B.ord.length;
+        let nl = 0;
+        while (nl < ord2.length && ord2[nl].o.renderOrder < 400) nl++;
+        let same = !B.idxDirty && ord2.length === B.ord.length && nl === B.nl;
         if (same) for (let i = 0; i < ord2.length; i++) if (ord2[i] !== B.ord[i]) { same = false; break; }
         if (!same) {
           const ia = geo.index,
             I = ia.array;
-          let w = 0;
-          for (const r of ord2) {
+          let w = 0,
+            wLow = -1;
+          for (let ri = 0; ri < ord2.length; ri++) {
+            const r = ord2[ri];
+            if (ri === nl) wLow = w;
             const gi = r.geo.index;
             if (gi) {
               const ar = gi.array;
               for (let i = 0; i < gi.count; i++) I[w++] = ar[i] + r.off;
             } else for (let i = 0; i < r.n; i++) I[w++] = r.off + i;
           }
+          if (wLow < 0) wLow = w;
           ia.clearUpdateRanges();
           ia.needsUpdate = true;
-          geo.setDrawRange(0, w);
+          geo.setDrawRange(0, wLow);
+          B.geo2.setDrawRange(wLow, w - wLow);
+          B.nl = nl;
+          B.wLow = wLow;
           B.idxDirty = false;
           const t = B.ord;
           B.ord = ord2;
@@ -7725,7 +7764,8 @@
           nVis = w;
           B.icount = w;
         }
-        B.mesh.visible = B.icount > 0;
+        B.mesh.visible = B.wLow > 0;
+        B.mesh2.visible = B.icount > B.wLow;
       }
       const VR_HOVER_TINT = 0.12, // 0 = sem destaque, 0.12 = véu branco bem suave (era 55% de branco); aumente para clarear mais
         VR_WHITE = new THREE.Color(1, 1, 1);
@@ -7944,6 +7984,7 @@
             ox = lb && bs ? lb[0] - bs[0] : 0,
             oy = lb && bs ? lb[1] - bs[1] : 0,
             oz = (lb && lb[2]) || 0;
+          m.renderOrder = oz > 0 ? 905 : 455; // etapa 39
           m.position.set(G.M.C[t][0] + ox + (isK ? tnx : 0), G.M.C[t][1] + oy + (isK ? tny : 0), 0.0005 + oz);
           m.scale.set(lm.cs * 4 * sc, -lm.cs * 2 * sc, 1);
           m.visible = true;
@@ -8015,7 +8056,7 @@
             tx.colorSpace = THREE.SRGBColorSpace;
             tx.generateMipmaps = true;
             tx.minFilter = THREE.LinearMipmapLinearFilter;
-            tx.anisotropy = 4;
+            tx.anisotropy = 8;
             const mesh = new THREE.Mesh(
               new THREE.PlaneGeometry(1, 1),
               new THREE.MeshBasicMaterial({
@@ -8210,11 +8251,11 @@
           line = new THREE.Mesh(lineGeo, mk(0xfff7b3)),
           arrow = new THREE.Group();
         glow.scale.set(1.35, 1.9, 1);
-        glow.renderOrder = 800;
-        fill.renderOrder = 801;
-        line.renderOrder = 802;
+        glow.renderOrder = 960; // etapa 39: setas/explosão por cima dos suspensos e dos rótulos
+        fill.renderOrder = 961;
+        line.renderOrder = 962;
         arrow.add(glow, fill, line);
-        arrow.position.z = 0.002;
+        arrow.position.z = VR_LIFT_Z + 0.002; // etapa 39: na altura dos suspensos
         arrow.visible = false;
         const cv = document.createElement("canvas");
         cv.width = cv.height = 128;
@@ -8228,8 +8269,8 @@
         const tx = new THREE.CanvasTexture(cv);
         tx.colorSpace = THREE.SRGBColorSpace;
         const boom = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mk(0xffffff, { map: tx }));
-        boom.renderOrder = 803;
-        boom.position.z = 0.003;
+        boom.renderOrder = 963;
+        boom.position.z = VR_LIFT_Z + 0.003;
         boom.visible = false;
         group.add(arrow, boom);
         vrFx = { arrow, boom, glow, fill, line };
@@ -8306,7 +8347,7 @@
         const flyCols = ["#ff6600", "#ff8800", "#ffaa00", "#ffcc00", "#ff3300", "#666", "#888"];
         for (let i = 0; i < 25; i++) fly.setColorAt(i, new THREE.Color(flyCols[i % flyCols.length]).convertSRGBToLinear());
         [smoke, fly, debris, sparks, ring1, ring2, coreGlow, core].forEach((m, i) => {
-          m.renderOrder = 804 + i;
+          m.renderOrder = 964 + i;
           m.frustumCulled = false;
           g.add(m);
         });
@@ -8831,12 +8872,12 @@
           );
           m.renderOrder = order;
           m.frustumCulled = false;
-          m.position.z = 0.001;
+          m.position.z = VR_LIFT_Z + 0.001; // etapa 39: setas na altura dos suspensos
           m.visible = false;
           group.add(m);
           return { m, n: 0 };
         };
-        vrArr = { out: mk(0x000000, 0.9, 790), atk: mk(0xff2222, 0.95, 791), fort: mk(0x33ff33, 0.95, 791), key: "", list: [], last: 0 };
+        vrArr = { out: mk(0x000000, 0.9, 950), atk: mk(0xff2222, 0.95, 951), fort: mk(0x33ff33, 0.95, 951), key: "", list: [], last: 0 };
       }
       function vrArrowList() {
         const out = [];
