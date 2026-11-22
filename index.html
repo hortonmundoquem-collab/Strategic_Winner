@@ -241,6 +241,13 @@
                   (território ou água) e mexer a mão move o mapa (limite 28 px antes de virar arrasto). Sem mexer, o clique vale ao SOLTAR
                   (igual ao mouse); segurar parado ainda repete (etapa 15). Botões da tela continuam clicando ao apertar. A garra segue igual.
                   O mouse já arrastava em qualquer ponto do mapa. TESTAR no Quest (se o clique ficar "pulando", suba 28 para 40).
+           [x] 35. FEITO (pedido: VR trava no mapa, mas não no configurador): diagnóstico = o menu faz ~9 draw calls; o mapa chegava a ~300.
+                  (a) 80 caixas das poltronas -> 2 malhas fundidas (-78 draw calls); (b) malhas invisíveis de clique estavam na layer 1,
+                  que o WebXRManager do three renderiza SÓ no olho esquerdo (41 draw calls extras e olhos desiguais): agora layer 3
+                  (aimTerritory/ray.layers.enable(3)); (c) VR_FOVEATION = 0.5 (antes 0 = foveação desligada, GPU no máximo);
+                  (d) na animação inicial de preenchimento do mapa não se redesenha/reenvia o canvas 1920x1080 a cada 100 ms.
+                  Nenhuma regra mudou. TESTAR no Quest. Se ainda pesar: VR_FOVEATION 0.5 -> 1, ocultar territórios fora do zoom,
+                  e fundir fills/bordas/rótulos (hoje 41+41+42 draw calls).
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1109,6 +1116,7 @@
       const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
       const VR_LABEL_DENS_MIN = 1.5;
+      const VR_FOVEATION = 0.5; // etapa 35: foveação fixa do Quest. Texto das bordas da tela perde um pouco de nitidez; centro continua nítido. 0 = antigo.
       const VR_XR_SCALE = 1.0; // etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
@@ -2896,8 +2904,12 @@
             G.fillHid.delete(G.fillSeq.shift());
             G.fillNext = now + 100;
             if (!G.fillSeq.length) G.fillEnd = now + 700;
-            draw();
-            tex.needsUpdate = true;
+            if (!VR_MAP_3D_LIGHT) {
+              // etapa 35: com tudo em 3D, a cor/rótulo de cada território vem de syncVRFills/vrSyncLabels (G.fillHid);
+              // redesenhar e reenviar o canvas 1920x1080 a cada 100 ms só causava travadas ao entrar no mapa.
+              draw();
+              tex.needsUpdate = true;
+            }
           } else if (!G.fillSeq.length && now >= G.fillEnd) {
             G.fillSeq = null;
             G.fillHid = null;
@@ -6982,7 +6994,7 @@
       R.xr.setReferenceSpaceType("local-floor");
       R.localClippingEnabled = true; // permite recortar o destaque 3D dentro da área da tela do cinema
       R.xr.setFramebufferScaleFactor(VR_XR_SCALE); // etapa 19: mais pixels no óculos = texto mais nítido
-      R.xr.setFoveation(0); // 0 = no fixed foveation; keep the screen edges at full render resolution.
+      R.xr.setFoveation(VR_FOVEATION); // etapa 35: 0 = sem foveação (GPU no máximo, causava travadas); 0.5 = meio-termo; 1 = máxima economia
       document.body.append(R.domElement, VRButton.createButton(R));
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x05060c);
@@ -7013,24 +7025,30 @@
       box(1.6, 5.6, 0.3, 6.4, 3, -8.8, M_(0x8a1020));
       for (let i = -3; i <= 3; i += 2)
         box(0.6, 0.05, 0.6, i * 2, 5.95, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
+      /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
+      const seatParts = {};
       function seat(x, z, w, col) {
-        const g = new THREE.Group(),
-          m = M_(col),
+        const parts = (seatParts[col] = seatParts[col] || []),
           a = (sx, sy, sz, px, py, pz, rx = 0) => {
-            const o = box(sx, sy, sz, px, py, pz, m, g);
-            o.rotation.x = rx;
+            const g = new THREE.BoxGeometry(sx, sy, sz);
+            g.applyMatrix4(
+              new THREE.Matrix4()
+                .makeTranslation(x, 0, z)
+                .multiply(new THREE.Matrix4().makeTranslation(px, py, pz))
+                .multiply(new THREE.Matrix4().makeRotationX(rx)),
+            );
+            parts.push(g);
           };
         a(w, 0.4, 0.55, 0, 0.2, 0);
         a(w - 0.1, 0.12, 0.5, 0, 0.46, 0.02);
         a(w - 0.1, 0.85, 0.14, 0, 0.85, 0.3, 0.12);
         a(0.1, 0.3, 0.5, -w / 2, 0.55, 0);
         a(0.1, 0.3, 0.5, w / 2, 0.55, 0);
-        g.position.set(x, 0, z);
-        scene.add(g);
       }
       for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, 2.4, 1.1, 0x9b1b30); // poltronas
       for (let r = 0; r < 2; r++)
         for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
+      for (const col in seatParts) scene.add(new THREE.Mesh(mergeGeometries(seatParts[col]), M_(Number(col))));
       const tex = new THREE.CanvasTexture(S);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.generateMipmaps = true; // etapa 30: mipmaps = sem cintilar/tremer ao andar
@@ -8717,7 +8735,7 @@
           if (!shapes.length) continue;
           const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shapes), vrHitMaterial);
           mesh.userData.territory = entries[i][0];
-          mesh.layers.set(1);
+          mesh.layers.set(3); // etapa 35: NÃO usar layer 1/2 (o WebXR do three renderiza a 1 só no olho esquerdo e a 2 só no direito)
           g.add(mesh);
           vrTerritoryMeshes.push(mesh);
           if (vrStrokeGroup) {
@@ -8854,7 +8872,7 @@
       const ray = new THREE.Raycaster(),
         tm = new THREE.Matrix4(),
         ctl = [];
-      ray.layers.enable(1);
+      ray.layers.enable(3); // etapa 35: malhas invisíveis de clique dos territórios (layer 3, fora do render)
       let vGrab = null,
         vTrig = null, // etapa 34: gatilho segurado sobre o mapa (clique OU arrastar o mapa)
         zAcc = 0;
