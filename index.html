@@ -32,10 +32,11 @@
       /* etapa 36: o three.js desenha em DUAS passadas (verso + frente) todo material transparente com side: DoubleSide.
          O mapa tem ~125 desses (preenchimentos, rótulos...), ou seja, ~125 draw calls extras por olho, sem ganho visual
          (as peças são planas). Forçamos passada única em todos os materiais. Para voltar ao antigo: apague este bloco. */
+      const VR_SINGLE_PASS = true; // etapa 40: false = volta às 2 passadas do three (mais nítido nas bordas, ~2x mais chamadas). Teste se a imagem ainda estiver esfumaçada.
       Object.defineProperty(THREE.Material.prototype, "forceSinglePass", {
         configurable: true,
         get() {
-          return true;
+          return VR_SINGLE_PASS;
         },
         set() {},
       });
@@ -274,6 +275,11 @@
                   (c) ordem de pintura: lote A (normais, ro 0) -> rótulos/bolhas de NÃO suspensos (450) -> lote B (suspensos, 500) ->
                   rótulos dos suspensos (900) -> setas e explosão (950+) -> tela/HUD (1000). A malha fundida agora são 2 malhas
                   com os mesmos buffers (vrBatchLink); (d) setas de ataque/reagrupamento e explosão na altura dos suspensos e por cima.
+           [x] 40. FEITO (pedido): (a) sombras e paredes do levante agora são pintadas ABAIXO de todos os territórios suspensos (renderOrder 300/310,
+                  lote A) em vez de logo abaixo do próprio preenchimento: antes a sombra de um território cobria suspensos vizinhos;
+                  (b) escuro mais escuro: VR_DARK_TERR 0.5 -> 0.64, VR_DARK_SEA 0.62 -> 0.76; (c) nitidez: comparando com o arquivo "MAIS NOVO" (que
+                  estava bom) a única mudança visual é a etapa 36 (forceSinglePass): letras ficaram finas. Texto dos rótulos desenhado 2x
+                  (VR_TEXT_PASSES) = mesmo efeito. Se ainda estiver diferente: VR_SINGLE_PASS = false, depois VR_BATCH = false.
            [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -7464,7 +7470,7 @@
               wl.matrix.set(1, 0, dx, 0, 0, 1, dy, 0, 0, 0, dz, 0, 0, 0, 0, 1);
               wl.matrixWorldNeedsUpdate = true;
               if (fm) {
-                wl.renderOrder = fm.renderOrder - 0.25;
+                wl.renderOrder = 310; // etapa 40: paredes abaixo de TODOS os preenchimentos suspensos (lote A)
                 wl.material.color.copy(fm.material.color).multiplyScalar(0.55);
               }
             }
@@ -7479,7 +7485,7 @@
           }
           const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
           if (sh) {
-            if (fm) sh.renderOrder = fm.renderOrder - 0.5;
+            if (fm) sh.renderOrder = 300; // etapa 40: sombras abaixo de TODOS os suspensos (antes cobriam suspensos vizinhos de índice menor)
             sh.visible = up;
             sh.material.opacity = 0.42 * e;
             sh.position.set(0, 0, 0);
@@ -7767,7 +7773,9 @@
         B.mesh.visible = B.wLow > 0;
         B.mesh2.visible = B.icount > B.wLow;
       }
-      const VR_HOVER_TINT = 0.12, // 0 = sem destaque, 0.12 = véu branco bem suave (era 55% de branco); aumente para clarear mais
+      const VR_DARK_TERR = 0.64, // etapa 40: escurecimento dos territórios não envolvidos (era 0.5; opacidade 0.8 -> 0.92)
+        VR_DARK_SEA = 0.76, // etapa 40: escurecimento do mar (era 0.62)
+        VR_HOVER_TINT = 0.12, // 0 = sem destaque, 0.12 = véu branco bem suave (era 55% de branco); aumente para clarear mais
         VR_WHITE = new THREE.Color(1, 1, 1);
       function syncVRFills() {
         if (!vrSea) return;
@@ -7788,7 +7796,7 @@
         const kq = Math.round(vrDimK * 16),
           kf = kq / 16;
         vrSea.material.color.setHex(0x5bbcd8);
-        if (vrSeaK > 0) vrSea.material.color.multiplyScalar(1 - 0.62 * vrSeaK); // mar escurece como o #waterLayer.dim
+        if (vrSeaK > 0) vrSea.material.color.multiplyScalar(1 - VR_DARK_SEA * vrSeaK); // mar escurece como o #waterLayer.dim
         for (const t of G.T) {
           const m = vrFillMesh[t];
           if (!m) continue;
@@ -7801,8 +7809,8 @@
           m.material.color.set(hid ? "#a0aab4" : COL[G.own[t]]);
           m.material.opacity = hid ? 0.45 : 1;
           if (dim) {
-            m.material.color.multiplyScalar(1 - 0.5 * kf);
-            m.material.opacity *= 1 - 0.2 * kf;
+            m.material.color.multiplyScalar(1 - VR_DARK_TERR * kf);
+            m.material.opacity *= 1 - 0.08 * kf;
           }
           if (hv) m.material.color.lerp(VR_WHITE, VR_HOVER_TINT);
         }
@@ -7812,6 +7820,10 @@
          drawTankIcons) trocando temporariamente `c`. O mini-canvas só é redesenhado quando muda algo
          (número, dono, ícones, zoom...), no máximo VR_LABEL_BUDGET por quadro. Pan não redesenha nada. */
       const VR_LABEL_BUDGET = 12;
+      /* etapa 40: antes da etapa 36 os rótulos (DoubleSide transparente) eram desenhados em 2 passadas, o que deixava as bordas
+         suavizadas das letras mais firmes (alfa 1-(1-a)^2). Com passada única o texto ficou fino e 'esfumaçado'. Desenhar o texto 2x
+         no mini-canvas dá o MESMO resultado sem custo na GPU. 1 = como na etapa 36 (mais fino). */
+      const VR_TEXT_PASSES = 2;
       function vrDrawLabel(L, t, lm, sn, dens) {
         const gap = Math.round(lm.ls * 0.85),
           HW = Math.ceil(lm.ls * 6),
@@ -7834,6 +7846,7 @@
         g.setTransform(dens, 0, 0, dens, HW * dens, UP * dens);
         c = g;
         try {
+         for (let pass = 0; pass < VR_TEXT_PASSES; pass++) {
           if (sn) {
             const p = t.split(" "),
               ny = -lm.no;
@@ -7848,6 +7861,7 @@
             if (G.airMode && G.airTarget === t) vrDrawPlaneSusp(lm); // etapa 13
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
           }
+         }
         } finally {
           c = c0;
         }
