@@ -287,7 +287,23 @@
                   atacante + conquistado, reagrupamento = origem + destino (vrLiftedSetRaw, e o resto escurece); (b) hover = mesma cor do dono mais
                   viva (VR_HOVER_SAT/LIGHT), sem véu branco; (c) fábricas, tanques e pontos de tanque escurecem junto (ctx.filter brightness no
                   rótulo, sig inclui o nível de escuro); (d) escuro +20% (VR_DARK_TERR 0.93, VR_DARK_SEA 0.96).
-           [ ] 9. (opcional) HUD em canvas menor / também em 3D; hoje o canvas ainda é 1920x1080.
+           [x] 43. FEITO (pedido, comparando com o original index_7): (1) TERRITÓRIO = SETINHA em todas as telas de passar peças: com a tela
+                  aberta (reforço, conquista ou reagrupamento) clicar/segurar o território de DESTINO = ▶ (+1) e o de ORIGEM = ◀ (−1)
+                  (vChooserStep; antes só o reforço funcionava, conquista/reagrupamento ignoravam o clique); segurando, repete após 1 s a
+                  cada 120 ms (vChooserHoldStart, = startTerrHold). Se o clique que ATACA conquistar o território e abrir a tela com o
+                  clique ainda segurado, continua segurando = vai passando peças (ataque repetido -> chooser, como showChooser do original).
+                  No mouse, pressionar o inimigo vizinho da origem ataca ao pressionar (vAttackPress), como o gatilho VR e o mousedown do original.
+                  (2) SUBIDA CONTÍNUA E ESCALONADA: ease-out do original, 0,4 s (original 0,3 s) e 0,05 s de atraso entre territórios
+                  (origem 1º, demais em ordem aleatória), com tempo acumulado por quadro (sem "pulo" por engasgo). Constantes: VR_LIFT_DUR,
+                  VR_LIFT_STAGGER, VR_HOLD_CHOOSER_DELAY/STEP. TESTAR no Quest.
+           [x] 44. FEITO (pedido: "faça a etapa 9"): 9d = RELÓGIO DO TURNO em mini-plano 3D (vrClk/vrClockSync, interruptor VR_CLOCK_3D).
+                  Antes, com limite de tempo, o tick() redesenhava e reenviava o canvas 1920x1080 INTEIRO 1x por segundo só para trocar
+                  "0:59" por "0:58". Agora só um mini-canvas 352x162 é redesenhado (e só quando o texto/cor muda). O relógio é pintado pelo
+                  mesmo BADGE (aparência idêntica) e VOLTA ao canvas sozinho quando painel/tela cobre o canto (anyOv, vitória, intro).
+                  Se der erro, desliga sozinho (vrClockBad). TESTAR no Quest: relógio no mesmo lugar/tamanho, conta certinho, some/volta
+                  com Dicas e Regras/Objetivo/Cartas abertos. As demais partes da HUD (botões, painéis, cartas, tela de passar peças)
+                  continuam no canvas: convertê-las uma a uma para 3D só se o FPS ainda estiver ruim nelas (ver "PRÓXIMA" abaixo).
+           [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
                   [x] 9b. NADA A FAZER: draw() só roda em mudança real (cronômetro 1x/s, cliques), não por quadro.
@@ -1157,6 +1173,13 @@
          ele só suspende (levante) e escurece o resto. false = igual ao original. */
       const VR_DASH_OVERLAYS = false;
       const VR_CANVAS_K = 1;
+      /* etapa 44 (9d): RELÓGIO DO TURNO em mini-plano 3D. Com limite de tempo, o tick() redesenhava e reenviava o canvas inteiro
+         (1920x1080) 1x POR SEGUNDO só para mudar "0:59" -> "0:58". Agora o relógio é um pequeno plano 3D (mesma aparência: reaproveita
+         BADGE) e só ele é redesenhado. Quando algum painel/tela cobre o canto (anyOv, vitória, intro...), o relógio volta ao canvas
+         automaticamente (draw() decide em vrClockOn). Interruptor: VR_CLOCK_3D = false volta ao comportamento antigo. */
+      const VR_CLOCK_3D = true;
+      let vrClockOn = false, // true = o relógio é o mini-plano 3D (draw() NÃO o pinta no canvas)
+        vrClockBad = false; // se der erro no mini-plano, desliga sozinho e volta ao canvas
       const VR_LABEL_DENS_MIN = 2; // etapa 39: 1.5 -> 2 (letras mais nítidas)
       const VR_FOVEATION = 0; // etapa 35/36: 0 = igual ao original (sem foveação, qualidade máxima). Valores maiores economizam GPU mas borram as bordas.
       const VR_XR_SCALE = 1.3; // etapa 39: 1.0 -> 1.3 (imagem estava esfumaçada; se voltar a tremer, baixe para 1.15). etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
@@ -3040,8 +3063,11 @@
         }
         if (left != G.left) {
           G.left = left;
-          draw();
-          tex.needsUpdate = true;
+          if (!vrClockOn) {
+            // etapa 44: com o relógio 3D (vrClockSync) não precisa redesenhar/reenviar o canvas 1920x1080 todo segundo
+            draw();
+            tex.needsUpdate = true;
+          }
         }
       }
       const roll = (n) => Array.from({ length: n }, () => RNG.die()).sort((a, b) => b - a);
@@ -3329,13 +3355,37 @@
           checkWin();
         }
       }
+      /* ===== Etapa 43: TERRITÓRIO = SETINHA em todas as telas de passar peças (igual ao original: onTerrPress + startTerrHold) =====
+         Tela aberta (reforço G.rch, conquista G.mv ou reagrupamento G.fortify): clicar/segurar o território de DESTINO = ▶ (+1) e
+         o de ORIGEM = ◀ (−1). Antes só o reforço (G.rch) funcionava; na conquista e no reagrupamento o clique era ignorado.
+         vChooserStep(t): aplica o passo e devolve true (mudou) / false (já no limite) / null (t não participa).
+         Com dry = true só testa se t participa (não altera nada). */
+      const VR_HOLD_CHOOSER_DELAY = 1000, // original: HOLD_DELAY = 1000 ms antes de começar a repetir
+        VR_HOLD_CHOOSER_STEP = 120; // original: repete a cada 120 ms
+      function vChooserStep(t, dry) {
+        let v = null,
+          d = 0;
+        if (G.rch) {
+          v = G.rch;
+          d = t === v.t ? 1 : 0;
+        } else if (G.mv) {
+          v = G.mv;
+          d = t === v.t ? 1 : t === v.s ? -1 : 0;
+        } else if (G.fortify && G.fortify.kind !== "select") {
+          v = G.fortify;
+          d = t === v.to ? 1 : t === v.from ? -1 : 0;
+        }
+        if (!v || !d) return null;
+        if (dry) return true;
+        if (v === G.rch) v.max = rchMax(v);
+        const n = Math.max(1, Math.min(v.max, v.n + d));
+        const changed = n !== v.n;
+        v.n = n;
+        return changed;
+      }
       function clickT(t) {
-        if (scr == "game" && G.rch && !G.bot[G.cur]) {
-          soundSelector();
-          if (t == G.rch.t) {
-            G.rch.max = rchMax(G.rch);
-            G.rch.n = Math.min(G.rch.max, G.rch.n + 1);
-          }
+        if (scr == "game" && !G.bot[G.cur] && (G.rch || G.mv || (G.fortify && G.fortify.kind !== "select"))) {
+          if (vChooserStep(t)) soundSelector();
           return;
         }
         if (
@@ -5847,6 +5897,7 @@
       function draw() {
         btns = [];
         OVR = [];
+        vrClockOn = false; // etapa 44: só o trecho do relógio (mais abaixo) a liga
         if (G && scr != "menu") {
           stUpd();
           if (scr == "win" && !G.gEnd) G.gEnd = Date.now();
@@ -6054,15 +6105,17 @@
           { z: 30 },
         );
         /* Igual ao original (resetTurnTimer): fundo na cor do jogador da vez; regra 03-E mostra "LIVRE". */
-        BADGE(
-          346,
-          10,
-          tl ? 130 : 150,
-          65,
-          tl ? `${(lf / 60) | 0}:${String(lf % 60).padStart(2, "0")}` : "LIVRE",
-          30,
-          COL[G.cur],
-        );
+        vrClockOn = VR_CLOCK_3D && !vrClockBad && scr == "game" && !ov && !G.intro && !G.p1intro; // etapa 44
+        if (!vrClockOn)
+          BADGE(
+            346,
+            10,
+            tl ? 130 : 150,
+            65,
+            tl ? `${(lf / 60) | 0}:${String(lf % 60).padStart(2, "0")}` : "LIVRE",
+            30,
+            COL[G.cur],
+          );
         /* Igual ao original (renderObjButtons): "OBJETIVO:" + bolinha da cor do jogador. */
         {
           const ovp = G.bot[G.cur] ? 0 : G.cur;
@@ -7130,6 +7183,78 @@
       screen.position.set(0, 3.15, -8.85);
       scene.add(screen);
 
+      /* etapa 44 (9d): mini-plano 3D do relógio do turno. Coordenadas em px de 1920x1080 (mesmas do BADGE). Região coberta:
+         x 336..512, y 2..83 (contém a moldura preta de 3 px do BADGE de 150x65 em (346,10)). Densidade 2 = nítido. */
+      const vrClk = (() => {
+        const R0 = { x: 336, y: 2, w: 176, h: 81 },
+          DENS = 2,
+          SC = 9.6 / 1920,
+          cv = document.createElement("canvas");
+        cv.width = R0.w * DENS;
+        cv.height = R0.h * DENS;
+        const t2 = new THREE.CanvasTexture(cv);
+        t2.colorSpace = THREE.SRGBColorSpace;
+        t2.premultiplyAlpha = true;
+        t2.generateMipmaps = true;
+        t2.minFilter = THREE.LinearMipmapLinearFilter;
+        t2.anisotropy = 16;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(R0.w * SC, R0.h * SC),
+          new THREE.MeshBasicMaterial({
+            map: t2,
+            toneMapped: false,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.CustomBlending, // textura pré-multiplicada (igual ao plano da tela)
+            blendSrc: THREE.OneFactor,
+            blendDst: THREE.OneMinusSrcAlphaFactor,
+          }),
+        );
+        mesh.renderOrder = 1001; // logo acima da tela/HUD (1000)
+        mesh.position.set((R0.x + R0.w / 2 - 960) * SC, 3.15 + (540 - (R0.y + R0.h / 2)) * SC, -8.847);
+        mesh.visible = false;
+        scene.add(mesh);
+        return { R0, DENS, cv, t2, mesh, sig: "" };
+      })();
+      function vrClockSync() {
+        if (!VR_CLOCK_3D || vrClockBad) {
+          if (vrClk.mesh.visible) vrClk.mesh.visible = false;
+          return;
+        }
+        const show = vrClockOn && !!G && scr == "game";
+        if (vrClk.mesh.visible !== show) vrClk.mesh.visible = show;
+        if (!show) return;
+        const tl = TL[RS[2].charCodeAt(0) - 65],
+          lf = G.left | 0,
+          label = tl ? `${(lf / 60) | 0}:${String(lf % 60).padStart(2, "0")}` : "LIVRE",
+          w = tl ? 130 : 150,
+          sig = label + "|" + COL[G.cur] + "|" + w;
+        if (sig === vrClk.sig) return; // nada mudou: nenhum redesenho, nenhum envio à GPU
+        const g = vrClk.cv.getContext("2d"),
+          c0 = c;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, vrClk.cv.width, vrClk.cv.height);
+        g.setTransform(vrClk.DENS, 0, 0, vrClk.DENS, -vrClk.R0.x * vrClk.DENS, -vrClk.R0.y * vrClk.DENS);
+        c = g; // BADGE/rr/TX desenham em c: troca temporária (mesmo padrão dos rótulos, etapa 7)
+        try {
+          BADGE(346, 10, w, 65, label, 30, COL[G.cur]);
+          vrClk.sig = sig;
+          vrClk.t2.needsUpdate = true;
+        } catch (e) {
+          console.error("vrClockSync", e);
+          vrClockBad = true; // volta ao relógio no canvas
+          vrClk.mesh.visible = false;
+          vrClockOn = false;
+          vrClk.sig = "";
+          queueMicrotask(() => {
+            draw();
+            tex.needsUpdate = true;
+          });
+        } finally {
+          c = c0;
+        }
+      }
+
       /* Geometria invisível em 3D para apontar diretamente nos territórios com os controles VR. */
       const VR_MAP_W = 9.6,
         VR_MAP_H = 5.4,
@@ -7418,11 +7543,33 @@
          anterior; a ORIGEM (G.sel) sobe primeiro e os demais em ordem aleatória. Original: 0,3 s e 0,05 s;
          aqui um pouco mais lento e suave para o óculos. Para ajustar, mude as 2 constantes abaixo.
          A descida é instantânea (como no original). */
-      const VR_LIFT_DUR = 0.5,
-        VR_LIFT_STAGGER = 0, // etapa 39: 0 = todos sobem juntos, sempre à mesma altura (era 0.06 = um depois do outro)
-        VR_LIFT_STAGGER_MAX = 1.0; // tempo total máximo do escalonamento (muitos territórios de uma vez)
-      let vrLiftSt = {};
-      const vrLiftEase = (u) => 1 - Math.pow(1 - u, 3);
+      /* etapa 43 (pedido): a subida NÃO pode ser instantânea. Igual ao original (liftDiag): movimento contínuo com ease-out e,
+         quando vários sobem juntos, cada um começa um pouco depois do anterior (--lift-delay = i * 0,05 s); a origem primeiro e
+         os demais em ordem aleatória. Duas correções em relação à etapa 39/10a:
+           (a) o TEMPO agora é acumulado quadro a quadro com limite por quadro (VR_LIFT_DT_MAX). Antes usava o relógio real: o 1º quadro
+               de um território que sobe cria paredes/sombras 3D (engasgo de dezenas de ms) e a animação "pulava" para o fim = supetão;
+           (b) curva = ease-out do CSS do original, cubic-bezier(0, 0, 0.58, 1) (a cúbica antiga fazia ~70% do movimento no 1º quarto).
+         Ajuste fino: VR_LIFT_DUR (original 0,3 s) e VR_LIFT_STAGGER (original 0,05 s). Descida continua instantânea (como o original). */
+      const VR_LIFT_DUR = 0.4,
+        VR_LIFT_STAGGER = 0.05,
+        VR_LIFT_STAGGER_MAX = 1.0, // tempo total máximo do escalonamento (muitos territórios de uma vez)
+        VR_LIFT_DT_MAX = 1 / 30; // um engasgo nunca avança a animação mais que isso por quadro
+      let vrLiftSt = {},
+        vrLiftLast = 0;
+      const vrLiftEase = (u) => {
+        // cubic-bezier(0, 0, 0.58, 1): resolve x(s) = u por bisseção e devolve y(s)
+        if (u <= 0) return 0;
+        if (u >= 1) return 1;
+        let lo = 0,
+          hi = 1,
+          k = u;
+        for (let i = 0; i < 14; i++) {
+          k = (lo + hi) / 2;
+          if (3 * (1 - k) * k * k * 0.58 + k * k * k < u) lo = k;
+          else hi = k;
+        }
+        return 3 * (1 - k) * k * k + k * k * k;
+      };
       function syncVRLift() {
         if (!vrFillGroup || !G || scr == "menu") {
           vrLiftSt = {};
@@ -7430,15 +7577,21 @@
         }
         const lift = VR_LIFT_3D ? vrLiftedSet() : null,
           now = performance.now(),
+          dtL = vrLiftLast ? Math.min(VR_LIFT_DT_MAX, Math.max(0, (now - vrLiftLast) / 1000)) : 0,
           fresh = [];
+        vrLiftLast = now;
         for (const t of G.T) {
           const upNow = !!(lift && lift.has(t)),
-            st = vrLiftSt[t] || (vrLiftSt[t] = { on: false, t0: 0 });
+            st = vrLiftSt[t] || (vrLiftSt[t] = { on: false, w: 0, p: 0 });
           if (upNow && !st.on) {
             st.on = true;
-            st.t0 = Infinity;
+            st.w = 0; // espera (atraso) restante, em s
+            st.p = 0; // progresso da subida, em s
             fresh.push(t);
-          } else if (!upNow && st.on) st.on = false;
+          } else if (!upNow && st.on) {
+            st.on = false;
+            st.w = st.p = 0;
+          }
         }
         if (fresh.length) {
           for (let i = fresh.length - 1; i > 0; i--) {
@@ -7451,11 +7604,15 @@
             fresh.unshift(G.sel);
           }
           const step = Math.min(VR_LIFT_STAGGER, VR_LIFT_STAGGER_MAX / fresh.length);
-          fresh.forEach((t, i) => (vrLiftSt[t].t0 = now + i * step * 1000));
+          fresh.forEach((t, i) => (vrLiftSt[t].w = i * step));
         }
         for (const t of G.T) {
-          const stt = vrLiftSt[t],
-            e = stt && stt.on ? vrLiftEase(Math.max(0, Math.min(1, (now - stt.t0) / (VR_LIFT_DUR * 1000)))) : 0,
+          const stt = vrLiftSt[t];
+          if (stt && stt.on) {
+            if (stt.w > 0) stt.w = Math.max(0, stt.w - dtL);
+            else stt.p = Math.min(VR_LIFT_DUR, stt.p + dtL);
+          }
+          const e = stt && stt.on ? vrLiftEase(stt.p / VR_LIFT_DUR) : 0,
             up = e > 0,
             dx = VR_LIFT_DX * e,
             dy = VR_LIFT_DY * e,
@@ -9313,6 +9470,23 @@
         draw();
         tex.needsUpdate = true;
       }
+      /* etapa 43: repetição do território na tela de peças (startTerrHold do original): após 1 s, a cada 120 ms.
+         Alvo = +1 (▶), origem = −1 (◀). Para quando soltar, a tela fechar ou o território deixar de participar. */
+      function vChooserHoldStart(t) {
+        if (!G || scr != "game" || G.bot[G.cur] || !vChooserStep(t, true)) return false;
+        vHoldStop();
+        const tick = () => {
+          if (!G || scr != "game" || G.bot[G.cur] || !vChooserStep(t, true)) return vHoldStop();
+          vHoldFired = true;
+          if (vChooserStep(t)) {
+            soundSelector();
+            vHoldRefresh();
+          }
+          vHoldT = setTimeout(tick, VR_HOLD_CHOOSER_STEP);
+        };
+        vHoldT = setTimeout(tick, VR_HOLD_CHOOSER_DELAY);
+        return true;
+      }
       function vHoldStart(h, from) {
         vHoldStop();
         vHoldFired = false;
@@ -9336,18 +9510,9 @@
         }
         const t = h.t;
         if (!t) return;
-        if (G.rch) {
-          if (t !== G.rch.t) return;
-          const tick = () => {
-            if (!G.rch || G.rch.t !== t || scr != "game") return vHoldStop();
-            vHoldFired = true;
-            clickT(t);
-            vHoldRefresh();
-            vHoldT = setTimeout(tick, 120);
-          };
-          vHoldT = setTimeout(tick, 1000);
-          return;
-        }
+        /* etapa 43: tela de peças aberta (reforço / conquista / reagrupamento): segurar o território = segurar a setinha.
+           Cobre também o caso em que ESTE clique acabou de conquistar o território (G.mv aberto com o gatilho ainda segurado). */
+        if (vChooserHoldStart(t)) return;
         if (G.ph == "A" && from && !G.airMode && !G.missileMode && !G.missileStrikeTarget) {
           const tick = () => {
             if (
@@ -9369,6 +9534,12 @@
             attack(from, t);
             checkWin();
             vHoldRefresh();
+            /* etapa 43: o ataque conquistou e abriu a tela de peças com o clique ainda segurado no território conquistado:
+               continua segurando = vai passando peças (como o original: showChooser -> startTerrHold('chInc')). */
+            if (G.mv && G.mv.t === t) {
+              vChooserHoldStart(t);
+              return;
+            }
             vHoldT = setTimeout(tick, 260);
           };
           vHoldT = setTimeout(tick, 1000);
@@ -9483,11 +9654,46 @@
       };
       let mDrag = null,
         mPanned = false;
+      function vAttackPress(x, y) {
+        const p = pick(x, y),
+          t = p && p.t,
+          from = G && G.sel;
+        if (
+          !t ||
+          !from ||
+          scr != "game" ||
+          G.ph != "A" ||
+          G.bot[G.cur] ||
+          G.airMode ||
+          G.missileMode ||
+          G.missileStrikeTarget ||
+          G.rch ||
+          G.hand ||
+          G.fortify ||
+          G.mv ||
+          G.intro ||
+          G.own[from] !== G.cur ||
+          G.own[t] === G.cur ||
+          !G.M.J[from].includes(t)
+        )
+          return false;
+        clickT(t);
+        hover = "";
+        draw();
+        tex.needsUpdate = true;
+        vHoldStart({ t }, from);
+        vHoldFired = true; // o clique de soltar não conta (já atacou ao pressionar)
+        return true;
+      }
       R.domElement.addEventListener("pointerdown", (e) => {
         if (R.xr.isPresenting || e.button !== 0) return;
         mPanned = false;
+        vHoldFired = false;
         const h = scrHit(e);
         if (vrFlyHitRay()) return; // etapa 9n: clique no voador não inicia pan
+        /* etapa 43: igual ao original (onTerrPress/mousedown) e ao gatilho VR: pressionar o território INIMIGO vizinho da origem
+           ataca NA HORA (não só ao soltar); segurando, repete o ataque e, se conquistar, passa a repetir as peças. */
+        if (h && vAttackPress(h.x, h.y)) return;
         if (h) vHoldStart(pick(h.x, h.y), G && G.sel); // etapa 15: segurar para repetir
         if (h && mapOn() && !inOvr(h.x, h.y) && !(pick(h.x, h.y) || {}).b)
           mDrag = { sx: h.x, sy: h.y, vx: VB.x, vy: VB.y };
@@ -9606,6 +9812,7 @@
         syncVRFills();
         vrPopTick(); // etapa 11a: bolha nos números (antes dos rótulos: a assinatura depende dela)
         vrSyncLabels(); // etapa 7
+        vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
         vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
