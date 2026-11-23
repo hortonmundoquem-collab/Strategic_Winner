@@ -355,11 +355,15 @@
                   Se cartas/mão/intro/míssil estiverem abertos junto, tudo volta ao canvas grande (como antes). TESTAR cada painel no Quest: posição, sombra,
                   rolagem (SCAREA) e cliques. Se algum painel ficar cortado, aumente a faixa em VR_BAND_DEFS (5/6).
            [x] 54. FEITO (pedido, 4 itens): (1) com a tela de DIREITOS do turno (G.intro), ver/trocar cartas, troca por mísseis ou "passe a vez" abertos,
-                  Dicas e Regras/Informações/Configurações/Objetivo FECHAM e o LOG some (draw() -> vrDrawMain; VR_HIDE_SIDE_PANELS); (2) zoom com as 2 garras
+                  Dicas e Regras/Informações/Configurações/Objetivo FECHAM e o LOG some (substituído na etapa 55); (2) zoom com as 2 garras
                   agora também lê o botão da garra direto do gamepad (vrSqN), não só os eventos; (3) caixa azul dos reforços: já seguia o original (etapa 48:
                   continente a continente -> metade dos territórios -> troca -> tanques/fábricas); corrigido o texto do passo de TANQUES para o do original;
                   (4) SALA EM DEGRAUS: 6 fileiras subindo 0,25 m cada (VR_TIERS/VR_TIER_STEP), o chão acompanha o degrau sob a cabeça (vrFloorY).
                   TESTAR no Quest: subir os degraus andando, escolher a fileira, zoom com as duas garras, painéis fechando.
+           [x] 55. FEITO (pedido, 3 itens; corrige a 54): (1) painéis abertos NÃO fecham mais: com direitos do turno/cartas/troca/míssil/"passe a vez" eles
+                  são desenhados antes e o véu escuro os deixa escurecidos por trás da tela nova (vrDrawSidePanels/vrModalUp); (2) zoom 2 garras: mais
+                  sensível (1,08), vibra a cada nível, e funciona por evento OU leitura direta do gamepad; (3) sala: 1ª fileira 3 m mais perto, demais
+                  para trás (VR_ROW_Z), degraus 0,5 m, botão A = pular, apontar cadeira = marcador verde, gatilho = teleporta de frente para a tela.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -6055,25 +6059,7 @@
           }
         } else G.fx = null;
       }
-      /* etapa 54 (pedido): como no original (o véu escuro cobre tudo), enquanto a tela de DIREITOS do turno, ver cartas, trocar cartas, troca por
-         mísseis ou "passe a vez" estiver aberta, os painéis Dicas e Regras / Informações / Configurações / Objetivo somem (ficam FECHADOS) e o LOG
-         não aparece (a opção "Mostrar LOG" não muda). VR_HIDE_SIDE_PANELS = false desliga. */
-      const VR_HIDE_SIDE_PANELS = true;
       function draw() {
-        if (VR_HIDE_SIDE_PANELS && G && scr == "game" && (G.intro || showCards || G.missileTrade || G.hand)) {
-          showInfo = showRules = showCfg = showObj = 0;
-          const lg = showLog;
-          showLog = 0;
-          try {
-            vrDrawMain();
-          } finally {
-            showLog = lg;
-          }
-          return;
-        }
-        vrDrawMain();
-      }
-      function vrDrawMain() {
         btns = [];
         OVR = [];
         vrClockOn = false; // etapa 44: só o trecho do relógio (mais abaixo) a liga
@@ -6462,6 +6448,33 @@
         vrBandBegin(4); // etapa 52: aviso na faixa 4 (se ativa)
         if (scr == "game" && G.toast && !G.intro) drawToast();
         vrBandEnd();
+        /* etapa 55 (pedido): com a tela de direitos do turno / cartas / troca / míssil / "passe a vez" abertas, os painéis que já estavam abertos
+           NÃO fecham: são desenhados ANTES, e o véu escuro (PANEL) os escurece e os deixa por trás da tela nova (como o original).
+           Sem tela nova, continuam por cima, como antes. */
+        const vrModalUp = !!(G && scr == "game" && (G.intro || showCards || G.missileTrade || G.hand || G.p1intro));
+        function vrDrawSidePanels() {
+          if (showObj && scr == "game") {
+            vrBandBegin(6);
+            drawObjectivePanel();
+            vrBandEnd();
+          }
+          if (showInfo && scr == "game") {
+            vrBandBegin(5);
+            drawInfoPanel();
+            vrBandEnd();
+          }
+          if (showRules && scr == "game") {
+            vrBandBegin(5);
+            drawTipsPanel();
+            vrBandEnd();
+          }
+          if (showCfg && scr == "game") {
+            vrBandBegin(5 + 1);
+            drawConfigPanel();
+            vrBandEnd();
+          }
+        }
+        if (vrModalUp) vrDrawSidePanels();
         vrBandBegin(6);
         if (showLog && scr == "game") drawLogPanel();
         vrBandEnd();
@@ -7122,26 +7135,7 @@
           } else B(960 - 150, btnY, 300, 66, "Fechar", closeFn, { z: 19, bg: "#c0392b", k: "tr-close" });
         }
         SCAREA = {};
-        if (showObj && scr == "game") {
-          vrBandBegin(6);
-          drawObjectivePanel();
-          vrBandEnd();
-        }
-        if (showInfo && scr == "game") {
-          vrBandBegin(5);
-          drawInfoPanel();
-          vrBandEnd();
-        }
-        if (showRules && scr == "game") {
-          vrBandBegin(5);
-          drawTipsPanel();
-          vrBandEnd();
-        }
-        if (showCfg && scr == "game") {
-          vrBandBegin(6);
-          drawConfigPanel();
-          vrBandEnd();
-        }
+        if (!vrModalUp) vrDrawSidePanels();
       }
       function pick(x, y, noTerr) {
         for (const b of btns)
@@ -7493,32 +7487,48 @@
         a(0.1, 0.3, 0.5, -w / 2, 0.55, 0);
         a(0.1, 0.3, 0.5, w / 2, 0.55, 0);
       }
-      /* etapa 54 (pedido): SALA DE CINEMA EM DEGRAUS. As fileiras sobem para trás (cada degrau VR_TIER_STEP mais alto) e o jogador sobe/desce
-         andando (stick esquerdo): a altura do chão segue o degrau (vrFloorY, suavizada). Degraus = 1 malha fundida (1 draw call).
-         VR_TIERS = 0 volta à sala plana antiga. */
+      /* etapa 55 (pedido): SALA DE CINEMA EM DEGRAUS (ajuste da etapa 54). 1ª fileira 2 fileiras (3 m) mais perto da tela; as demais mais para trás;
+         degraus com o DOBRO da altura (0,5 m). O chão acompanha o degrau sob a cabeça (vrFloorY); botão A = pular; apontar para uma cadeira mostra
+         um marcador e o GATILHO teleporta para ela, de frente para a tela. Degraus = 1 malha fundida. VR_TIERS = 0 volta à sala plana. */
       const VR_TIERS = 6, // fileiras em degrau (0 = sala plana)
-        VR_TIER_STEP = 0.25, // altura de cada degrau (m)
-        VR_TIER_Z0 = 2.4, // z da 1ª fileira
-        VR_TIER_DZ = 1.5; // profundidade de cada fileira (m)
+        VR_TIER_STEP = 0.5, // altura de cada degrau (m)
+        VR_ROW_Z = [-0.6, 2.4, 4.1, 5.8, 7.5, 9.2], // z de cada fileira (a 1ª foi de 2.4 para -0.6)
+        VR_ROW_HALF = 0.85;
+      const vrTierEdge = (i) => VR_ROW_Z[i] - VR_ROW_HALF;
       const vrFloorY = (x, z) => {
-        if (!VR_TIERS) return 0;
-        const i = Math.floor((z - VR_TIER_Z0 + VR_TIER_DZ / 2) / VR_TIER_DZ); // fileira sob o ponto (-1 = chão da frente)
-        return i < 0 ? 0 : (Math.min(i, VR_TIERS - 1) + 1) * VR_TIER_STEP;
+        let h = 0;
+        for (let i = 0; i < VR_TIERS; i++) if (z >= vrTierEdge(i)) h = (i + 1) * VR_TIER_STEP;
+        return h;
       };
+      let vrBaseY = 0, // altura do chão sob a cabeça (suavizada)
+        vrJumpY = 0,
+        vrJumpV = 0,
+        vrAPrev = false;
+      const vrSeats = []; // {x, z, y} de cada cadeira (y = topo do degrau)
       if (VR_TIERS) {
         const tg = [];
         for (let r = 0; r < VR_TIERS; r++) {
-          const h = (r + 1) * VR_TIER_STEP,
-            g = new THREE.BoxGeometry(15.8, h, VR_TIER_DZ);
-          g.translate(0, h / 2, VR_TIER_Z0 + r * VR_TIER_DZ);
+          const z0 = vrTierEdge(r),
+            z1 = r < VR_TIERS - 1 ? vrTierEdge(r + 1) : 10.9,
+            h = (r + 1) * VR_TIER_STEP,
+            g = new THREE.BoxGeometry(15.8, h, z1 - z0);
+          g.translate(0, h / 2, (z0 + z1) / 2);
           tg.push(g);
         }
         scene.add(new THREE.Mesh(mergeGeometries(tg), M_(0x4a1624)));
         for (let r = 0; r < VR_TIERS; r++) {
           const y0 = (r + 1) * VR_TIER_STEP,
-            z = VR_TIER_Z0 + r * VR_TIER_DZ;
-          if (r == 0) for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, z, 1.1, 0x9b1b30, y0); // poltronas
-          else for (let i = 0; i < 7; i++) seat(-3.6 + i * 1.2, z, 0.75, 0x23305e, y0); // cadeiras
+            z = VR_ROW_Z[r];
+          if (r == 0)
+            for (let i = 0; i < 4; i++) {
+              seat(-2.4 + i * 1.6, z, 1.1, 0x9b1b30, y0); // poltronas
+              vrSeats.push({ x: -2.4 + i * 1.6, z, y: y0 });
+            }
+          else
+            for (let i = 0; i < 7; i++) {
+              seat(-3.6 + i * 1.2, z, 0.75, 0x23305e, y0); // cadeiras
+              vrSeats.push({ x: -3.6 + i * 1.2, z, y: y0 });
+            }
         }
       } else {
         for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, 2.4, 1.1, 0x9b1b30); // poltronas
@@ -9884,7 +9894,7 @@
         ctl = [];
       ray.layers.enable(3); // etapa 35: malhas invisíveis de clique dos territórios (layer 3, fora do render)
       /* etapa 48 (item 1): zoom com as duas garras. A cada VR_GRIP_ZOOM_RATIO de variação na distância entre as mãos = 1 nível de zoom. */
-      const VR_GRIP_ZOOM_RATIO = 1.12,
+      const VR_GRIP_ZOOM_RATIO = 1.08, // etapa 55: 1.12 -> 1.08 (mais sensível)
         vGripOn = new Set(),
         vhA = new THREE.Vector3(),
         vhB = new THREE.Vector3();
@@ -9903,6 +9913,64 @@
         ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
         const h = ray.intersectObject(screen)[0];
         return h && { x: h.uv.x * 1920, y: (1 - h.uv.y) * 1080, d: h.distance };
+      }
+      /* etapa 55: TELEPORTE para a cadeira apontada. Marcador verde + seta sobre a cadeira; o gatilho leva a cabeça para a cadeira, de frente para o
+         centro da tela. Só vale com o controle apontando para uma cadeira (se aponta para a tela, é a mira normal do jogo). */
+      const vsO = new THREE.Vector3(),
+        vsD = new THREE.Vector3(),
+        vsP = new THREE.Vector3(),
+        vrSeatMark = new THREE.Group();
+      {
+        const mm = new THREE.MeshBasicMaterial({ color: 0x44ff88, transparent: true, opacity: 0.95, depthWrite: false });
+        vrSeatMark.add(new THREE.Mesh(new THREE.RingGeometry(0.2, 0.3, 32).rotateX(-Math.PI / 2), mm));
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.28, 16).rotateX(Math.PI), mm);
+        cone.position.y = 0.35;
+        vrSeatMark.add(cone);
+        vrSeatMark.renderOrder = 1500;
+        vrSeatMark.children.forEach((m) => (m.renderOrder = 1500));
+        vrSeatMark.visible = false;
+        scene.add(vrSeatMark);
+      }
+      function vrSeatAim(k) {
+        if (!VR_TIERS || !vrSeats.length || aim(k)) return null;
+        tm.identity().extractRotation(k.matrixWorld);
+        vsO.setFromMatrixPosition(k.matrixWorld);
+        vsD.set(0, 0, -1).applyMatrix4(tm);
+        let best = null,
+          bd = 0.55;
+        for (const q of vrSeats) {
+          vsP.set(q.x, q.y + 0.5, q.z).sub(vsO);
+          const t = vsP.dot(vsD);
+          if (t < 0.3 || t > 16) continue;
+          const d = Math.sqrt(Math.max(0, vsP.lengthSq() - t * t));
+          if (d < bd) {
+            bd = d;
+            best = q;
+          }
+        }
+        return best;
+      }
+      function vrTeleport(q) {
+        cam.updateWorldMatrix(true, false);
+        const me = cam.matrixWorld.elements;
+        let fx = -me[8],
+          fz = -me[10];
+        if (fx * fx + fz * fz < 1e-4) {
+          fx = 0;
+          fz = -1;
+        }
+        const cur = Math.atan2(-fx, -fz),
+          want = Math.atan2(q.x, 8.85 + q.z); // frente = direção do centro da tela (0, -8.85) a partir da cadeira
+        rig.rotation.y += want - cur;
+        rig.updateMatrixWorld(true);
+        hp.setFromMatrixPosition(cam.matrixWorld);
+        rig.position.x += q.x - hp.x;
+        rig.position.z += q.z - hp.z;
+        vrBaseY = q.y;
+        vrJumpY = vrJumpV = 0;
+        rig.position.y = q.y;
+        rig.updateMatrixWorld(true);
+        snapped = true;
       }
       /* ===== Etapa 15: SEGURAR PARA REPETIR (igual ao original: startHoldRepeat / startTerrHold / startAttackRepeat) =====
          • setas ◀ ▶ e −10/+10 da tela de soldados: 1ª repetição após 500 ms, depois a cada 200 ms acelerando até 80 ms;
@@ -10024,6 +10092,11 @@
           const f = vrFlyHitCtl(k); // etapa 9n: derrubar pássaro/satélite com o gatilho
           if (f) {
             vrShootDown(f);
+            return;
+          }
+          const sa = vrSeatAim(k); // etapa 55: apontando para uma cadeira = teleporta para ela
+          if (sa) {
+            vrTeleport(sa);
             return;
           }
           const h = aim(k);
@@ -10292,10 +10365,23 @@
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
         if (VR_TIERS) {
-          /* etapa 54: o chão acompanha o degrau sob a cabeça (suave, sem "pulo") */
+          /* etapas 54/55: o chão acompanha o degrau sob a cabeça (suave) + pulo (botão A) */
           cam.updateWorldMatrix(true, false);
           hp.setFromMatrixPosition(cam.matrixWorld);
-          rig.position.y += (vrFloorY(hp.x, hp.z) - rig.position.y) * Math.min(1, dt * 8);
+          vrBaseY += (vrFloorY(hp.x, hp.z) - vrBaseY) * Math.min(1, dt * 8);
+          if (vrJumpY > 0 || vrJumpV > 0) {
+            vrJumpV -= 9.8 * dt;
+            vrJumpY += vrJumpV * dt;
+            if (vrJumpY <= 0) vrJumpY = vrJumpV = 0;
+          }
+          rig.position.y = vrBaseY + vrJumpY;
+          /* marcador na cadeira apontada (qualquer controle que não esteja apontando para a tela) */
+          let sh = null;
+          if (s) for (const kk of ctl) if ((sh = vrSeatAim(kk))) break;
+          vrSeatMark.visible = !!sh;
+          if (sh) {
+            vrSeatMark.position.set(sh.x, sh.y + 0.62 + Math.sin(performance.now() / 160) * 0.03, sh.z);
+          }
         }
         if (s) {
           /* Direções tiradas da pose real da cabeça (matriz mundial da câmera, já com a rotação do rig):
@@ -10316,6 +10402,12 @@
             const g = src.gamepad;
             if (!g) continue;
             if (g.buttons[1] && g.buttons[1].pressed) vrSqN++;
+            if (src.handedness == "right") {
+              /* etapa 55: botão A (direito, buttons[4]) = pular */
+              const ap = !!(g.buttons[4] && g.buttons[4].pressed);
+              if (ap && !vrAPrev && VR_TIERS && vrJumpY <= 0) vrJumpV = 3.4;
+              vrAPrev = ap;
+            }
             const x = g.axes[2] ?? g.axes[0] ?? 0,
               y = g.axes[3] ?? g.axes[1] ?? 0;
             if (cfg.walk && src.handedness == "left" && Math.hypot(x, y) > 0.15) {
@@ -10375,11 +10467,12 @@
               vGrab = { k: vTrig.k, mx: VB.x + vTrig.x0 / zs, my: VB.y + vTrig.y0 / zs, trig: true };
             }
           }
-          if (vrSqN >= 2 && !vZoom && ctl.length >= 2 && mapOn()) {
+          if ((vrSqN >= 2 || vGripOn.size >= 2) && !vZoom && ctl.length >= 2 && mapOn()) {
             vGrab = null;
             vZoom = { d0: vHandDist() }; // etapa 54: começa o zoom mesmo se o evento da 2ª garra não chegou
           }
-          if (vZoom && vrSqN >= 2 && ctl.length >= 2 && mapOn()) {
+          if (vZoom && (vrSqN >= 2 || vGripOn.size >= 2) && ctl.length >= 2 && mapOn()) {
+            let zst = 0;
             const d = vHandDist(),
               h0 = aim(ctl[0]),
               h1 = aim(ctl[1]),
@@ -10387,11 +10480,21 @@
               ay = h0 && h1 ? (h0.y + h1.y) / 2 : h0 ? h0.y : h1 ? h1.y : 540;
             for (let g = 0; g < 4 && d / vZoom.d0 >= VR_GRIP_ZOOM_RATIO; g++) {
               zoomAt(1, ax, ay);
+              zst++;
               vZoom.d0 *= VR_GRIP_ZOOM_RATIO;
             }
             for (let g = 0; g < 4 && d / vZoom.d0 <= 1 / VR_GRIP_ZOOM_RATIO; g++) {
               zoomAt(-1, ax, ay);
+              zst++;
               vZoom.d0 /= VR_GRIP_ZOOM_RATIO;
+            }
+            if (zst) {
+              try {
+                for (const src of s.inputSources) {
+                  const ha = src.gamepad && src.gamepad.hapticActuators;
+                  if (ha && ha[0] && ha[0].pulse) ha[0].pulse(0.3, 30); // vibra a cada nível de zoom
+                }
+              } catch (e) {}
             }
           } else if (vZoom) vZoom = null;
           if (vGrab) {
