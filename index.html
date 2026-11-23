@@ -308,6 +308,17 @@
                   mipmap negativo em todo MeshBasicMaterial com textura (tela, rótulos, relógio) = letras mais nítidas sem gastar mais GPU.
                   Nenhuma regra mudou. TESTAR no Quest: se cintilar/tremer, VR_LOD_BIAS = -0.25 ou 0; se o FPS cair, VR_CANVAS_K = 1.25.
                   Limite físico: a tela tem 9,6 m e fica a ~8,9 m do jogador (~57 graus); chegar mais perto (stick) deixa o texto mais legível.
+           [x] 46. FEITO (pedido, 6 itens): (1) clicar nos territórios com a tela de peças aberta também na CONQUISTA e no REAGRUPAMENTO (modalOv() não
+                  bloqueia mais o mapa com G.mv/G.fortify; clique/segurar = ▶ destino / ◀ origem); (2) escuro 10% mais claro (VR_DARK_TERR 0.93 -> 0.83,
+                  VR_DARK_SEA 0.96 -> 0.86); (3) número de soldados (inclusive o da bolha) e nome escurecem; (4) fábricas/tanques/pontos/nome/número
+                  usam o MESMO escurecimento (um único filtro brightness no rótulo inteiro, como .dim-label do original); (5) seta do ataque aéreo sai do
+                  CENTRO do ícone do avião (x -40, y -102+h0/2, mais o levante 9,-11); (6) tela de troca por MÍSSEIS refeita igual ao original
+                  (renderMissileTradePanel/missileCardHTML): título, caixa de cálculo, texto explicativo, cartas com continente/dono/pontos/PODE ATACAR,
+                  selos ALVO/SELECIONADA/SOMA PONTOS, botões "Fechar sem trocar" e "ATACAR COM MÍSSEIS". Lógica não mudou. TESTAR no Quest.
+           [x] 47. FEITO (pedido: lentidão ao clicar/subir/escurecer): MEDIDO num navegador de teste (contando envios de textura à GPU). Causa: cada
+                  passo do escurecimento mudava a assinatura dos ~42 rótulos -> redesenho + envio + mipmaps de cada um (56 envios de 690x435 por clique,
+                  ~17 Mpix). Correção: escurecer = cor do material do rótulo (vrLabelDimTick, todo quadro, sem canvas/GPU). Agora o clique só envia a
+                  HUD (2880x1620) 1x. Resolução NÃO foi alterada. Se ainda pesar: VR_CANVAS_K 1.5 -> 1.25 (a HUD é o maior envio restante).
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -2279,7 +2290,10 @@
           /* etapa 9m: com o Avião suspenso sobre o alvo (✈ do rótulo), a seta sai do centro do ícone e
              sem desvio (jitter 0), como no original; senão sai 260 px acima com desvio ±18. */
           const lmP = G.airMode && G.airTarget === t ? lmet() : null,
-            PA = lmP ? [PB[0] - lmP.cs * 1.45, PB[1] + lmP.cs * 0.7] : [PB[0] + (Math.random() - 0.5) * 60, PB[1] - 260],
+            PA = lmP
+              ? /* etapa 46: CENTRO REAL do ícone do avião (mesma conta de vrDrawPlaneSusp: x = -58+18 = -40; y = -103+h0/2+1) + levante (9,-11) do território suspenso */
+                [PB[0] - 40 + VR_LIFT_DX, PB[1] - 102 + (lmP.ls * 2.3 * 1.69 * 1172) / 1342 / 2 + VR_LIFT_DY]
+              : [PB[0] + (Math.random() - 0.5) * 60, PB[1] - 260],
             jt = lmP ? 0 : 36,
             F = fxPath({ A: PA, B: PB, c1: [(PA[0] + PB[0]) / 2 + (Math.random() - 0.5) * jt, (PA[1] + PB[1]) / 2 + (Math.random() - 0.5) * jt] });
           G.fx = { s: null, t, t0: performance.now(), cq: false, plane: 1, F, fl: Math.max(380, Math.min(700, 300 + 11 * Math.sqrt(F.total))) };
@@ -4924,7 +4938,9 @@
         showRules ||
         showCfg;
       /* Só telas realmente modais bloqueiam o mapa inteiro. */
-      const modalOv = () => (G && G.mv) || (G && G.fortify) || (G && G.hand) || showCards;
+      /* etapa 46: conquista (G.mv) e reagrupamento (G.fortify) NÃO bloqueiam mais o mapa: o painel de peças é pequeno e flutuante (como no original)
+         e o clique/segurar nos territórios de origem/destino faz ▶/◀ (vChooserStep). */
+      const modalOv = () => (G && G.hand) || showCards;
       const PHB = {
         R: "Ir para\nAtaque",
         A: "Encerrar ataques\nReagrupar",
@@ -6472,6 +6488,11 @@
           }, { z: 26, bg: "#1a2a00", borderColor: "#ffdd00", textColor: "#ffdd00" });
         }
         if (G.missileTrade && showCards && scr == "game" && !showObj) {
+          /* etapa 46: tela de troca por MÍSSEIS refeita igual ao original (renderMissileTradePanel + missileCardHTML + missileFigureHTML):
+             painel azul #0a3a6a 1265 px, título, caixa de cálculo (#0f2540), texto explicativo, instrução, cartas 200x262 com silhueta do continente,
+             4 linhas por carta (tipo, pontos, pode/não pode atacar, dono na cor dele), selo ALVO DO MÍSSIL / SELECIONADA (+PONTOS) / SOMA PONTOS,
+             botões "Fechar sem trocar" (vermelho) e "ATACAR COM MÍSSEIS" (verde, apagado se não puder). A lógica (toggleMissileCard,
+             confirmMissileTrade, cancelMissileTrade) NÃO mudou. */
           const vp = G.cur,
             cs = G.cards[vp] || [],
             n = G.csel.length,
@@ -6479,135 +6500,234 @@
             first = cs[G.csel[0]],
             target = G.missileTarget,
             valid = !!(n > 0 && first && first.t === target && missileCardCanAttack(first)),
-            canFire = valid && (RS[7] !== "A" || pts >= 2);
+            canFire = valid && (RS[7] !== "A" || pts >= 2),
+            troca = tradeBonusFor(G.tc + 1);
           btns = [];
-          PANEL(100, 65, 1720, 950);
-          T("Troca de cartas território por mísseis teleguiados", 960, 100, 42, "#ffdd00");
-          T(
-            "1ª carta define o alvo. Cada carta soma 20% da próxima troca.",
-            960,
-            155,
-            25,
-            "#cfe3f5",
-          );
-          T(
-            "Alvo: " +
-              (target || "selecione uma carta inimiga") +
-              "  ·  Próxima troca: " +
-              tradeBonusFor(G.tc + 1) +
-              " soldados  ·  Míssil: " +
-              pts +
-              " ponto(s)",
-            960,
-            190,
-            24,
-            target ? "#fff" : "#9ac",
-          );
-          const per = 8,
-            cols = 4,
-            cw = 380,
-            ch = 130,
-            gap = 22,
-            pageCount = Math.max(1, Math.ceil(cs.length / per)),
-            page = Math.max(0, Math.min(G.missilePage || 0, pageCount - 1)),
-            x0 = (1920 - (cols * cw + (cols - 1) * gap)) / 2;
-          G.missilePage = page;
-          for (let j = page * per; j < Math.min(cs.length, (page + 1) * per); j++) {
-            const card = cs[j],
-              row = Math.floor((j - page * per) / cols),
-              col = (j - page * per) % cols,
-              x = x0 + col * (cw + gap),
-              y = 235 + row * 155,
-              selected = G.csel.includes(j),
-              isTarget = selected && G.csel[0] === j,
-              usable = !!(
-                card &&
-                !card.special &&
-                (G.csel.length > 0 || missileCardCanAttack(card))
-              ),
-              key = "mcard" + j;
-            btns.push({ x, y, w: cw, h: ch, k: key, fn: () => toggleMissileCard(j) });
-            rr(x, y, cw, ch, 10);
-            c.fillStyle = card && card.joker ? "#5a3a00" : usable ? "#efe6cf" : "#555";
+          /* texto em segmentos [texto, negrito, cor] sem perder a caixa alta global do original */
+          const segFont = (z, b) => `${b ? "bold " : ""}${z}px Arial`,
+            segW = (segs, z) => {
+              let w = 0;
+              for (const [s, b] of segs) {
+                c.font = segFont(z, b);
+                w += c.measureText(translateCanvasText(s).toUpperCase()).width;
+              }
+              return w;
+            },
+            segDraw = (segs, x, y, z, col, al, outline) => {
+              let cx = al == "center" ? x - segW(segs, z) / 2 : x;
+              c.textAlign = "left";
+              c.textBaseline = "middle";
+              for (const [s0, b, cl] of segs) {
+                const s = translateCanvasText(s0).toUpperCase();
+                c.font = segFont(z, b);
+                if (outline) {
+                  c.lineJoin = "round";
+                  c.lineWidth = Math.max(2, z / 7);
+                  c.strokeStyle = "#000";
+                  c.strokeText(s, cx, y);
+                }
+                c.fillStyle = cl || col;
+                c.fillText(s, cx, y);
+                cx += c.measureText(s).width;
+              }
+            },
+            segWrap = (segs, w, z) => {
+              const lines = [];
+              let cur = [],
+                cw2 = 0;
+              for (const [s, b] of segs)
+                for (const wd of s.split(" ")) {
+                  if (!wd) continue;
+                  const ww = segW([[wd + " ", b]], z);
+                  if (cw2 + ww > w && cur.length) {
+                    lines.push(cur);
+                    cur = [];
+                    cw2 = 0;
+                  }
+                  cur.push([wd + " ", b]);
+                  cw2 += ww;
+                }
+              if (cur.length) lines.push(cur);
+              return lines;
+            };
+          const px = 328,
+            pw = 1265,
+            py = 12,
+            ph = 1056,
+            lx = px + 14,
+            iw = pw - 28;
+          PANEL(px, py, pw, ph);
+          let yy = py + 34;
+          TX("Troca de Cartas Território por Mísseis Teleguiados:", 960, yy, 20, "#cfe6ff", "center", 1);
+          yy += 26;
+          /* caixa de cálculo */
+          const bh = 84;
+          rr(lx - 3, yy - 3, iw + 6, bh + 6, 11);
+          c.lineWidth = 3;
+          c.strokeStyle = "#000";
+          c.stroke();
+          rr(lx, yy, iw, bh, 8);
+          c.fillStyle = "#0f2540";
+          c.fill();
+          c.lineWidth = 3;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          {
+            const ptsTxt = pts + (pts == 1 ? " Ponto" : " Pontos"),
+              rawTxt = (0.2 * n * troca).toFixed(2).replace(".", ","),
+              lcx = lx + 24 + 400;
+            if (n > 0) {
+              const l1 = [[`Troca da Vez = ("${troca}" Soldados) → Receba 20% Por Cada Carta.`, 0]],
+                l2 = [
+                  [`"${20 * n}%" de "${troca}" = "${rawTxt}" → Total "`, 0],
+                  [ptsTxt, 1, "#44ff44"],
+                  [`". "(Marcou ${n} Carta${n == 1 ? "" : "s"})"`, 0],
+                ];
+              segDraw(l1, lcx, yy + bh / 2 - 15, 17, "#9ac", "center");
+              segDraw(l2, lcx, yy + bh / 2 + 15, 17, "#9ac", "center");
+            } else
+              TX("Selecione uma carta para calcular os pontos de Míssil", lcx, yy + bh / 2, 17, "#9ac", "center");
+            const rx = lx + iw - 230,
+              ra = "Você vai receber:",
+              raw = tw(ra, 19);
+            TX(ra, rx - 40 - raw / 2, yy + bh / 2, 19, "#ffdd00", "center");
+            if (ICO.m[vp]) c.drawImage(ICO.m[vp], rx + 4 - 45, yy + bh / 2 - 35, 58, 70);
+            TX(String(n > 0 ? pts : 0), rx + 4 + 22, yy + bh / 2, 20, "#ffcc00", "left", 1);
+          }
+          yy += bh + 16;
+          /* texto explicativo (16 px, linha 1,6) */
+          const exp = [
+            [["Cada Carta Território vale "], ["20% da \"Troca da Vez\"", 1], [", que é a troca de Cartas por Soldados."]],
+            [["Sempre arredonda o resultado para baixo, o mínimo é "], ["1 Ponto por Carta", 1], [", cada Míssil vale "], ["Pontos", 1], [", e não quantidade de Míssil."]],
+            [["A Primeira Carta verde já Selecionada, equivale ao "], ["Território Alvo Inimigo", 1], [", junte quantas cartas quiser para somar pontos."]],
+            [["Precisa ser um Território INIMIGO com mais de 1 Ponto, pois ataques aéreos não deixam o inimigo com Zero Pontos."]],
+            [["Após escolher a primeira Carta, qualquer outra Carta, sua ou inimiga, soma Pontos."]],
+            [["Os Pontos que sobrarem são perdidos, pois todos os mísseis só atingem o Território Alvo da primeira Carta."]],
+            [["Para atacar territórios diferentes, escolha menos Cartas para cada Ataque."]],
+            [["No Modo de Jogo Sem Dados na Proporção \"2 pra 1\", só poderá atacar com mais de 1 Ponto de Míssil."]],
+          ];
+          for (const ln of exp)
+            for (const q of segWrap(ln.map((s) => [s[0], s[1] || 0]), iw, 16)) {
+              segDraw(q, lx, yy + 13, 16, "#aec", "left");
+              yy += 25.6;
+            }
+          yy += 8;
+          segDraw([["Escolha Carta Verde = Define o Território Alvo Inimigo.", 1]], lx, yy + 11, 17, "#cba", "left");
+          segDraw([["Após escolher a primeira Carta, qualquer outra Carta serve para Somar Pontos.", 1]], lx, yy + 11 + 22, 17, "#cba", "left");
+          yy += 54;
+          /* cartas 200x262 (+padding 17/10 e borda 3 = 226x302), margem 10, até 5 por linha, reduzidas para caber */
+          const btnY = py + ph - 90,
+            nc = cs.length,
+            rows = Math.max(1, Math.ceil(nc / 5)),
+            cw0 = 226,
+            ch0 = 302,
+            gap0 = 20,
+            k = Math.min(1, (btnY - 14 - yy) / (rows * ch0 + (rows - 1) * gap0)),
+            cw = cw0 * k,
+            ch = ch0 * k,
+            gap = gap0 * k;
+          if (!nc) TX("Você ainda não tem cartas de território.", 960, yy + 40, 20, "#9db89d", "center", 1);
+          cs.forEach((cd, i) => {
+            const row = Math.floor(i / 5),
+              inRow = Math.min(5, nc - row * 5),
+              x = 960 - (inRow * cw + (inRow - 1) * gap) / 2 + (i % 5) * (cw + gap),
+              y = yy + row * (ch + gap),
+              isSel = G.csel.includes(i),
+              isFirst = isSel && G.csel[0] === i,
+              cont = cd.joker ? "CORINGA" : cd.cont || contOf(cd.t) || "?",
+              shortC = cd.joker ? "Qualquer Continente" : cont.replace("América do Norte", "Am. Norte").replace("América do Sul", "Am. Sul"),
+              own = cd.special || cd.joker ? undefined : G.own[cd.t],
+              hasOwn = own !== undefined && own !== null,
+              mine = hasOwn && own === vp,
+              ptsT = hasOwn ? ptsOf(cd.t) : 0,
+              canBeTarget = !cd.special && missileCardCanAttack(cd),
+              canAdd = isSel || (!cd.special && (canBeTarget || G.csel.length >= 1)),
+              kk = "mcard" + i,
+              inner = 200 * k;
+            /* linhas de informação (igual a infoBlock) */
+            const info = [];
+            if (cd.special) info.push(["ESPECIAL (não troca)", "#ff8888"]);
+            else if (!hasOwn) info.push(["TERRITÓRIO NEUTRO", "#ffdd00"], ["NÃO PODE ATACAR", "#ff8888"]);
+            else if (mine) info.push(["SEU TERRITÓRIO", "#ffdd00"], ["NÃO PODE ATACAR", "#ff8888"]);
+            else
+              info.push(
+                ["TERRITÓRIO DO INIMIGO", "#ffdd00"],
+                [!canBeTarget && ptsT <= 1 ? "COM APENAS 1 PONTO" : `COM ${ptsT} PONTO${ptsT == 1 ? "" : "S"}`, "#ffdd00"],
+                canBeTarget ? ["PODE ATACAR", "#7dff9a"] : ["NÃO PODE ATACAR", "#ff8888"],
+              );
+            const ownName = hasOwn ? String(cfg.names[own] || PN[own]).toUpperCase() : "";
+            c.save();
+            if (!canAdd) c.globalAlpha = 0.6;
+            if (isSel) {
+              c.shadowColor = "rgba(68,255,68,0.7)";
+              c.shadowBlur = 14 * k;
+            }
+            rr(x, y, cw, ch, 9 * k);
+            c.fillStyle = isSel ? "#0a1a0a" : canAdd ? "#0a3a6a" : "#1a1a1a";
             c.fill();
-            if (hover === "b:" + key) {
-              c.fillStyle = "rgba(255,255,255,.2)";
+            c.restore();
+            c.save();
+            if (!canAdd) c.globalAlpha = 0.6;
+            rr(x, y, cw, ch, 9 * k);
+            c.fillStyle = !canAdd ? "rgba(60,60,60,0.45)" : isSel ? "rgba(68,255,68,0.22)" : CONT_BG[cont] || "#1a1a1a";
+            c.fill();
+            if (canAdd && hover == "b:" + kk) {
+              c.fillStyle = "rgba(255,255,255,.12)";
               c.fill();
             }
-            c.lineWidth = selected ? 7 : 3;
-            c.strokeStyle = selected
-              ? isTarget
-                ? "#ffdd00"
-                : "#33ff33"
-              : usable
-                ? "#fff"
-                : "#222";
+            const bd = !canAdd ? "#666" : isSel ? "#44ff44" : "#2f9e44";
+            rr(x + 1.5 * k, y + 1.5 * k, cw - 3 * k, ch - 3 * k, 7.5 * k);
+            c.lineWidth = 3 * k;
+            c.strokeStyle = bd;
+            if (!canAdd) c.setLineDash([8 * k, 5 * k]);
             c.stroke();
-            T(
-              card && card.joker ? "CORINGA" : card.t,
-              x + cw / 2,
-              y + 48,
-              24,
-              card && card.joker ? "#ffdd00" : COL[G.own[card.t] ?? 0],
-            );
-            T(
-              isTarget ? "ALVO" : card && card.joker ? "Carta adicional" : card.cont || "",
-              x + cw / 2,
-              y + 96,
-              19,
-              isTarget ? "#ffdd00" : "#334",
-            );
-          }
-          if (!cs.length) T("Você ainda não tem cartas de território.", 960, 330, 28, "#9db89d");
-          T(
-            "Cartas selecionadas: " +
-              n +
-              "  ·  O míssil não captura e deixa pelo menos 1 ponto no alvo.",
-            960,
-            565,
-            22,
-            "#aec",
-          );
-          T("As cartas só são descartadas quando o míssil é disparado.", 960, 600, 20, "#cfe3f5");
-          if (pageCount > 1) {
-            B(
-              180,
-              650,
-              240,
-              58,
-              "Página anterior",
-              () => {
-                G.missilePage = Math.max(0, page - 1);
-              },
-              { z: 35, bg: page ? "#0a3a5a" : "#333" },
-            );
-            T("Página " + (page + 1) + " / " + pageCount, 960, 680, 20, "#fff");
-            B(
-              1500,
-              650,
-              240,
-              58,
-              "Próxima página",
-              () => {
-                G.missilePage = Math.min(pageCount - 1, page + 1);
-              },
-              { z: 35, bg: page < pageCount - 1 ? "#0a3a5a" : "#333" },
-            );
-          }
-          T(
-            RS[7] === "A" && pts < 2
-              ? "No modo 2 para 1, são necessários 2 pontos para disparar."
-              : "Selecione a carta-alvo e, se quiser, cartas extras.",
-            960,
-            745,
-            21,
-            canFire ? "#33ff33" : "#fff",
-          );
-          B(480, 835, 340, 90, "Cancelar troca", cancelMissileTrade, { z: 38, bg: "#a22" });
-          B(930, 835, 440, 90, "ARMAR MÍSSIL (" + pts + " PONTOS)", confirmMissileTrade, {
-            z: 38,
-            bg: canFire ? "#1a8f3a" : "#333",
+            c.setLineDash([]);
+            const em = 69 * k;
+            drawSil(cont, x + cw / 2 - em * 0.75, y + 17 * k, em * 1.5, em);
+            let ty = y + 17 * k + em + 6 * k;
+            const tz = 21 * k,
+              cz = 23 * k,
+              tl = wrapL(cd.joker ? "CORINGA" : cd.t, inner, tz, 3);
+            tl.forEach((q, j) => TX(q, x + cw / 2, ty + j * tz * 1.3 + tz * 0.65, tz, !canAdd ? "#777" : isSel ? "#fff" : "#fff", "center"));
+            ty += tl.length * tz * 1.3 + 6 * k;
+            c.fillStyle = bd;
+            c.fillRect(x + 13 * k, ty, cw - 26 * k, Math.max(1, k));
+            const sl = wrapL(shortC, inner, cz, 2);
+            sl.forEach((q, j) => TX(q, x + cw / 2, ty + 6 * k + j * cz * 1.2 + cz * 0.6, cz, !canAdd ? "#777" : isSel ? "#fff" : "#cfe", "center"));
+            ty += 6 * k + sl.length * cz * 1.2 + 6 * k;
+            const lz = 13 * k;
+            if (isSel) {
+              segDraw([[isFirst ? "ALVO DO MÍSSIL" : "SELECIONADA (+PONTOS)", 1]], x + cw / 2, ty + 8 * k, 16 * k, "#fff", "center");
+              ty += 22 * k;
+              segDraw(
+                [[`${ptsT} ponto${ptsT == 1 ? "" : "s"} (${ownName || "?"})${mine ? " (sua)" : ""}`, 0]],
+                x + cw / 2,
+                ty + 6 * k,
+                15 * k,
+                "#ffdd00",
+                "center",
+              );
+            } else {
+              if (G.csel.length >= 1 && canAdd) {
+                segDraw([["SOMA PONTOS", 1]], x + cw / 2, ty + 8 * k, 16 * k, "#7dff9a", "center");
+                ty += 22 * k;
+              }
+              for (const [s, col] of info) {
+                segDraw([[s, 1]], x + cw / 2, ty + 7 * k, lz, col, "center");
+                ty += 16.25 * k;
+              }
+              if (ownName && !cd.special) segDraw([["(" + ownName + ")", 1]], x + cw / 2, ty + 8 * k, 14 * k, COL[own], "center", 1);
+            }
+            c.restore();
+            if (canAdd) btns.push({ x, y, w: cw, h: ch, k: kk, fn: () => toggleMissileCard(i) });
           });
+          /* botões: "Fechar sem trocar" (vermelho) e "ATACAR COM MÍSSEIS" (verde; apagado e sem clique se não puder) */
+          B(960 - 7 - 320, btnY, 320, 66, "Fechar sem trocar", cancelMissileTrade, { z: 19, bg: "#c0392b", k: "ms-close" });
+          c.save();
+          if (!canFire) c.globalAlpha = 0.45;
+          B(967, btnY, 340, 66, "ATACAR COM MÍSSEIS", confirmMissileTrade, { z: 19, bg: "#1a8f3a", k: "ms-do" });
+          c.restore();
+          if (!canFire) btns.pop();
         } else if (showCards && scr == "game" && !showObj) {
           /* Etapa 9f: tela de troca de cartas igual ao original (renderCardsForTradePanel + cardHTML +
              cardsTipsHTML + formatTradeBonusMessage): painel azul #0a3a6a com borda branca/preta, dicas,
@@ -7990,8 +8110,10 @@
         B.mesh.visible = B.wLow > 0;
         B.mesh2.visible = B.icount > B.wLow;
       }
-      const VR_DARK_TERR = 0.93, // etapa 40: escurecimento dos territórios não envolvidos (era 0.5 -> 0.64 -> 0.78)
-        VR_DARK_SEA = 0.96, // etapa 40: escurecimento do mar (era 0.62)
+      const VR_DARK_TERR = 0.83, // etapa 46: 0.93 -> 0.83 (10% mais claro)
+       VR_DARK_TERR_OLD = 0.93, // etapa 40: escurecimento dos territórios não envolvidos (era 0.5 -> 0.64 -> 0.78)
+        VR_DARK_SEA = 0.86, // etapa 46: 0.96 -> 0.86 (10% mais claro)
+       VR_DARK_SEA_OLD = 0.96, // etapa 40: escurecimento do mar (era 0.62)
         VR_HOVER_SAT = 1.35, // etapa 42: hover mais vivo (saturação)
         VR_HOVER_LIGHT = 1.18, // e brilho
         _hsl = { h: 0, s: 0, l: 0 },
@@ -8071,6 +8193,8 @@
         c = g;
         try {
          for (let pass = 0; pass < VR_TEXT_PASSES; pass++) {
+          /* etapa 46: o escurecimento vale IGUAL para tudo do território (nome, número, fábricas, tanques, pontos), como o .dim-label do original */
+          g.filter = vrLblDq ? "brightness(" + (1 - VR_DARK_TERR * (vrLblDq / 8)).toFixed(3) + ")" : "none";
           if (sn) {
             const p = t.split(" "),
               ny = -lm.no;
@@ -8080,13 +8204,12 @@
             } else TN(t, 0, ny, lm.ls, lm.lst);
           }
           if (!(G.fillHid && G.fillHid.has(t))) {
-            if (vrLblDq) g.filter = "brightness(" + (1 - VR_DARK_TERR * (vrLblDq / 8)).toFixed(3) + ")"; // etapa 42: fábricas/tanques/pontos escurecem junto
             drawTankIcons(t, 0, 0, lm);
-            if (vrLblDq) g.filter = "none";
             if (!vrPopActive(t)) T(vrDispN(t), 0, 0, lm.cs); // prévia (setPreviewArmies); na bolha o número é outro plano
             if (G.airMode && G.airTarget === t) vrDrawPlaneSusp(lm); // etapa 13
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
           }
+          g.filter = "none";
          }
         } finally {
           c = c0;
@@ -8194,6 +8317,11 @@
           }
           const ud = m.userData,
             key = num + "|" + W + "|" + H + "|" + lm.cs + "|" + (G.own[t] || "");
+          {
+            /* etapa 46: o número em bolha também escurece igual ao resto do território */
+            const lf = vrDimK > 0 ? vrLiftedSet() : null;
+            m.material.color.setScalar(vrDimK > 0 && !(lf && lf.has(t)) ? 1 - VR_DARK_TERR * (Math.round(vrDimK * 8) / 8) : 1);
+          }
           if (ud.key !== key) {
             ud.key = key;
             if (ud.cv.width !== W || ud.cv.height !== H) {
@@ -8232,6 +8360,20 @@
       }
       /* etapa 38: a assinatura (sig) de 42 rótulos era montada TODO quadro (42 arrays + strings + closures = lixo e CPU).
          Agora roda no máx. a cada 100 ms; sem limite enquanto há bolha de número ou rótulos pendentes do orçamento. */
+      /* etapa 47: escurecimento dos rótulos = cor do material (multiplica a textura, igual ao brightness do canvas), atualizada todo quadro
+         sem tocar no canvas/GPU-upload. Antes cada passo do fade (8 por clique) mudava a "sig" e redesenhava + reenviava + gerava mipmaps de
+         ~42 canvases (medido: 56 envios por clique). */
+      function vrLabelDimTick() {
+        if (!G || !vrLabelGroup) return;
+        const lf = vrDimK > 0 ? vrLiftedSet() : null;
+        for (const t in vrLabels) {
+          const L = vrLabels[t];
+          if (!L || !L.mesh) continue;
+          const f = vrDimK > 0 && !(lf && lf.has(t)) ? 1 - VR_DARK_TERR * vrDimK : 1,
+            m = L.mesh.material;
+          if (m.color.r !== f) m.color.setScalar(f);
+        }
+      }
       let vrLblT = 0, vrLblMore = false, vrLblDq = 0;
       function vrSyncLabels() {
         if (!vrLabelGroup) return;
@@ -8255,7 +8397,7 @@
         const liftL = vrDimK > 0 ? vrLiftedSet() : null;
         for (const t of G.T) {
           if (!G.M.C[t]) continue;
-          const dq = vrDimK > 0 && !(liftL && liftL.has(t)) ? Math.round(vrDimK * 8) : 0;
+          const dq = 0; // etapa 47: o escurecimento NÃO redesenha mais o rótulo (era 8 redesenhos+envios de textura por território a cada clique = lentidão); agora é só a cor do plano (vrLabelDimTick)
           const o = G.own[t],
             hid = !!(G.fillHid && G.fillHid.has(t)),
             sig = [
@@ -9837,6 +9979,7 @@
         syncVRFills();
         vrPopTick(); // etapa 11a: bolha nos números (antes dos rótulos: a assinatura depende dela)
         vrSyncLabels(); // etapa 7
+        vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
