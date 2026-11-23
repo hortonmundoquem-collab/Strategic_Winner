@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head><base href="https://d16ilfvy4mv02r.cloudfront.net/workspaces/rLG2WUz3ViVwKxvQIyHhZydR8cQHk4xs/6450c67a-fe8b-4dde-a5d3-5b2dab4d550c/files/">
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Strategic Winner VR</title>
@@ -396,6 +396,11 @@
                   3D leve (vrBuildSat3D: corpo, tampa, 2 painéis com grade, hastes, mastro, antena e luz = ~9 draw calls) e passa
                   na FAIXA DE CIMA da tela (y 50..130), acima de todos os territórios suspensos. O clique continua num plano
                   invisível do tamanho do satélite (mesma regra de derrubar: cai, explode, treme e perde 1 soldado). TESTAR no Quest.
+           [x] 63. FEITO (pedido do dono, 2 itens): (1) ZOOM SÓ PELO ANALÓGICO DIREITO: removidos o zoom com as duas garras
+                  (distância entre mãos e entre miras) e a leitura de vrSqN; as garras agora só ARRASTAM o mapa. (2) SATÉLITE:
+                  percursos do original restaurados (horizontal nos 2 sentidos e vertical) e o grupo 3D flutua VR_SAT_Z = 0,85 m
+                  À FRENTE do plano do mapa (8,5x o levante dos territórios), com leve inclinação para mostrar a profundidade.
+                  Ele não fica mais colado na tela ("dentro da sala de cinema"). TESTAR no Quest.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -9375,6 +9380,9 @@
          ===================================================================================== */
       const VR_FLY_3D = true;
       const VR_FLY_Z = -8.8;
+      /* etapa 63 (pedido do dono): o SATÉLITE flutua MUITO à frente do plano do mapa (profundidade/altura real no VR),
+         bem acima do levante dos territórios (VR_LIFT_Z = 0,10 m). 0,85 m = ~8,5x mais suspenso. 0 = colado na tela (antigo). */
+      const VR_SAT_Z = 0.85;
       let vrFlyGroup = null,
         vrFlyers = [],
         vrFlyMeshes = [],
@@ -9537,10 +9545,10 @@
         const g = new THREE.Group(),
           mat = (c) => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
         // corpo central (caixa com profundidade real)
-        const body = new THREE.Mesh(new THREE.BoxGeometry(50, 50, 26), mat(0x505868));
+        const body = new THREE.Mesh(new THREE.BoxGeometry(50, 50, 30), mat(0x505868));
         g.add(body);
         const plate = new THREE.Mesh(new THREE.BoxGeometry(40, 40, 4), mat(0x687078));
-        plate.position.z = 15;
+        plate.position.z = 17;
         g.add(plate);
         // painéis solares: caixas finas com uma ÚNICA textura de grade compartilhada (barato)
         const pc = document.createElement("canvas");
@@ -9568,7 +9576,7 @@
         ptx.minFilter = THREE.LinearMipmapLinearFilter;
         const pmat = new THREE.MeshLambertMaterial({ map: ptx, side: THREE.DoubleSide });
         for (const sx of [-1, 1]) {
-          const p = new THREE.Mesh(new THREE.BoxGeometry(95, 30, 4), pmat);
+          const p = new THREE.Mesh(new THREE.BoxGeometry(95, 30, 6), pmat);
           p.position.set(sx * 72.5, 0, 0);
           g.add(p);
           const arm = new THREE.Mesh(new THREE.BoxGeometry(25, 5, 5), mat(0x8a939e));
@@ -9590,6 +9598,9 @@
           new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false, side: THREE.DoubleSide }),
         );
         g.add(hit);
+        /* etapa 63: leve inclinação: os painéis mostram a profundidade e o satélite não parece papel colado na tela. */
+        g.rotation.x = 0.10;
+        g.rotation.y = -0.22;
         g.traverse((o) => {
           o.renderOrder = 2500;
           o.frustumCulled = false;
@@ -9613,14 +9624,13 @@
               { sx: -50, sy: 1130, ex: 1970, ey: -50, angle: -45 },
               { sx: 1970, sy: 1130, ex: -50, ey: -50, angle: -135 },
             ]
-          : /* etapa 62: o satélite passa ALTO (faixa de cima da tela), acima de todos os territórios suspensos */
-            (() => {
-              const a = 50 + Math.random() * 80,
-                b = 50 + Math.random() * 80;
-              return Math.random() < 0.5
-                ? [{ sx: -150, sy: a, ex: 2150, ey: b, angle: 0 }]
-                : [{ sx: 2150, sy: a, ex: -150, ey: b, angle: 0 }];
-            })();
+          : /* etapa 63: percursos do original (createFlyingPlane) na HORIZONTAL, nas duas direções, em qualquer altura
+               (y 150..850). As passagens VERTICAIS do original foram deixadas de fora porque, com o satélite 0,85 m à frente
+               da tela, ele desceria pelo meio da plateia e atravessaria o chão da sala. A "altura" no VR vem do VR_SAT_Z. */
+            [
+              { sx: -150, sy: Math.random() * 700 + 150, ex: 2150, ey: Math.random() * 700 + 150, angle: 0 },
+              { sx: 2150, sy: Math.random() * 700 + 150, ex: -150, ey: Math.random() * 700 + 150, angle: 180 },
+            ];
         const dir = dirs[(Math.random() * dirs.length) | 0];
         let mesh = null,
           hit = null,
@@ -9669,7 +9679,8 @@
           hit = s3.hit;
           W = 250;
           H = 90;
-          mesh.position.set(dir.sx, dir.sy, 0);
+          mesh.position.set(dir.sx, dir.sy, VR_SAT_Z);
+          mesh.rotation.z = -(dir.angle * Math.PI) / 180; // como o original (rotate(dir.angle))
         }
         const F = {
           kind: bird ? "bird" : "sat",
@@ -9683,6 +9694,8 @@
           x: dir.sx,
           y: dir.sy,
           t0: performance.now(),
+          rot0: -(dir.angle * Math.PI) / 180,
+          z0: bird ? 0 : VR_SAT_Z,
           dur: bird ? 12000 + Math.random() * 6000 : 25000 + Math.random() * 10000,
           falling: false,
           fall: null,
@@ -9800,8 +9813,8 @@
               arc = Math.sin(p * Math.PI) * -40;
             F.x = F.fall.startX + dx * k;
             F.y = F.fall.startY + dy * k + arc;
-            m.position.set(F.x, F.y, 0);
-            m.rotation.z = -((720 * p * Math.PI) / 180);
+            m.position.set(F.x, F.y, F.z0);
+            m.rotation.z = F.rot0 - (720 * p * Math.PI) / 180;
             const sc = 1 - 0.7 * p;
             if (F.isSat) m.scale.set(sc, sc, sc); // satélite 3D: grupo já está em tamanho real
             else m.scale.set(F.W * sc, -F.H * sc, 1);
@@ -9817,7 +9830,7 @@
               F.dir.sy +
               (F.dir.ey - F.dir.sy) * pr +
               Math.sin((now - F.t0) * (F.kind == "bird" ? 0.003 : 0.0005)) * (F.kind == "bird" ? 5 : 10);
-            m.position.set(F.x, F.y, 0);
+            m.position.set(F.x, F.y, F.z0);
           }
         }
       }
@@ -10225,30 +10238,10 @@
         tm = new THREE.Matrix4(),
         ctl = [];
       ray.layers.enable(3); // etapa 35: malhas invisíveis de clique dos territórios (layer 3, fora do render)
-      /* etapa 48 (item 1): zoom com as duas garras. A cada VR_GRIP_ZOOM_RATIO de variação na distância entre as mãos = 1 nível de zoom.
-         etapa 60 (pedido: o zoom pela distância das MIRAS ficou sem sensibilidade/estranho): a mira é normalizada com um passo
-         MUITO maior (VR_AIM_ZOOM_RATIO), passa por suavização (média móvel) e só vence as mãos quando passar VR_AIM_ZOOM_MARGIN
-         níveis. Assim afastar/aproximar as miras continua funcionando, mas sem dar zoom a cada tremida da mão. */
-      const VR_GRIP_ZOOM_RATIO = 1.08, // passo das MÃOS (inalterado desde a etapa 55)
-        VR_AIM_ZOOM_RATIO = 1.38, // passo das MIRAS: bem menos sensível (antes usava 1.08 para tudo)
-        VR_AIM_ZOOM_MARGIN = 0.7, // a mira só vale se passar 0,7 nível de diferença em relação às mãos
-        VR_AIM_SMOOTH = 0.18, // suavização da distância das miras (0,18 = cada quadro anda 18% até o valor novo)
-        vGripOn = new Set(),
-        vhA = new THREE.Vector3(),
-        vhB = new THREE.Vector3();
-      let vZoom = null;
-      /* etapa 58 (pedido): o zoom com as 2 garras também funciona pela distância entre as MIRAS dos controles na tela (afastar a mira = +, aproximar = −). */
-      function vAimDist() {
-        if (ctl.length < 2) return null;
-        const a = aim(ctl[0]),
-          b = aim(ctl[1]);
-        return a && b ? Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) : null;
-      }
-      function vHandDist() {
-        ctl[0].getWorldPosition(vhA);
-        ctl[1].getWorldPosition(vhB);
-        return Math.max(0.01, vhA.distanceTo(vhB));
-      }
+      /* etapa 63 (pedido do dono): ZOOM SOMENTE PELO ANALÓGICO DIREITO.
+         Removido todo o zoom por gesto com as garras/controles (distância entre as mãos e entre as miras).
+         As garras continuam servindo apenas para ARRASTAR o mapa. O analógico direito segue no bloco do gamepad. */
+      const vGripOn = new Set();
       let vGrab = null,
         vTrig = null, // etapa 34: gatilho segurado sobre o mapa (clique OU arrastar o mapa)
         zAcc = 0;
@@ -10521,10 +10514,9 @@
         });
         k.addEventListener("squeezestart", () => {
           vGripOn.add(k);
-          /* etapa 48 (item 1): as DUAS garras apertadas no mapa = zoom pela distância entre as mãos (afastar = +, aproximar = −). */
-          if (vGripOn.size >= 2 && mapOn()) {
+          /* etapa 63: duas garras NÃO dão mais zoom (só o analógico direito). Com 2 garras, nenhuma arrasta. */
+          if (vGripOn.size >= 2) {
             vGrab = null;
-            vZoom = { d0: vHandDist(), a0: vAimDist() };
             return;
           }
           const h = aim(k);
@@ -10535,7 +10527,6 @@
         });
         k.addEventListener("squeezeend", () => {
           vGripOn.delete(k);
-          vZoom = null; // soltou uma das garras: acaba o zoom (a outra só volta a arrastar se apertar de novo)
           if (vGrab && vGrab.k === k) vGrab = null;
         });
         rig.add(k);
@@ -10778,11 +10769,9 @@
             rt.normalize();
           }
           vrWalkNow = false;
-          let vrSqN = 0; // etapa 54: quantas garras estão apertadas (lido direto do gamepad, além dos eventos squeezestart/end)
           for (const src of s.inputSources) {
             const g = src.gamepad;
             if (!g) continue;
-            if (g.buttons[1] && g.buttons[1].pressed) vrSqN++;
             if (src.handedness == "right") {
               /* etapa 55: botão A (direito, buttons[4]) = pular */
               const ap = !!(g.buttons[4] && g.buttons[4].pressed);
@@ -10848,53 +10837,7 @@
               vGrab = { k: vTrig.k, mx: VB.x + vTrig.x0 / zs, my: VB.y + vTrig.y0 / zs, trig: true };
             }
           }
-          if ((vrSqN >= 2 || vGripOn.size >= 2) && !vZoom && ctl.length >= 2 && mapOn()) {
-            vGrab = null;
-            vZoom = { d0: vHandDist(), a0: vAimDist(), aSm: null }; // etapa 54: começa o zoom mesmo se o evento da 2ª garra não chegou
-          }
-          if (vZoom && (vrSqN >= 2 || vGripOn.size >= 2) && ctl.length >= 2 && mapOn()) {
-            let zst = 0;
-            const d = vHandDist(),
-              h0 = aim(ctl[0]),
-              h1 = aim(ctl[1]),
-              ax = h0 && h1 ? (h0.x + h1.x) / 2 : h0 ? h0.x : h1 ? h1.x : 960,
-              ay = h0 && h1 ? (h0.y + h1.y) / 2 : h0 ? h0.y : h1 ? h1.y : 540;
-            /* etapa 58: vale a mudança que for maior, pela distância das mãos OU pela distância das miras na tela.
-               etapa 60: em NÍVEIS (1 nível = 1 passo de zoom), com passo próprio e suavização para a mira. */
-            const da = vAimDist();
-            if (vZoom.a0 == null && da != null) vZoom.a0 = da;
-            const lh = Math.log(d / vZoom.d0) / Math.log(VR_GRIP_ZOOM_RATIO);
-            let la = 0;
-            if (da != null && vZoom.a0 != null) {
-              vZoom.aSm = vZoom.aSm == null ? da : vZoom.aSm + (da - vZoom.aSm) * VR_AIM_SMOOTH;
-              la = Math.log(vZoom.aSm / vZoom.a0) / Math.log(VR_AIM_ZOOM_RATIO);
-            }
-            let l = Math.abs(la) > Math.abs(lh) + VR_AIM_ZOOM_MARGIN ? la : lh;
-            for (let g = 0; g < 4 && l >= 1; g++) {
-              zoomAt(1, ax, ay);
-              zst++;
-              l -= 1;
-              vZoom.d0 *= VR_GRIP_ZOOM_RATIO;
-              if (vZoom.a0 != null) vZoom.a0 *= VR_AIM_ZOOM_RATIO;
-              if (vZoom.aSm != null) vZoom.aSm *= VR_AIM_ZOOM_RATIO;
-            }
-            for (let g = 0; g < 4 && l <= -1; g++) {
-              zoomAt(-1, ax, ay);
-              zst++;
-              l += 1;
-              vZoom.d0 /= VR_GRIP_ZOOM_RATIO;
-              if (vZoom.a0 != null) vZoom.a0 /= VR_AIM_ZOOM_RATIO;
-              if (vZoom.aSm != null) vZoom.aSm /= VR_AIM_ZOOM_RATIO;
-            }
-            if (zst) {
-              try {
-                for (const src of s.inputSources) {
-                  const ha = src.gamepad && src.gamepad.hapticActuators;
-                  if (ha && ha[0] && ha[0].pulse) ha[0].pulse(0.3, 30); // vibra a cada nível de zoom
-                }
-              } catch (e) {}
-            }
-          } else if (vZoom) vZoom = null;
+          /* etapa 63: zoom por gesto removido. O zoom é SOMENTE o analógico direito (bloco acima, zoomAt). */
           if (vGrab) {
             const h = aim(vGrab.k);
             if (h) {
