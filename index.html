@@ -364,6 +364,16 @@
                   são desenhados antes e o véu escuro os deixa escurecidos por trás da tela nova (vrDrawSidePanels/vrModalUp); (2) zoom 2 garras: mais
                   sensível (1,08), vibra a cada nível, e funciona por evento OU leitura direta do gamepad; (3) sala: 1ª fileira 3 m mais perto, demais
                   para trás (VR_ROW_Z), degraus 0,5 m, botão A = pular, apontar cadeira = marcador verde, gatilho = teleporta de frente para a tela.
+           [x] 56. FEITO (pedido, 3 itens): (1) removido o botão "VER CARTAS/TROCAR CARTAS" da aba Informações (não existe no original; lá a troca só abre
+                  sozinha na fase de reforço); (2) tela "Passe a vez para... OK" trocada pela do original (showHandoff): nome do jogador com bolinha + botão
+                  verde "JOGAR" (aparece só com 2+ humanos, como o original); (3) configurador de regras: subtextos dos botões (regras 01, 05, 08A) e textos
+                  .ruledesc (regras 02, 04, 05, 07, 11) copiados do original (VR_RULE_SUB / VR_RULE_DESC). TESTAR no Quest.
+           [x] 57. FEITO (pedido, 3 itens): (1) ESTATÍSTICAS com as animações de pulso do original: nome do campeão (bdNamePulse), '★ CAMPEÃO' (bdStatusPulse/bdStar),
+                  '✔ OBJETIVO CUMPRIDO' (bdPulseTxt), caixa do objetivo (bdObj) e moldura do campeão na cor dele (bdFrame). O canvas é redesenhado a cada
+                  VR_STATS_ANIM_MS (100 ms) SÓ nessa tela (0 = sem animação, se pesar no Quest); (2) VITÓRIA: textos agora em MAIÚSCULAS como no original
+                  (o original tem text-transform:uppercase em tudo; o hype do mundo/objetivo e o nome ficavam em minúsculas), mundo detectado também por
+                  todos os territórios; (3) SALA: 1ª fileira em z -1,4 (era -0,6), fileiras a 1 m uma da outra (era 1,7), degrau 1,0 m (era 0,5), teto
+                  sobe junto (VR_ROOM_H). TESTAR no Quest: altura da cabeça nas últimas fileiras, teleporte para as cadeiras, andar nos degraus.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1014,6 +1024,65 @@
           txt: "Conquiste 20 Territórios quaisquer, e tenha no mínimo 3 Pontos em cada Território.<br>(Pode ser Pontos de Soldados e/ou Tanques)",
         },
       ];
+      /* etapa 56: textos explicativos do configurador de regras copiados do original (index_7 (Perfeito)).
+         VR_RULE_SUB = subtexto dentro do botão da opção (chave = nº da regra 0-based + letra); VR_RULE_DESC = .ruledesc do item. */
+      const VR_RULE_SUB = {
+        "0A": { main: "A= Mundo Equilibrado.", sub: ["(Territórios mais equilibrados)"], col: "#9db89d", it: 1 },
+        "0B": { main: "B= Mundo Desequilibrado.", sub: ["(O Mundo atual vai ser esse)"], col: "#9db89d", it: 1 },
+        "4A": {
+          main: "A= Totalidade, apenas se possuir todos os Territórios do Continente.",
+          sub: [
+            "Mapa Mundo Equilibrado:",
+            "África=6, América do Norte=7, América do Sul=6, Ásia=8, Europa=7, Oceania=6.",
+            "Mapa Mundo Desequilibrado:",
+            "África=4, América do Norte=7, América do Sul=3, Ásia=10, Europa=7, Oceania=3.",
+          ],
+          col: "#9db89d",
+          it: 0,
+        },
+        "4B": {
+          main: "B= Parcialidade, se possuir Parcialmente os Territórios de alguns Continentes, já tem direito a Soldados.",
+          sub: [
+            "Mapa Mundo Desequilibrado:",
+            "Quando Atingir a Parcialidade:",
+            "4 na África=2, 6 na América do Norte=3, 7 na Ásia=3, 5 na Europa=2.",
+            "Quando Atingir a Totalidade:",
+            "África=4, América do Norte=7, América do Sul=3, Ásia=10, Europa=7, Oceania=3.",
+          ],
+          col: "#9db89d",
+          it: 0,
+        },
+        "7A": {
+          main: 'A= Ataque sem dados na Proporção "2 pra 1", com último Soldado da Defesa em "1 pra 1".',
+          sub: [
+            "(Sempre o Ataque perde 2 Soldados e a Defesa perde 1 Soldado)",
+            "(Porém a última soldado da Defesa, será sempre de 1 pra 1)",
+            "(Atacante com 2 soldados não pode atacar)",
+          ],
+          col: "#9ac",
+          it: 1,
+        },
+      };
+      const VR_RULE_DESC = {
+        1: ["Nas alternativas B a G, se algum Jogador cumprir o objetivo antes, ele vence."],
+        3: [
+          "O jogador terá acesso a quantidade de Objetivos escolhida, mas só precisa realizar 1 deles.",
+          "Durante a partida ele realiza qualquer um deles, e mostra que ganhou o jogo.",
+        ],
+        4: [
+          "A Ideia desse Item é tentar equilibrar o Mapa do Jogo.",
+          "Observe que o Mapa Equilibrado não precisa escolher Parcialidade, porque ele já é equilibrado.",
+        ],
+        6: [
+          "O jogador só pode ter posse dessa quantidade de Cartas Território.",
+          "Se atingir a quantidade máxima, é obrigatório fazer a troca no seu próximo turno.",
+        ],
+        10: [
+          "Programadas até agora: B (Tanques de Guerra), C (Aviões de Guerra) e D (Mísseis Teleguiados).",
+          "Nas opções F e G, Aviões e Mísseis funcionam (a fábrica de Tanques combinada ainda será adicionada).",
+          "Na opção E e G, as Cartas Especiais ainda serão implementadas.",
+        ],
+      };
       const RU = [
         {
           t: "01- MAPA:",
@@ -4121,9 +4190,13 @@
           const r = RU[ex];
           TX(r.t, 960, 90, 32, "#ffcc00", "center", 1);
           let y = 150;
+          /* etapa 56 (pedido): textos explicativos IGUAIS ao original (rulebtn com subtexto + .ruledesc embaixo do item). */
           r.o.forEach(([L, s]) => {
-            const ls = wrapL(L + "= " + s, 1480, 24, 4),
-              h = ls.length * 32 + 22,
+            const sb = VR_RULE_SUB[ex + "" + L],
+              ls = wrapL(sb ? sb.main : L + "= " + s, 1480, 24, 4),
+              sbl = sb ? sb.sub : [],
+              sbz = 20,
+              h = ls.length * 32 + (sbl.length ? sbl.length * 26 + 6 : 0) + 22,
               sel = RS[ex] == L,
               k = "o" + L,
               /* etapa 48 (item 4): igual ao original (applyMapSelection): com o Mundo Equilibrado (regra 01 = A) a opção B da
@@ -4150,9 +4223,33 @@
             c.strokeStyle = sel ? "#fff" : "#2a3a52";
             c.stroke();
             ls.forEach((q, j) => TX(q, 220, y + 27 + j * 32, 24, "#fff", "left", 1));
+            if (sbl.length) {
+              c.font = (sb.it ? "italic " : "") + sbz + "px Arial";
+              c.textAlign = "left";
+              c.textBaseline = "middle";
+              c.fillStyle = sb.col;
+              sbl.forEach((q, j) => c.fillText(translateCanvasText(q), 220, y + 27 + ls.length * 32 - 10 + 6 + j * 26 + 13));
+            }
             if (off) c.globalAlpha = 1;
             y += h + 12;
           });
+          const rdesc = VR_RULE_DESC[ex];
+          if (rdesc) {
+            /* .ruledesc do original: texto cinza-azulado itálico embaixo das opções */
+            c.font = "italic 22px Arial";
+            c.textAlign = "left";
+            c.textBaseline = "middle";
+            c.fillStyle = "#9ac";
+            y += 8;
+            rdesc.forEach((par) =>
+              wrapL(par, 1500, 22, 6).forEach((q) => {
+                c.font = "italic 22px Arial";
+                c.fillStyle = "#9ac";
+                c.fillText(q, 200, y + 14);
+                y += 30;
+              }),
+            );
+          }
           btns.push({ x: 0, y: 0, w: 1920, h: 1080, k: "x", fn: () => (ex = -1) });
         }
       }
@@ -4956,16 +5053,6 @@
             sl.forEach((q, j) => OT(q, cx2 + 69, ty + 1 + 6 + j * 18.4 + 9.2, 16, "#ccffee", "center"));
           });
           yy += Math.ceil(cards.length / 2) * 182;
-          /* atalho VR para trocar/ver cartas (o original abre o painel de troca automaticamente) */
-          yy += 10;
-          const canT = canTrade(cards) && G.ph === "R" && !G.bot[G.cur];
-          if (yy + 46 <= vy1 && yy >= vy0)
-            B(cx, yy, cw, 46, canT ? "TROCAR CARTAS" : "VER CARTAS", () => {
-              showInfo = 0;
-              showCards = 1;
-              G.csel = [];
-            }, { z: 18, k: "info-cards" });
-          yy += 46 + 10;
         } else {
           const lv = evoLv(),
             tc = (G.tc || 0) + 1,
@@ -5487,6 +5574,34 @@
           showTk = tanksOn(),
           showPl = planesOn(),
           blk = 1;
+        /* etapa 57: animações de pulso do original (bdNamePulse, bdStatusPulse, bdStar, bdPulseTxt, bdFrame, bdObj).
+           pls(T) = 0..1..0 suave com período T segundos; PULSE = texto centrado com escala/rotação/brilho (como transform+text-shadow). */
+        const pzT = performance.now() / 1000,
+          pls = (T) => 0.5 - 0.5 * Math.cos((2 * Math.PI * (pzT % T)) / T),
+          PULSE = (q, xc, y, z, col, sc, rot, gA, bA, gB, bB) => {
+            q = translateCanvasText(q).toUpperCase();
+            c.save();
+            c.translate(xc, y);
+            if (rot) c.rotate(rot);
+            c.scale(sc, sc);
+            c.font = `${z}px Arial`;
+            c.textAlign = "center";
+            c.textBaseline = "middle";
+            c.lineJoin = "round";
+            c.lineWidth = Math.max(2.4, z / 9);
+            c.strokeStyle = "#000";
+            c.strokeText(q, 0, 0);
+            c.fillStyle = col;
+            if (bB > 0.5) {
+              c.shadowColor = gB;
+              c.shadowBlur = bB;
+              c.fillText(q, 0, 0);
+            }
+            c.shadowColor = gA;
+            c.shadowBlur = bA;
+            c.fillText(q, 0, 0);
+            c.restore();
+          };
         const pd = Array.from({ length: cfg.n }, (_, i) => {
           const a = G.st[i];
           const s = solOf(i),
@@ -5596,6 +5711,7 @@
         });
         yy += rH + 10 * K;
         /* grade de 2 colunas */
+        let winGeo = null;
         L.cards.forEach((cd, k) => {
           const d = cd.d,
             win = d.i == G.win,
@@ -5604,6 +5720,7 @@
             x = lx + col * (L.colW + 8 * K),
             y = yy + L.rows.slice(0, row).reduce((s, h) => s + h + 8 * K, 0),
             h = L.rows[row];
+          if (win) winGeo = { x, y, h, col: COL[d.i] };
           rr(x, y, L.colW, h, 10 * K);
           c.fillStyle = win ? "rgba(255,221,0,0.05)" : "rgba(255,255,255,0.03)";
           c.fill();
@@ -5618,24 +5735,49 @@
           c.lineWidth = 1;
           c.strokeStyle = "#fff";
           c.stroke();
-          TX(cfg.names[d.i], x + 32 * K, hy, 16 * K, COL[d.i], "left", blk);
+          if (win) {
+            const nP = pls(1.3),
+              nz = 16 * K;
+            PULSE(cfg.names[d.i], x + 32 * K + tw(cfg.names[d.i], nz) / 2, hy, nz, COL[d.i], 1 + 0.12 * nP, 0, COL[d.i], 4 + 8 * nP, COL[d.i], 26 * nP);
+          } else TX(cfg.names[d.i], x + 32 * K, hy, 16 * K, COL[d.i], "left", blk);
           TX("Tempo vivo: " + fmtD(d.alive), x + 40 * K + tw(cfg.names[d.i], 16 * K), hy, 11 * K, "#9ac", "left", blk);
           const [st, sc] = win
             ? ["★ CAMPEÃO", "#ffdd00"]
             : d.a.el
               ? ["Eliminado por " + (cfg.names[d.a.by] ?? "?"), "#ff6a6a"]
               : ["Sobreviveu até o fim", "#7fd97f"];
-          TX(st, x + L.colW - 12 * K, hy, 12 * K, sc, "right", blk);
+          if (win) {
+            const sP = pls(1.3),
+              sz = 12 * K,
+              wSt = tw("★", sz),
+              wSp = tw(" ", sz),
+              wCp = tw("CAMPEÃO", sz),
+              sL = x + L.colW - 12 * K - (wSt + wSp + wCp);
+            PULSE("★", sL + wSt / 2, hy, sz, "#ffdd00", 1 + 0.5 * sP, ((25 * Math.PI) / 180) * sP, "#ffaa00", 4 + 10 * sP, "#ff9a00", 28 * sP);
+            PULSE("CAMPEÃO", sL + wSt + wSp + wCp / 2, hy, sz, `rgb(255,${Math.round(221 + 22 * sP)},${Math.round(160 * sP)})`, 1 + 0.14 * sP, 0, sP > 0.5 ? "#ffdd00" : "#ffaa00", 4 + 8 * sP, "#ff9a00", 26 * sP);
+          } else TX(st, x + L.colW - 12 * K, hy, 12 * K, sc, "right", blk);
           let ox = x + 12 * K;
           const oy = y + (14 + 22 + 5) * K - 7 * K;
           if (!cd.os.length) TX("—", ox, oy + 10 * K, 11 * K, "#889", "left");
           cd.os.forEach((o, j) => {
+            const oP = o.win ? pls(1.3) : 0; // etapa 57: bdObj (brilho dourado + fundo 0.10 -> 0.26)
             rr(ox, oy, cd.bw, cd.oh, 7 * K);
-            c.fillStyle = o.win ? "rgba(255,221,0,0.13)" : "rgba(0,0,0,0.2)";
+            c.fillStyle = o.win ? `rgba(255,221,0,${(0.1 + 0.16 * oP).toFixed(3)})` : "rgba(0,0,0,0.2)";
             c.fill();
             c.lineWidth = o.win ? 2 : 1;
             c.strokeStyle = o.win ? "#ffdd00" : "#557";
-            c.stroke();
+            if (o.win) {
+              c.save();
+              c.shadowColor = "#ffdd00";
+              c.shadowBlur = (5 + 11 * oP) * K;
+              c.stroke();
+              if (oP > 0.02) {
+                c.shadowColor = "rgba(255,170,0,0.6)";
+                c.shadowBlur = 30 * oP * K;
+                c.stroke();
+              }
+              c.restore();
+            } else c.stroke();
             const pre = cd.os.length > 1 ? `Objetivo ${j + 1}: ` : "",
               head = (o.win ? "✔ OBJETIVO CUMPRIDO " : "") + pre,
               ls = wrapL(head + o.txt, cd.bw - 28 * K, 12 * K, 6);
@@ -5645,7 +5787,9 @@
               if (n == 0 && head) {
                 const H = translateCanvasText(head).toUpperCase().trim();
                 if (q.startsWith(H)) {
+                  c.globalAlpha = o.win ? 0.75 + 0.25 * oP : 1; // bdPulseTxt
                   TX(H, ox + 14 * K, ty, (o.win ? 10 : 11) * K, "#ffdd00", "left", o.win ? blk : 0);
+                  c.globalAlpha = 1;
                   TX(q.slice(H.length), ox + 14 * K + tw(H + " ", (o.win ? 10 : 11) * K), ty, 12 * K, o.win ? "#fff" : "#cfe", "left");
                   return;
                 }
@@ -5655,6 +5799,20 @@
             ox += cd.bw + 8 * K;
           });
         });
+        /* etapa 57: moldura do campeão brilhando na cor dele (bdFrame, 1,6 s) */
+        if (winGeo) {
+          const fP = pls(1.6);
+          c.save();
+          rr(winGeo.x, winGeo.y, L.colW, winGeo.h, 10 * K);
+          c.lineWidth = 3;
+          c.strokeStyle = winGeo.col;
+          c.shadowColor = winGeo.col;
+          c.shadowBlur = (8 + 8 * fP) * K;
+          c.stroke();
+          c.shadowBlur = (14 + 20 * fP) * K;
+          c.stroke();
+          c.restore();
+        }
       }
       /* ===== ZOOM E ARRASTE DO MAPA + NOME DOS TERRITÓRIOS (portado do jogo original) =====
    20 níveis de zoom para dentro e 5 para fora (passo 1.08), igual ao original.
@@ -6479,23 +6637,51 @@
         if (showLog && scr == "game") drawLogPanel();
         vrBandEnd();
         if (G.hand && scr == "game" && !G.p1intro) {
+          /* etapa 56 (pedido): igual ao showHandoff() do original: fundo preto 92%, caixa #0a1628 com borda na cor do jogador,
+             bolinha + nome, e só o botão verde "JOGAR". (antes: "Passe a vez para..." + OK, que não existe no original) */
           btns = [];
-          PANEL(560, 300, 800, 420);
-          TX("Passe a vez para", 960, 380, 36, "#fff", "center", 1);
-          TX(cfg.names[G.cur], 960, 450, 54, COL[G.cur], "center", 1);
-          TX("(" + PN[G.cur] + ")", 960, 510, 28, COL[G.cur], "center", 1);
-          TX("Os outros jogadores não devem olhar o objetivo.", 960, 565, 22, "#9ec3e6", "center");
+          c.fillStyle = "rgba(0,0,0,.92)";
+          c.fillRect(0, 0, 1920, 1080);
+          c.save();
+          c.shadowColor = "rgba(0,0,0,.9)";
+          c.shadowBlur = 32;
+          rr(610, 360, 700, 360, 16);
+          c.fillStyle = "#0a1628";
+          c.fill();
+          c.restore();
+          rr(610, 360, 700, 360, 16);
+          c.lineWidth = 3;
+          c.strokeStyle = COL[G.cur];
+          c.stroke();
+          const hnm = String(cfg.names[G.cur]).toUpperCase();
+          c.font = "50px Arial";
+          const hw = c.measureText(hnm).width,
+            hgap = 20,
+            hdr = 26,
+            hx0 = 960 - (hdr * 2 + hgap + hw) / 2;
+          c.beginPath();
+          c.arc(hx0 + hdr, 470, hdr + 3, 0, 7);
+          c.fillStyle = "#000";
+          c.fill();
+          c.beginPath();
+          c.arc(hx0 + hdr, 470, hdr, 0, 7);
+          c.fillStyle = COL[G.cur];
+          c.fill();
+          c.lineWidth = 3;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          TX(cfg.names[G.cur], hx0 + hdr * 2 + hgap, 470, 50, COL[G.cur], "left", 1);
           B(
-            860,
-            610,
-            200,
-            70,
-            "OK",
+            790,
+            560,
+            340,
+            90,
+            "JOGAR",
             () => {
               G.hand = 0;
               G.t0 = performance.now();
             },
-            { z: 28 },
+            { z: 36, bg: "#0a5a1a" },
           );
         }
         if (G.intro && !G.hand && !G.p1intro && !showCards && !G.missileTrade && scr == "game") drawTurnIntro();
@@ -6614,7 +6800,7 @@
         } else if (scr == "win") {
           // Tela de VITÓRIA igual ao original
           btns = [];
-          const world = G.why == "Conquistou todos os territórios do mundo!",
+          const world = G.why == "Conquistou todos os territórios do mundo!" || cnt(G.win) == G.T.length, // etapa 57: igual ao original (conqueredWorld = todos os territórios)
             obj = String(G.why || "").replace(/^Objetivo cumprido:\s*/, ""),
             col = COL[G.win],
             hype = world
@@ -6663,7 +6849,7 @@
             c.textAlign = "center";
             c.textBaseline = "middle";
             if ("letterSpacing" in c) c.letterSpacing = ls + "px";
-            q = translateCanvasText(q);
+            q = translateCanvasText(q).toUpperCase(); // etapa 57: o original tem text-transform:uppercase em tudo
             c.shadowColor = glow;
             c.shadowBlur = blur;
             c.fillStyle = cl;
@@ -7447,7 +7633,7 @@
       scene.add(rig);
       scene.add(new THREE.HemisphereLight(0xffffff, 0x332233, 1.1));
       const pl = new THREE.PointLight(0xffe0b0, 25, 14);
-      pl.position.set(0, 5, 2);
+      pl.position.set(0, 8, 1);
       scene.add(pl);
       const M_ = (col, o = {}) =>
         new THREE.MeshLambertMaterial({ color: col, ...o }); // etapa 31: Lambert (mais leve que Standard) na sala
@@ -7458,15 +7644,15 @@
         return o;
       };
       box(16, 0.1, 20, 0, -0.05, 1, M_(0x3a0f1a));
-      box(16, 0.1, 20, 0, 6, 1, M_(0x15151f));
-      box(16, 6, 0.1, 0, 3, -9, M_(0x1a1a2a));
-      box(16, 6, 0.1, 0, 3, 11, M_(0x1a1a2a));
-      box(0.1, 6, 20, -8, 3, 1, M_(0x1a1a2a));
-      box(0.1, 6, 20, 8, 3, 1, M_(0x1a1a2a));
+      box(16, 0.1, 20, 0, VR_ROOM_H, 1, M_(0x15151f));
+      box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, -9, M_(0x1a1a2a));
+      box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, 11, M_(0x1a1a2a));
+      box(0.1, VR_ROOM_H, 20, -8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
+      box(0.1, VR_ROOM_H, 20, 8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
       box(1.6, 5.6, 0.3, -6.4, 3, -8.8, M_(0x8a1020));
       box(1.6, 5.6, 0.3, 6.4, 3, -8.8, M_(0x8a1020));
       for (let i = -3; i <= 3; i += 2)
-        box(0.6, 0.05, 0.6, i * 2, 5.95, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
+        box(0.6, 0.05, 0.6, i * 2, VR_ROOM_H - 0.05, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
       /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
       const seatParts = {};
       function seat(x, z, w, col, y0 = 0) {
@@ -7491,9 +7677,10 @@
          degraus com o DOBRO da altura (0,5 m). O chão acompanha o degrau sob a cabeça (vrFloorY); botão A = pular; apontar para uma cadeira mostra
          um marcador e o GATILHO teleporta para ela, de frente para a tela. Degraus = 1 malha fundida. VR_TIERS = 0 volta à sala plana. */
       const VR_TIERS = 6, // fileiras em degrau (0 = sala plana)
-        VR_TIER_STEP = 0.5, // altura de cada degrau (m)
-        VR_ROW_Z = [-0.6, 2.4, 4.1, 5.8, 7.5, 9.2], // z de cada fileira (a 1ª foi de 2.4 para -0.6)
-        VR_ROW_HALF = 0.85;
+        VR_TIER_STEP = 1.0, // altura de cada degrau (m) — etapa 57: dobro (era 0,5)
+        VR_ROW_Z = [-1.4, -0.1, 0.9, 1.9, 2.9, 3.9], // etapa 57: 1ª fileira mais à frente; demais bem juntas (1 m entre fileiras; antes 1,7 m)
+        VR_ROW_HALF = 0.5;
+      const VR_ROOM_H = VR_TIERS ? VR_TIERS * VR_TIER_STEP + 4 : 6; // etapa 57: teto sobe junto com os degraus
       const vrTierEdge = (i) => VR_ROW_Z[i] - VR_ROW_HALF;
       const vrFloorY = (x, z) => {
         let h = 0;
@@ -10320,8 +10507,15 @@
         vrHvY = -1e9,
         vrHvT0 = 0, // etapa 21: limitador do hover
         vrWalkNow = false; // etapa 38: andando (stick esquerdo) = hover mais espaçado
+      const VR_STATS_ANIM_MS = 100; // etapa 57: intervalo de redesenho da tela Estatísticas p/ os pulsos (0 = sem animação)
+      let vrStatsT = 0;
       R.setAnimationLoop(() => {
         tick();
+        if (VR_STATS_ANIM_MS && scr == "win" && showStats && performance.now() - vrStatsT > VR_STATS_ANIM_MS) {
+          vrStatsT = performance.now();
+          draw();
+          tex.needsUpdate = true;
+        }
         if (G && G.toast && performance.now() > G.toast.until) {
           G.toast = null;
           draw();
