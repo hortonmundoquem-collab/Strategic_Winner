@@ -354,6 +354,12 @@
                   saem do canvas grande (VR_PANEL_BANDS): cada reenvio/hover cai de 4,7 Mpix para ~1,7/2,4 Mpix. Mesma resolução e desenho.
                   Se cartas/mão/intro/míssil estiverem abertos junto, tudo volta ao canvas grande (como antes). TESTAR cada painel no Quest: posição, sombra,
                   rolagem (SCAREA) e cliques. Se algum painel ficar cortado, aumente a faixa em VR_BAND_DEFS (5/6).
+           [x] 54. FEITO (pedido, 4 itens): (1) com a tela de DIREITOS do turno (G.intro), ver/trocar cartas, troca por mísseis ou "passe a vez" abertos,
+                  Dicas e Regras/Informações/Configurações/Objetivo FECHAM e o LOG some (draw() -> vrDrawMain; VR_HIDE_SIDE_PANELS); (2) zoom com as 2 garras
+                  agora também lê o botão da garra direto do gamepad (vrSqN), não só os eventos; (3) caixa azul dos reforços: já seguia o original (etapa 48:
+                  continente a continente -> metade dos territórios -> troca -> tanques/fábricas); corrigido o texto do passo de TANQUES para o do original;
+                  (4) SALA EM DEGRAUS: 6 fileiras subindo 0,25 m cada (VR_TIERS/VR_TIER_STEP), o chão acompanha o degrau sob a cabeça (vrFloorY).
+                  TESTAR no Quest: subir os degraus andando, escolher a fileira, zoom com as duas garras, painéis fechando.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -6049,7 +6055,25 @@
           }
         } else G.fx = null;
       }
+      /* etapa 54 (pedido): como no original (o véu escuro cobre tudo), enquanto a tela de DIREITOS do turno, ver cartas, trocar cartas, troca por
+         mísseis ou "passe a vez" estiver aberta, os painéis Dicas e Regras / Informações / Configurações / Objetivo somem (ficam FECHADOS) e o LOG
+         não aparece (a opção "Mostrar LOG" não muda). VR_HIDE_SIDE_PANELS = false desliga. */
+      const VR_HIDE_SIDE_PANELS = true;
       function draw() {
+        if (VR_HIDE_SIDE_PANELS && G && scr == "game" && (G.intro || showCards || G.missileTrade || G.hand)) {
+          showInfo = showRules = showCfg = showObj = 0;
+          const lg = showLog;
+          showLog = 0;
+          try {
+            vrDrawMain();
+          } finally {
+            showLog = lg;
+          }
+          return;
+        }
+        vrDrawMain();
+      }
+      function vrDrawMain() {
         btns = [];
         OVR = [];
         vrClockOn = false; // etapa 44: só o trecho do relógio (mais abaixo) a liga
@@ -6361,7 +6385,7 @@
             else if (st && st.mode == "planeFactory") info = "POSICIONE SUA\nFÁBRICA DE AVIÕES";
             else if (st) {
               num = st.n;
-              info = "DISTRIBUA TANQUES\nDE GUERRA";
+              info = "DISTRIBUA TANQUES DE GUERRA DE DIREITO\nPELA FÁBRICA DE TANQUES"; // igual ao original (reinfDistributeLabel s4)
             } else info = "AGUARDE...";
           } else if (G.ph == "A") info = "ATAQUE...";
           else if (G.ph == "F") info = "REAGRUPE...";
@@ -7451,13 +7475,13 @@
         box(0.6, 0.05, 0.6, i * 2, 5.95, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
       /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
       const seatParts = {};
-      function seat(x, z, w, col) {
+      function seat(x, z, w, col, y0 = 0) {
         const parts = (seatParts[col] = seatParts[col] || []),
           a = (sx, sy, sz, px, py, pz, rx = 0) => {
             const g = new THREE.BoxGeometry(sx, sy, sz);
             g.applyMatrix4(
               new THREE.Matrix4()
-                .makeTranslation(x, 0, z)
+                .makeTranslation(x, y0, z)
                 .multiply(new THREE.Matrix4().makeTranslation(px, py, pz))
                 .multiply(new THREE.Matrix4().makeRotationX(rx)),
             );
@@ -7469,9 +7493,38 @@
         a(0.1, 0.3, 0.5, -w / 2, 0.55, 0);
         a(0.1, 0.3, 0.5, w / 2, 0.55, 0);
       }
-      for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, 2.4, 1.1, 0x9b1b30); // poltronas
-      for (let r = 0; r < 2; r++)
-        for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
+      /* etapa 54 (pedido): SALA DE CINEMA EM DEGRAUS. As fileiras sobem para trás (cada degrau VR_TIER_STEP mais alto) e o jogador sobe/desce
+         andando (stick esquerdo): a altura do chão segue o degrau (vrFloorY, suavizada). Degraus = 1 malha fundida (1 draw call).
+         VR_TIERS = 0 volta à sala plana antiga. */
+      const VR_TIERS = 6, // fileiras em degrau (0 = sala plana)
+        VR_TIER_STEP = 0.25, // altura de cada degrau (m)
+        VR_TIER_Z0 = 2.4, // z da 1ª fileira
+        VR_TIER_DZ = 1.5; // profundidade de cada fileira (m)
+      const vrFloorY = (x, z) => {
+        if (!VR_TIERS) return 0;
+        const i = Math.floor((z - VR_TIER_Z0 + VR_TIER_DZ / 2) / VR_TIER_DZ); // fileira sob o ponto (-1 = chão da frente)
+        return i < 0 ? 0 : (Math.min(i, VR_TIERS - 1) + 1) * VR_TIER_STEP;
+      };
+      if (VR_TIERS) {
+        const tg = [];
+        for (let r = 0; r < VR_TIERS; r++) {
+          const h = (r + 1) * VR_TIER_STEP,
+            g = new THREE.BoxGeometry(15.8, h, VR_TIER_DZ);
+          g.translate(0, h / 2, VR_TIER_Z0 + r * VR_TIER_DZ);
+          tg.push(g);
+        }
+        scene.add(new THREE.Mesh(mergeGeometries(tg), M_(0x4a1624)));
+        for (let r = 0; r < VR_TIERS; r++) {
+          const y0 = (r + 1) * VR_TIER_STEP,
+            z = VR_TIER_Z0 + r * VR_TIER_DZ;
+          if (r == 0) for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, z, 1.1, 0x9b1b30, y0); // poltronas
+          else for (let i = 0; i < 7; i++) seat(-3.6 + i * 1.2, z, 0.75, 0x23305e, y0); // cadeiras
+        }
+      } else {
+        for (let i = 0; i < 4; i++) seat(-2.4 + i * 1.6, 2.4, 1.1, 0x9b1b30); // poltronas
+        for (let r = 0; r < 2; r++)
+          for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
+      }
       for (const col in seatParts) scene.add(new THREE.Mesh(mergeGeometries(seatParts[col]), M_(Number(col))));
       const tex = new THREE.CanvasTexture(S);
       tex.colorSpace = THREE.SRGBColorSpace;
@@ -10238,6 +10291,12 @@
         } else if (vrB) vrBatchRelease();
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
+        if (VR_TIERS) {
+          /* etapa 54: o chão acompanha o degrau sob a cabeça (suave, sem "pulo") */
+          cam.updateWorldMatrix(true, false);
+          hp.setFromMatrixPosition(cam.matrixWorld);
+          rig.position.y += (vrFloorY(hp.x, hp.z) - rig.position.y) * Math.min(1, dt * 8);
+        }
         if (s) {
           /* Direções tiradas da pose real da cabeça (matriz mundial da câmera, já com a rotação do rig):
              frente = -Z da câmera, direita = +X da câmera, ambos achatados no plano do chão. */
@@ -10252,9 +10311,11 @@
             rt.normalize();
           }
           vrWalkNow = false;
+          let vrSqN = 0; // etapa 54: quantas garras estão apertadas (lido direto do gamepad, além dos eventos squeezestart/end)
           for (const src of s.inputSources) {
             const g = src.gamepad;
             if (!g) continue;
+            if (g.buttons[1] && g.buttons[1].pressed) vrSqN++;
             const x = g.axes[2] ?? g.axes[0] ?? 0,
               y = g.axes[3] ?? g.axes[1] ?? 0;
             if (cfg.walk && src.handedness == "left" && Math.hypot(x, y) > 0.15) {
@@ -10314,7 +10375,11 @@
               vGrab = { k: vTrig.k, mx: VB.x + vTrig.x0 / zs, my: VB.y + vTrig.y0 / zs, trig: true };
             }
           }
-          if (vZoom && vGripOn.size >= 2 && ctl.length >= 2 && mapOn()) {
+          if (vrSqN >= 2 && !vZoom && ctl.length >= 2 && mapOn()) {
+            vGrab = null;
+            vZoom = { d0: vHandDist() }; // etapa 54: começa o zoom mesmo se o evento da 2ª garra não chegou
+          }
+          if (vZoom && vrSqN >= 2 && ctl.length >= 2 && mapOn()) {
             const d = vHandDist(),
               h0 = aim(ctl[0]),
               h1 = aim(ctl[1]),
