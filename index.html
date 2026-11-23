@@ -303,6 +303,11 @@
                   Se der erro, desliga sozinho (vrClockBad). TESTAR no Quest: relógio no mesmo lugar/tamanho, conta certinho, some/volta
                   com Dicas e Regras/Objetivo/Cartas abertos. As demais partes da HUD (botões, painéis, cartas, tela de passar peças)
                   continuam no canvas: convertê-las uma a uma para 3D só se o FPS ainda estiver ruim nelas (ver "PRÓXIMA" abaixo).
+           [x] 45. FEITO (pedido: letras pequenas ruins de ler / jogo pouco nítido): (a) VR_CANVAS_K 1 -> 1.5 (canvas da HUD 2880x1620; a lógica
+                  continua em coordenadas 1920x1080, draw() já aplica a escala); (b) VR_LABEL_DENS_MIN 2 -> 2.5; (c) NOVO VR_LOD_BIAS = -0.5: viés de
+                  mipmap negativo em todo MeshBasicMaterial com textura (tela, rótulos, relógio) = letras mais nítidas sem gastar mais GPU.
+                  Nenhuma regra mudou. TESTAR no Quest: se cintilar/tremer, VR_LOD_BIAS = -0.25 ou 0; se o FPS cair, VR_CANVAS_K = 1.25.
+                  Limite físico: a tela tem 9,6 m e fica a ~8,9 m do jogador (~57 graus); chegar mais perto (stick) deixa o texto mais legível.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1172,7 +1177,7 @@
       /* Etapa 20: o original NÃO tem contornos amarelos pontilhados nos territórios de direito (continente/tanques/fábricas):
          ele só suspende (levante) e escurece o resto. false = igual ao original. */
       const VR_DASH_OVERLAYS = false;
-      const VR_CANVAS_K = 1;
+      const VR_CANVAS_K = 1.5; // etapa 45: 1 -> 1.5 (HUD 2880x1620: letras pequenas da HUD mais nítidas; se pesar, volte a 1.25 ou 1)
       /* etapa 44 (9d): RELÓGIO DO TURNO em mini-plano 3D. Com limite de tempo, o tick() redesenhava e reenviava o canvas inteiro
          (1920x1080) 1x POR SEGUNDO só para mudar "0:59" -> "0:58". Agora o relógio é um pequeno plano 3D (mesma aparência: reaproveita
          BADGE) e só ele é redesenhado. Quando algum painel/tela cobre o canto (anyOv, vitória, intro...), o relógio volta ao canvas
@@ -1180,7 +1185,27 @@
       const VR_CLOCK_3D = true;
       let vrClockOn = false, // true = o relógio é o mini-plano 3D (draw() NÃO o pinta no canvas)
         vrClockBad = false; // se der erro no mini-plano, desliga sozinho e volta ao canvas
-      const VR_LABEL_DENS_MIN = 2; // etapa 39: 1.5 -> 2 (letras mais nítidas)
+      const VR_LABEL_DENS_MIN = 2.5; // etapa 45: 2 -> 2.5 (nomes/números dos territórios; teto continua 3). etapa 39: 1.5 -> 2
+
+      /* etapa 45 (NITIDEZ): a tela do cinema fica a ~9 m e a textura é MINIFICADA (mais texels que pixels do óculos). Com mipmap
+         trilinear o three escolhe um nível já suavizado, o que deixa as letras pequenas borradas. VR_LOD_BIAS < 0 faz a GPU
+         escolher um nível de mipmap mais nítido em TODO MeshBasicMaterial com textura (tela, rótulos, relógio).
+         0 = igual ao antigo; -0.5 = padrão desta etapa; -1 = bem nítido, mas pode cintilar ao mexer a cabeça. */
+      const VR_LOD_BIAS = -0.5;
+      if (VR_LOD_BIAS !== 0)
+        THREE.MeshBasicMaterial.prototype.onBeforeCompile = function (shader) {
+          if (!this.map) return;
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <map_fragment>",
+            `#ifdef USE_MAP
+              vec4 sampledDiffuseColor = texture2D( map, vMapUv, ${VR_LOD_BIAS.toFixed(2)} );
+              #ifdef DECODE_VIDEO_TEXTURE
+                sampledDiffuseColor = vec4( mix( pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), sampledDiffuseColor.rgb * 0.0773993808, vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) ) ), sampledDiffuseColor.w );
+              #endif
+              diffuseColor *= sampledDiffuseColor;
+            #endif`,
+          );
+        };
       const VR_FOVEATION = 0; // etapa 35/36: 0 = igual ao original (sem foveação, qualidade máxima). Valores maiores economizam GPU mas borram as bordas.
       const VR_XR_SCALE = 1.3; // etapa 39: 1.0 -> 1.3 (imagem estava esfumaçada; se voltar a tremer, baixe para 1.15). etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
