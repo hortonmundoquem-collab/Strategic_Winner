@@ -220,8 +220,9 @@
                   se causar frustração, basta reinserir o if (RS[7]==="A" && pts<2) em confirmMissileTrade).
            [x] 26. FEITO (auditoria da TROCA DE CARTAS): validade do trio (3 do mesmo continente, 3 de continentes diferentes ou com
                   Coringa), recompensa (base + max(cartas suas, 10% por carta)), 2 Coringas no baralho, limites de cartas = original.
-                  DIVERGÊNCIA CORRIGIDA: o Coringa do VR não tinha special:true (o original tem), então no modo Míssil dava para
-                  usar Coringa como 2ª/3ª carta; o original proíbe. Agora buildDeck marca special:1 (só afeta as checagens de míssil).
+                  DIVERGÊNCIA CORRIGIDA: o Coringa do VR não tinha special:true (o original tem). Agora buildDeck marca special:1.
+                  OBS.: a etapa 65 (pedido do dono) passou a PERMITIR o Coringa nos Mísseis (1ª carta = alvo inimigo com 2+ pontos,
+                  ou carta extra para somar pontos). Ver etapa 65.
            [x] 27. FEITO (auditoria do REAGRUPAMENTO): limites (pontos livres - recebidos), Tanques/Soldados/Pontos, conversão
                   tanque->soldado, modo Livre (regra 09 B) = original. DIVERGÊNCIA CORRIGIDA no fluxo de cliques da fase F: com
                   origem selecionada, clicar nela de novo agora DESMARCA e clicar em destino inválido CANCELA (antes mantinha a
@@ -392,15 +393,32 @@
                   (VR_LIFT_Z 0.225 m dominava os 9/-11 px), então territórios no centro da tela pareciam de frente e não se via
                   a suspensão. Agora VR_LIFT_DX/DY = 15/-18 px (diagonal superior direita mais visível) e VR_LIFT_Z = 0.10 m.
                   Vale para preenchimento, borda, rótulo, bolha, destaque, paredes, sombra, setas e explosão. TESTAR no Quest.
-           [x] 62. FEITO (pedido 4: satélite mais alto e em 3D): não é mais um plano desenhado ("folha de papel"); agora é um grupo
-                  3D leve (vrBuildSat3D: corpo, tampa, 2 painéis com grade, hastes, mastro, antena e luz = ~9 draw calls) e passa
-                  na FAIXA DE CIMA da tela (y 50..130), acima de todos os territórios suspensos. O clique continua num plano
-                  invisível do tamanho do satélite (mesma regra de derrubar: cai, explode, treme e perde 1 soldado). TESTAR no Quest.
+           [x] 62. FEITO (pedido 4: satélite mais alto): na época virou um grupo 3D; a etapa 64 desfez isso e voltou ao desenho original.
            [x] 63. FEITO (pedido do dono, 2 itens): (1) ZOOM SÓ PELO ANALÓGICO DIREITO: removidos o zoom com as duas garras
                   (distância entre mãos e entre miras) e a leitura de vrSqN; as garras agora só ARRASTAM o mapa. (2) SATÉLITE:
-                  percursos do original restaurados (horizontal nos 2 sentidos e vertical) e o grupo 3D flutua VR_SAT_Z = 0,85 m
-                  À FRENTE do plano do mapa (8,5x o levante dos territórios), com leve inclinação para mostrar a profundidade.
-                  Ele não fica mais colado na tela ("dentro da sala de cinema"). TESTAR no Quest.
+                  percursos do original restaurados (horizontal nos 2 sentidos e vertical).
+           [x] 64. FEITO (pedido do dono, 2 itens):
+                  (1) NOME DOS JOGADORES no configurador de regras agora é EDITÁVEL. O original tem um <input> HTML; aqui a tela é
+                      canvas, então clicar no nome abre um TECLADO NA TELA (aponte + gatilho no VR; letras, números, Espaço,
+                      Apagar, Cancelar, OK) e no PC o teclado físico também escreve (Backspace, Enter = OK, Esc = cancelar).
+                      Limite 14 caracteres (igual ao maxlength do original); nome vazio volta a "Jogador N". Estado: nameEdit /
+                      nameDraft; desenho: drawNameEditor() no fim de menu(); clique: SEL(..., "nm"+i).
+                  (2) SATÉLITE IGUAL AO ORIGINAL, só mais suspenso: o modelo 3D (vrBuildSat3D) foi REMOVIDO; volta a ser o desenho
+                      de createFlyingPlane/vrDrawSat() num plano (corpo 50x50, 2 painéis com grade, antena e luz vermelha), com os
+                      4 percursos e o tremor senoidal do original. Única mudança: VR_SAT_Z = 0,18 m, um pouco mais suspenso que
+                      os territórios levantados (VR_LIFT_Z = 0,10 m). TESTAR no Quest.
+           [x] 65. FEITO (pedido do dono, 2 itens):
+                  (1) CORINGA NA TROCA POR MÍSSEIS: o Coringa agora serve como 1ª carta (define o alvo) e como 2ª/3ª carta (soma
+                      pontos). Como 1ª carta, atinge QUALQUER território INIMIGO com 2 ou mais pontos (soldados e/ou tanques):
+                      clicar no Coringa fecha a tela e entra no modo de escolha de alvo (G.missileJokerPick + missileMode); o mapa
+                      destaca todos os inimigos com 2+ pontos e o clique abre a tela de novo com o Coringa já como 1ª carta
+                      (openMissileTradeForJoker). Se o jogador não tiver carta de território válida, o botão MÍSSEIS entra direto
+                      nesse modo. Funções: missileJokerEligible/missileCardTargets/toggleMissileCard/confirmMissileTrade/panel.
+                      O Coringa continua sendo carta descartada ao disparar (não muda a economia de cartas).
+                  (2) AVIÃO SUSPENSO NUM PLANO MAIS ALTO: a silhueta do avião + pontos saiu do rótulo do território e virou um
+                      mini-plano próprio (vrAirSusp/vrAirSuspSync, desenhado pela mesma vrDrawPlaneSusp), em z = VR_LIFT_Z +
+                      VR_AIR_SUSP_DZ = 0,20 m — pouco ACIMA dos territórios suspensos (0,10 m). Só desenho; nenhuma regra de
+                      ataque mudou. TESTAR no Quest (profundidade do avião, clique do ataque aéreo e seta saindo do ícone).
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1991,6 +2009,7 @@
         G.airTarget = null;
         G.missileMode = false;
         G.missileTrade = false;
+        G.missileJokerPick = false;
         G.missileTarget = null;
         G.missilePage = 0;
         G.missileStrikeTarget = null;
@@ -2657,6 +2676,9 @@
       function buildDeck() {
         const d = G.T.map((t) => ({ t, cont: contOf(t) }));
         d.push({ t: "CORINGA", joker: 1, special: 1 }, { t: "CORINGA", joker: 1, special: 1 }); // etapa 26: special como no original (coringa não vira míssil)
+        /* etapa 65 (pedido do dono): o CORINGA agora TAMBÉM serve na troca por Mísseis:
+           - como 1ª carta define o alvo (qualquer território inimigo com 2+ pontos, soldados e/ou tanques);
+           - como 2ª/3ª carta soma pontos normalmente. `special` continua marcado; só as checagens de míssil o tratam à parte. */
         return d.sort(() => Math.random() - 0.5);
       }
       const maxCards = () => ({ A: 5, B: 7, C: 10, D: 1e9 })[RS[6]] ?? 5,
@@ -2694,9 +2716,16 @@
           return false;
         return RS[7] === "A" ? ptsOf(card.t) > 1 : ptsOf(card.t) >= 1;
       }
+      /* etapa 65 (pedido do dono): alvo válido para o CORINGA como 1ª carta = qualquer território INIMIGO com
+         PELO MENOS 2 PONTOS (soldados e/ou tanques), em qualquer modo de combate. */
+      function missileJokerEligible(t) {
+        return !!G && G.own[t] !== undefined && G.own[t] !== G.cur && ptsOf(t) >= 2;
+      }
       function missileCardTargets() {
         const set = {};
-        for (const card of G.cards[G.cur] || []) if (missileCardCanAttack(card)) set[card.t] = 1;
+        /* etapa 65: com o CORINGA escolhido como 1ª carta, o mapa mostra TODOS os inimigos com 2+ pontos. */
+        if (G.missileJokerPick) for (const t of G.T) if (missileJokerEligible(t)) set[t] = 1;
+        else for (const card of G.cards[G.cur] || []) if (missileCardCanAttack(card)) set[card.t] = 1;
         return set;
       }
       function cancelMissileArm() {
@@ -2706,6 +2735,7 @@
       }
       function cancelMissileTrade() {
         G.missileTrade = false;
+        G.missileJokerPick = false;
         showCards = 0;
         G.csel = [];
         G.missileTarget = null;
@@ -2717,7 +2747,7 @@
         if (!G.missileTrade) return;
         const cs = G.cards[G.cur] || [],
           card = cs[i];
-        if (!card || card.special) return;
+        if (!card) return;
         const at = G.csel.indexOf(i);
         if (at === 0) {
           G.csel = [];
@@ -2729,6 +2759,21 @@
           return;
         }
         if (!G.csel.length) {
+          /* etapa 65: CORINGA como 1ª carta = o jogador escolhe o alvo NO MAPA (qualquer inimigo com 2+ pontos).
+             Fecha a tela de troca, entra no modo de escolha de alvo (missileMode + missileJokerPick) e, ao clicar
+             no território, a tela volta com o Coringa já como 1ª carta e o alvo definido. */
+          if (card.joker) {
+            G.missileTrade = false;
+            showCards = 0;
+            G.csel = [];
+            G.missileTarget = null;
+            G.missileJokerPick = true;
+            G.missileMode = true;
+            G.msg =
+              "Coringa escolhido como 1ª carta: clique num território INIMIGO com 2 ou mais pontos (soldados e/ou tanques).";
+            addLog(G.msg);
+            return;
+          }
           if (!missileCardCanAttack(card)) {
             G.msg = "A primeira carta precisa indicar um território inimigo atacável.";
             addLog(G.msg);
@@ -2739,6 +2784,29 @@
           return;
         }
         G.csel.push(i);
+      }
+      function openMissileTradeForJoker(t) {
+        const cs = G.cards[G.cur] || [],
+          idx = cs.findIndex((card) => card && card.joker);
+        if (idx < 0) {
+          G.missileMode = false;
+          G.missileJokerPick = false;
+          G.msg = "Você não tem mais o Coringa na mão.";
+          addLog(G.msg);
+          return;
+        }
+        G.missileJokerPick = false;
+        G.missileMode = false;
+        G.missileTarget = t;
+        G.csel = [idx];
+        G.missilePage = Math.floor(idx / 8);
+        G.missileTrade = true;
+        showCards = 1;
+        G.msg =
+          "Coringa como 1ª carta, alvo: " +
+          t +
+          ". Selecione outras cartas para aumentar os pontos do míssil.";
+        addLog(G.msg);
       }
       function openMissileTradeForTarget(t) {
         const cs = G.cards[G.cur] || [],
@@ -2766,14 +2834,14 @@
           cards = G.csel.map((i) => cs[i]).filter(Boolean),
           first = cs[G.csel[0]],
           target = G.missileTarget,
-          pts = missilePointsFor(cards.length);
-        if (
-          !cards.length ||
-          !first ||
-          first.special ||
-          first.t !== target ||
-          !missileCardCanAttack(first)
-        ) {
+          pts = missilePointsFor(cards.length),
+          /* etapa 65: com o Coringa como 1ª carta o alvo vem do mapa (inimigo com 2+ pontos). */
+          firstOk = first
+            ? first.joker
+              ? !!target && missileJokerEligible(target)
+              : first.t === target && missileCardCanAttack(first)
+            : false;
+        if (!cards.length || !first || !firstOk) {
           G.msg = "Escolha uma primeira carta que indique um território inimigo atacável.";
           addLog(G.msg);
           return;
@@ -2783,6 +2851,7 @@
         G.missileStrikeCards = cards.slice();
         G.missileMode = false;
         G.missileTrade = false;
+        G.missileJokerPick = false;
         G.missileTarget = null;
         G.csel = [];
         showCards = 0;
@@ -2878,6 +2947,7 @@
         }
         if (G.missileMode) {
           G.missileMode = false;
+          G.missileJokerPick = false;
           G.msg = "Modo de Ataque com Mísseis desativado.";
           addLog(G.msg);
           return;
@@ -2891,15 +2961,28 @@
           G.sel = null;
           addLog("Ataque por terra cancelado.");
         }
+        G.missileJokerPick = false; // etapa 65: entrar no modo normal sempre começa sem a escolha de alvo do Coringa
         const targets = missileCardTargets();
         if (!Object.keys(targets).length) {
+          /* etapa 65: sem carta de território válida, o CORINGA ainda pode iniciar o ataque (alvo inimigo com 2+ pontos). */
+          const hasJoker = (G.cards[G.cur] || []).some((c) => c && c.joker),
+            hasElig = G.T.some((t) => missileJokerEligible(t));
+          if (hasJoker && hasElig) {
+            G.missileMode = true;
+            G.missileJokerPick = true;
+            G.msg =
+              "Coringa: escolha um território INIMIGO com 2 ou mais pontos (soldados e/ou tanques) para ser o alvo do míssil.";
+            addLog(G.msg);
+            return;
+          }
           G.msg = "Nenhuma carta sua corresponde a um território inimigo atacável agora.";
           addLog(G.msg);
           return;
         }
         G.missileMode = true;
+        G.missileJokerPick = false;
         G.msg =
-          "Modo de Ataque com Mísseis ativado. Escolha um território inimigo destacado que esteja nas suas cartas.";
+          "Modo de Ataque com Mísseis ativado. Escolha um território inimigo destacado que esteja nas suas cartas.";;
         addLog(G.msg);
       }
       function tradeReward(p, cs) {
@@ -3030,6 +3113,7 @@
         G.airTarget = null;
         G.missileMode = false;
         G.missileTrade = false;
+        G.missileJokerPick = false;
         G.missileTarget = null;
         G.missileStrikeTarget = null;
         G.missileStrikePts = 0;
@@ -3710,10 +3794,17 @@
           } else if (G.missileMode) {
             const mt = missileCardTargets();
             if (mt[t]) {
-              openMissileTradeForTarget(t);
+              if (G.missileJokerPick) openMissileTradeForJoker(t);
+              else openMissileTradeForTarget(t);
               return;
             }
             G.missileMode = false;
+            if (G.missileJokerPick) {
+              G.missileJokerPick = false;
+              G.msg = "Coringa: o alvo precisa ser um território INIMIGO com 2 ou mais pontos.";
+              addLog(G.msg);
+              return;
+            }
             if (
               G.own[t] !== G.cur &&
               !(G.cards[G.cur] || []).some((card) => card && !card.special && card.t === t)
@@ -3830,6 +3921,10 @@
       }
       let ex = -1,
         showObj = 0;
+      /* etapa 64: estado do editor de NOME dos jogadores (declarado aqui, antes de qualquer draw()). */
+      let nameEdit = -1,
+        nameDraft = "";
+      const NAME_MAX = 14;
       function W(s, x, y, w, z, lh, col, max = 9) {
         s = translateCanvasText(s);
         c.font = `bold ${z}px Arial`;
@@ -4144,7 +4239,8 @@
           SEL(801, y, 118, cfg.bots[i] ? "IA" : "Humano", "pt" + i, () => {
             cfg.bots[i] = !cfg.bots[i];
           });
-          SEL(931, y, 149, cfg.names[i]);
+          /* etapa 64: clicar no nome abre o teclado (na tela/VR) ou deixa digitar no teclado do PC. */
+          SEL(931, y, 149, cfg.names[i], "nm" + i, () => vrNameOpen(i));
           SEL(1092, y, 140, PN[i]);
         }
         B(
@@ -4280,7 +4376,103 @@
           }
           btns.push({ x: 0, y: 0, w: 1920, h: 1080, k: "x", fn: () => (ex = -1) });
         }
+        if (nameEdit >= 0) {
+          btns = [];
+          drawNameEditor();
+        }
       }
+      /* ===== etapa 64 (pedido do dono): NOME DOS JOGADORES editável no configurador de regras =====
+         O original usa um <input> de HTML (renderMpPlayers). Aqui a tela é desenhada no canvas (é o que aparece nos
+         óculos), então o nome aparecia mas não podia ser digitado. Agora clicar no nome abre um TECLADO NA TELA
+         (aponte com o controle e aperte o gatilho) e, no PC, o teclado físico também escreve (letras/números/espaço,
+         Backspace, Enter = OK, Esc = cancelar). Limite de 14 caracteres, igual ao maxlength do original. */
+      function vrNameOpen(i) {
+        nameEdit = i;
+        nameDraft = String(cfg.names[i] || "Jogador " + (i + 1));
+      }
+      function vrNameKey(ch) {
+        if (nameEdit < 0 || nameDraft.length >= NAME_MAX) return;
+        nameDraft += ch;
+      }
+      function vrNameBack() {
+        if (nameEdit < 0) return;
+        nameDraft = nameDraft.slice(0, -1);
+      }
+      function vrNameOk() {
+        if (nameEdit < 0) return;
+        const t = nameDraft.trim();
+        cfg.names[nameEdit] = t || "Jogador " + (nameEdit + 1);
+        nameEdit = -1;
+      }
+      function drawNameEditor() {
+        const px = 460,
+          py = 160,
+          pw = 1000,
+          ph = 760;
+        PANEL(px, py, pw, ph);
+        TX("Digite o nome do Jogador " + (nameEdit + 1), 960, py + 42, 28, "#ffcc00", "center", 1);
+        const fx = px + 60,
+          fy = py + 76,
+          fw = pw - 120,
+          fh = 64;
+        rr(fx, fy, fw, fh, 8);
+        c.fillStyle = "#06101d";
+        c.fill();
+        c.lineWidth = 3;
+        c.strokeStyle = "#3a5f85";
+        c.stroke();
+        c.font = "30px Arial";
+        c.textAlign = "left";
+        c.textBaseline = "middle";
+        c.fillStyle = nameDraft ? "#fff" : "#6b7a8a";
+        c.fillText(nameDraft ? (nameDraft + "|").toUpperCase() : "DIGITE O NOME", fx + 18, fy + fh / 2 + 1);
+        TX(nameDraft.length + "/" + NAME_MAX, fx + fw - 18, fy + fh / 2, 20, "#7fa9c9", "right");
+        TX("Aponte e clique nas teclas (ou use o teclado do PC)", 960, fy + fh + 24, 18, "#9ac", "center");
+        const rows = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"],
+          kw = 74,
+          kh = 62,
+          gap = 10;
+        let ky = py + 210;
+        for (const row of rows) {
+          const rw = row.length * kw + (row.length - 1) * gap;
+          let kx = 960 - rw / 2;
+          for (const ch of row) {
+            B(kx, ky, kw, kh, ch, () => vrNameKey(ch), { z: 24, bg: "#1f3a58", k: "nk-" + ch });
+            kx += kw + gap;
+          }
+          ky += kh + gap;
+        }
+        const bw = [300, 200, 220, 160],
+          bg2 = 14,
+          total = bw.reduce((a, b) => a + b, 0) + bg2 * 3;
+        let bx = 960 - total / 2;
+        const acts = [
+          ["Espaço", () => vrNameKey(" "), "#1f3a58", "nk-space"],
+          ["Apagar", vrNameBack, "#1f3a58", "nk-back"],
+          ["Cancelar", () => (nameEdit = -1), "#c0392b", "nk-cancel"],
+          ["OK", vrNameOk, "#1a8f3a", "nk-ok"],
+        ];
+        acts.forEach(([lbl, fn, bgc, kk], i) => {
+          B(bx, ky, bw[i], kh, lbl, fn, { z: 22, bg: bgc, k: kk });
+          bx += bw[i] + bg2;
+        });
+      }
+      /* teclado físico (PC): só age com o editor de nome aberto no menu */
+      document.addEventListener("keydown", (e) => {
+        if (scr != "menu" || nameEdit < 0) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key === "Enter") vrNameOk();
+        else if (e.key === "Escape") nameEdit = -1;
+        else if (e.key === "Backspace") {
+          e.preventDefault();
+          vrNameBack();
+        } else if (e.key.length === 1) {
+          if (e.key === " ") e.preventDefault();
+          vrNameKey(e.key);
+        } else return;
+        draw();
+        tex.needsUpdate = true;
+      });
       let showInfo = 0,
         infoTab = 1,
         showRules = 0,
@@ -5220,7 +5412,10 @@
         }
         if (G.ph === "A") {
           if (G.missileStrikeTarget) return `Míssil preparado para ${G.missileStrikeTarget}. Confirme o alvo no mapa.`;
-          if (G.missileMode) return "Selecione um território inimigo indicado por uma carta.";
+          if (G.missileMode)
+            return G.missileJokerPick
+              ? "Coringa: selecione um território inimigo com 2+ pontos."
+              : "Selecione um território inimigo indicado por uma carta.";
           if (G.airMode) return "Selecione um território inimigo para o ataque aéreo.";
           if (G.sel) return `Agora escolha um território inimigo vizinho de ${G.sel}.`;
           return "Selecione seu território e depois um vizinho inimigo para atacar.";
@@ -6080,6 +6275,92 @@
         TK(String(G.missileStrikePts), 0, -34, Math.round(lm.cs * 0.62), "#ffcc00", Math.max(5, Math.round(lm.cs * 0.176)));
         if (ICO.m[G.cur]) c.drawImage(ICO.m[G.cur], -w / 2, -34 + 6, w, h);
       }
+      /* ===================== etapa 65 (pedido do dono): AVIÃO SUSPENSO NUM PLANO MAIS ALTO =====================
+         Antes a silhueta do avião + os pontos eram desenhados DENTRO do rótulo do território, no mesmo plano do
+         levante (VR_LIFT_Z = 0,10 m). Agora o avião tem um mini-plano próprio (vrAirSusp), filho de vrLabelGroup,
+         desenhado pela MESMA vrDrawPlaneSusp() e colocado em VR_LIFT_Z + VR_AIR_SUSP_DZ = 0,20 m — ou seja, um
+         pouco ACIMA dos territórios suspensos, como o satélite. Só desenho: nenhuma regra de ataque mudou. */
+      const VR_AIR_SUSP_DZ = 0.1,
+        /* caixa lógica do mini-canvas: precisa cobrir a silhueta do Avião em TODOS os tamanhos/zooms
+           (maior caso: lm.ls ~37 com tamanho G → x ≈ -132..52, y ≈ -121..41) */
+        VR_AIR_BOX = { x0: -220, x1: 110, y0: -230, y1: 70 };
+      let vrAirSusp = null;
+      function vrAirSuspInit() {
+        if (vrAirSusp) return vrAirSusp;
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 2;
+        const tx = new THREE.CanvasTexture(cv);
+        tx.colorSpace = THREE.SRGBColorSpace;
+        tx.generateMipmaps = true;
+        tx.minFilter = THREE.LinearMipmapLinearFilter;
+        tx.anisotropy = 8;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({
+            map: tx,
+            transparent: true,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+            clippingPlanes: vrClip,
+          }),
+        );
+        mesh.renderOrder = 970; // acima dos rótulos (900) e das setas (950+)
+        mesh.frustumCulled = false;
+        mesh.visible = false;
+        if (vrLabelGroup) vrLabelGroup.add(mesh);
+        return (vrAirSusp = { cv, tex: tx, mesh, sig: "" });
+      }
+      function vrAirSuspSync() {
+        if (!G || scr == "menu" || !VR_MAP_3D_LABELS || !vrLabelGroup) return;
+        const t = G.airMode ? G.airTarget : null;
+        if (!t) {
+          if (vrAirSusp) vrAirSusp.mesh.visible = false;
+          return;
+        }
+        if (!G.M.C[t]) {
+          if (vrAirSusp) vrAirSusp.mesh.visible = false;
+          return;
+        }
+        const A = vrAirSuspInit(),
+          lm = lmet(),
+          dens = Math.min(3, Math.max(VR_LABEL_DENS_MIN, zsc())),
+          pts = Math.max(0, (G.pl[G.cur] || 0) * evoLv() - ((G.planeDmg && G.planeDmg[G.cur]) || 0)),
+          sig = [lm.ls, lm.cs, dens, G.cur, pts, planeSize, ICO.p[G.cur] ? 1 : 0].join("|");
+        const bw = VR_AIR_BOX.x1 - VR_AIR_BOX.x0,
+          bh = VR_AIR_BOX.y1 - VR_AIR_BOX.y0;
+        if (A.sig !== sig) {
+          A.sig = sig;
+          const W = Math.ceil(bw * dens),
+            H = Math.ceil(bh * dens);
+          if (A.cv.width !== W || A.cv.height !== H) {
+            A.cv.width = W;
+            A.cv.height = H;
+            A.tex.dispose();
+          }
+          const g = A.cv.getContext("2d"),
+            c0 = c;
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, W, H);
+          g.setTransform(dens, 0, 0, dens, -VR_AIR_BOX.x0 * dens, -VR_AIR_BOX.y0 * dens);
+          c = g;
+          try {
+            vrDrawPlaneSusp(lm);
+          } finally {
+            c = c0;
+          }
+          A.tex.needsUpdate = true;
+          A.mesh.scale.set(bw, -bh, 1);
+        }
+        const st = vrLiftSt[t],
+          e = st && st.on ? vrLiftEase(st.p / VR_LIFT_DUR) : 0,
+          dx = VR_LIFT_DX * e,
+          dy = VR_LIFT_DY * e,
+          cx = (VR_AIR_BOX.x0 + VR_AIR_BOX.x1) / 2,
+          cy = (VR_AIR_BOX.y0 + VR_AIR_BOX.y1) / 2;
+        A.mesh.position.set(G.M.C[t][0] + dx + cx, G.M.C[t][1] + dy + cy, (VR_LIFT_Z + VR_AIR_SUSP_DZ) * e);
+        A.mesh.visible = true;
+      }
       /* Etapa 14: PRÉVIA na tela de passar soldados (igual ao original: getDisplayTanks + G._previewFactory).
          Modo Tanques: o número de pontos do tanque sobe com as setinhas. Fábrica: o ícone já aparece no território
          enquanto o jogador decide (OK/X). Só desenho; a lógica (G.rch, confirmReinf) não muda. */
@@ -6921,7 +7202,14 @@
             pts = missilePointsFor(n),
             first = cs[G.csel[0]],
             target = G.missileTarget,
-            valid = !!(n > 0 && first && first.t === target && missileCardCanAttack(first)),
+            /* etapa 65: o Coringa como 1ª carta vale se o alvo escolhido no mapa for inimigo com 2+ pontos. */
+            valid = !!(
+              n > 0 &&
+              first &&
+              (first.joker
+                ? !!target && missileJokerEligible(target)
+                : first.t === target && missileCardCanAttack(first))
+            ),
             canFire = valid && (RS[7] !== "A" || pts >= 2),
             troca = tradeBonusFor(G.tc + 1);
           btns = [];
@@ -7024,6 +7312,8 @@
             [["A Primeira Carta verde já Selecionada, equivale ao "], ["Território Alvo Inimigo", 1], [", junte quantas cartas quiser para somar pontos."]],
             [["Precisa ser um Território INIMIGO com mais de 1 Ponto, pois ataques aéreos não deixam o inimigo com Zero Pontos."]],
             [["Após escolher a primeira Carta, qualquer outra Carta, sua ou inimiga, soma Pontos."]],
+            [["O Coringa também pode ser a 1ª carta: ele atinge qualquer Território INIMIGO com 2+ Pontos (soldados e/ou tanques)."]],
+            [["Depois de escolhido o alvo, o Coringa também serve para somar Pontos, como qualquer outra carta."]],
             [["Os Pontos que sobrarem são perdidos, pois todos os mísseis só atingem o Território Alvo da primeira Carta."]],
             [["Para atacar territórios diferentes, escolha menos Cartas para cada Ataque."]],
             [["No Modo de Jogo Sem Dados na Proporção \"2 pra 1\", só poderá atacar com mais de 1 Ponto de Míssil."]],
@@ -7035,8 +7325,9 @@
             }
           yy += 8;
           segDraw([["Escolha Carta Verde = Define o Território Alvo Inimigo.", 1]], lx, yy + 11, 17, "#cba", "left");
-          segDraw([["Após escolher a primeira Carta, qualquer outra Carta serve para Somar Pontos.", 1]], lx, yy + 11 + 22, 17, "#cba", "left");
-          yy += 54;
+          segDraw([["Coringa como 1ª Carta = escolha no mapa um Inimigo com 2+ Pontos.", 1]], lx, yy + 11 + 22, 17, "#7dff9a", "left");
+          segDraw([["Após escolher a primeira Carta, qualquer outra Carta serve para Somar Pontos.", 1]], lx, yy + 11 + 44, 17, "#cba", "left");
+          yy += 76;
           /* cartas 200x262 (+padding 17/10 e borda 3 = 226x302), margem 10, até 5 por linha, reduzidas para caber */
           const btnY = py + ph - 90,
             nc = cs.length,
@@ -7062,13 +7353,19 @@
               hasOwn = own !== undefined && own !== null,
               mine = hasOwn && own === vp,
               ptsT = hasOwn ? ptsOf(cd.t) : 0,
-              canBeTarget = !cd.special && missileCardCanAttack(cd),
-              canAdd = isSel || (!cd.special && (canBeTarget || G.csel.length >= 1)),
+              canBeTarget = cd.joker ? true : !cd.special && missileCardCanAttack(cd),
+              canAdd = isSel || cd.joker || (!cd.special && (canBeTarget || G.csel.length >= 1)),
               kk = "mcard" + i,
               inner = 200 * k;
             /* linhas de informação (igual a infoBlock) */
             const info = [];
-            if (cd.special) info.push(["ESPECIAL (não troca)", "#ff8888"]);
+            if (cd.joker)
+              info.push(
+                ["CORINGA", "#7dff9a"],
+                [G.csel.length ? "QUALQUER CARTA" : "DEFINE O ALVO", "#ffdd00"],
+                ...(G.csel.length ? [] : [["INIMIGO COM 2+ PONTOS", "#ffdd00"]]),
+              );
+            else if (cd.special) info.push(["ESPECIAL (não troca)", "#ff8888"]);
             else if (!hasOwn) info.push(["TERRITÓRIO NEUTRO", "#ffdd00"], ["NÃO PODE ATACAR", "#ff8888"]);
             else if (mine) info.push(["SEU TERRITÓRIO", "#ffdd00"], ["NÃO PODE ATACAR", "#ff8888"]);
             else
@@ -7119,16 +7416,39 @@
             ty += 6 * k + sl.length * cz * 1.2 + 6 * k;
             const lz = 13 * k;
             if (isSel) {
-              segDraw([[isFirst ? "ALVO DO MÍSSIL" : "SELECIONADA (+PONTOS)", 1]], x + cw / 2, ty + 8 * k, 16 * k, "#fff", "center");
-              ty += 22 * k;
+              const jk = !!cd.joker;
               segDraw(
-                [[`${ptsT} ponto${ptsT == 1 ? "" : "s"} (${ownName || "?"})${mine ? " (sua)" : ""}`, 0]],
+                [[jk ? (isFirst ? "CORINGA = 1ª CARTA" : "CORINGA SELECIONADO") : isFirst ? "ALVO DO MÍSSIL" : "SELECIONADA (+PONTOS)", 1]],
                 x + cw / 2,
-                ty + 6 * k,
-                15 * k,
-                "#ffdd00",
+                ty + 8 * k,
+                16 * k,
+                "#fff",
                 "center",
               );
+              ty += 22 * k;
+              if (jk) {
+                /* etapa 65: mostra o alvo escolhido no mapa e os pontos dele */
+                const jl = wrapL(isFirst ? "ALVO: " + String(target || "?") : "SOMA PONTOS (+1 CARTA)", inner, 14 * k, 2);
+                jl.forEach((q, j) => TX(q, x + cw / 2, ty + 6 * k + j * 15 * k, 14 * k, "#ffdd00", "center"));
+                ty += jl.length * 15 * k + 4 * k;
+                if (isFirst)
+                  TX(
+                    (target && G.own[target] !== undefined ? ptsOf(target) : 0) + " PONTOS",
+                    x + cw / 2,
+                    ty + 6 * k,
+                    13 * k,
+                    "#fff",
+                    "center",
+                  );
+              } else
+                segDraw(
+                  [[`${ptsT} ponto${ptsT == 1 ? "" : "s"} (${ownName || "?"})${mine ? " (sua)" : ""}`, 0]],
+                  x + cw / 2,
+                  ty + 6 * k,
+                  15 * k,
+                  "#ffdd00",
+                  "center",
+                );
             } else {
               if (G.csel.length >= 1 && canAdd) {
                 segDraw([["SOMA PONTOS", 1]], x + cw / 2, ty + 8 * k, 16 * k, "#7dff9a", "center");
@@ -7420,6 +7740,7 @@
         } else if (G.ph == "A" && G.missileMode) {
           soundSelector();
           G.missileMode = false;
+          G.missileJokerPick = false;
           addLog("Modo de Ataque com Mísseis desativado.");
         } else if (G.ph == "A" && G.missileStrikeTarget) {
           soundSelector();
@@ -8725,7 +9046,7 @@
           if (!(G.fillHid && G.fillHid.has(t))) {
             drawTankIcons(t, 0, 0, lm);
             if (!vrPopActive(t)) TC(vrDispN(t), 0, 0, lm); // prévia (setPreviewArmies); na bolha o número é outro plano
-            if (G.airMode && G.airTarget === t) vrDrawPlaneSusp(lm); // etapa 13
+            /* etapa 65: o AVIÃO suspenso saiu daqui e virou um plano 3D próprio (vrAirSuspSync), MAIS ALTO que o levante. */
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
           }
           g.filter = "none";
@@ -9380,9 +9701,11 @@
          ===================================================================================== */
       const VR_FLY_3D = true;
       const VR_FLY_Z = -8.8;
-      /* etapa 63 (pedido do dono): o SATÉLITE flutua MUITO à frente do plano do mapa (profundidade/altura real no VR),
-         bem acima do levante dos territórios (VR_LIFT_Z = 0,10 m). 0,85 m = ~8,5x mais suspenso. 0 = colado na tela (antigo). */
-      const VR_SAT_Z = 0.85;
+      /* etapa 64 (pedido do dono): o SATÉLITE volta a ser EXATAMENTE o desenho original (o SVG de createFlyingPlane:
+         corpo 50x50, 2 painéis solares com grade, antena e luz vermelha), desenhado por vrDrawSat() num plano — nada de
+         modelo 3D. Ele apenas fica um pouco MAIS SUSPENSO que os territórios levantados: o levante usa VR_LIFT_Z = 0,10 m,
+         então VR_SAT_Z = 0,18 m deixa o satélite flutuando um pouco à frente deles (0 = colado no plano da tela). */
+      const VR_SAT_Z = 0.18;
       let vrFlyGroup = null,
         vrFlyers = [],
         vrFlyMeshes = [],
@@ -9536,77 +9859,6 @@
         g.fillStyle = "#ff4444";
         circ(0, -40, 4);
       }
-      /* Etapa 62 (pedido): SATÉLITE EM 3D DE VERDADE (não é mais uma "folha de papel" com desenho 2D).
-         Montado com poucas peças (corpo, tampa, 2 painéis + hastes, mastro, antena e luz) = ~9 draw calls, e o
-         satélite só aparece de 2 em 2 minutos, então não pesa no jogo. Um plano invisível do tamanho do satélite
-         continua sendo o alvo do clique (gatilho VR ou mouse), para não mudar a regra de derrubar. As peças usam as
-         coordenadas do canvas (x para a direita, y para baixo), igual ao resto dos voadores. */
-      function vrBuildSat3D() {
-        const g = new THREE.Group(),
-          mat = (c) => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide });
-        // corpo central (caixa com profundidade real)
-        const body = new THREE.Mesh(new THREE.BoxGeometry(50, 50, 30), mat(0x505868));
-        g.add(body);
-        const plate = new THREE.Mesh(new THREE.BoxGeometry(40, 40, 4), mat(0x687078));
-        plate.position.z = 17;
-        g.add(plate);
-        // painéis solares: caixas finas com uma ÚNICA textura de grade compartilhada (barato)
-        const pc = document.createElement("canvas");
-        pc.width = 128;
-        pc.height = 40;
-        const pg = pc.getContext("2d");
-        pg.fillStyle = "#123a70";
-        pg.fillRect(0, 0, 128, 40);
-        pg.strokeStyle = "#cfe6ff";
-        pg.lineWidth = 2;
-        for (let x = 0; x <= 128; x += 16) {
-          pg.beginPath();
-          pg.moveTo(x, 0);
-          pg.lineTo(x, 40);
-          pg.stroke();
-        }
-        pg.beginPath();
-        pg.moveTo(0, 20);
-        pg.lineTo(128, 20);
-        pg.stroke();
-        pg.strokeRect(1, 1, 126, 38);
-        const ptx = new THREE.CanvasTexture(pc);
-        ptx.colorSpace = THREE.SRGBColorSpace;
-        ptx.generateMipmaps = true;
-        ptx.minFilter = THREE.LinearMipmapLinearFilter;
-        const pmat = new THREE.MeshLambertMaterial({ map: ptx, side: THREE.DoubleSide });
-        for (const sx of [-1, 1]) {
-          const p = new THREE.Mesh(new THREE.BoxGeometry(95, 30, 6), pmat);
-          p.position.set(sx * 72.5, 0, 0);
-          g.add(p);
-          const arm = new THREE.Mesh(new THREE.BoxGeometry(25, 5, 5), mat(0x8a939e));
-          arm.position.set(sx * 15, 0, 0);
-          g.add(arm);
-        }
-        // mastro + antena + luz vermelha
-        const rod = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 42, 6), mat(0xa0a8b0));
-        rod.position.set(0, -21, 0);
-        g.add(rod);
-        const dish = new THREE.Mesh(new THREE.SphereGeometry(11, 12, 8), mat(0xa0a8b0));
-        g.add(dish);
-        const led = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff4444 }));
-        led.position.set(0, -42, 0);
-        g.add(led);
-        // alvo invisível do clique (não desenha nada, mas o raio acerta)
-        const hit = new THREE.Mesh(
-          new THREE.PlaneGeometry(250, 90),
-          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false, side: THREE.DoubleSide }),
-        );
-        g.add(hit);
-        /* etapa 63: leve inclinação: os painéis mostram a profundidade e o satélite não parece papel colado na tela. */
-        g.rotation.x = 0.10;
-        g.rotation.y = -0.22;
-        g.traverse((o) => {
-          o.renderOrder = 2500;
-          o.frustumCulled = false;
-        });
-        return { group: g, hit };
-      }
       function vrCreateFlyer(kind) {
         if (!VR_FLY_3D || !G || scr != "game") return null;
         vrFlyGroupInit();
@@ -9624,12 +9876,13 @@
               { sx: -50, sy: 1130, ex: 1970, ey: -50, angle: -45 },
               { sx: 1970, sy: 1130, ex: -50, ey: -50, angle: -135 },
             ]
-          : /* etapa 63: percursos do original (createFlyingPlane) na HORIZONTAL, nas duas direções, em qualquer altura
-               (y 150..850). As passagens VERTICAIS do original foram deixadas de fora porque, com o satélite 0,85 m à frente
-               da tela, ele desceria pelo meio da plateia e atravessaria o chão da sala. A "altura" no VR vem do VR_SAT_Z. */
+          : /* etapa 64: percursos IDÊNTICOS ao createFlyingPlane do original (horizontal nos 2 sentidos e vertical nos 2
+               sentidos), com o mesmo tremor senoidal de ±10 px do original. */
             [
               { sx: -150, sy: Math.random() * 700 + 150, ex: 2150, ey: Math.random() * 700 + 150, angle: 0 },
               { sx: 2150, sy: Math.random() * 700 + 150, ex: -150, ey: Math.random() * 700 + 150, angle: 180 },
+              { sx: Math.random() * 1500 + 150, sy: -150, ex: Math.random() * 1500 + 150, ey: 1250, angle: 90 },
+              { sx: Math.random() * 1500 + 150, sy: 1250, ex: Math.random() * 1500 + 150, ey: -150, angle: -90 },
             ];
         const dir = dirs[(Math.random() * dirs.length) | 0];
         let mesh = null,
@@ -9673,12 +9926,40 @@
           mesh.position.set(dir.sx, dir.sy, 0);
           mesh.rotation.z = -(dir.angle * Math.PI) / 180;
         } else {
-          /* etapa 62: satélite 3D (não mais um plano desenhado). W/H continuam valendo para a escala na queda. */
-          const s3 = vrBuildSat3D();
-          mesh = s3.group;
-          hit = s3.hit;
-          W = 250;
-          H = 90;
+          /* etapa 64 (pedido do dono): satélite = DESENHO ORIGINAL em plano (vrDrawSat), igual ao pássaro. Só muda a
+             distância da tela: VR_SAT_Z (0,18 m) o deixa um pouco mais suspenso que os territórios levantados. */
+          const spec = { W: 250, H: 90, PS: 2, cw: 500, ch: 180, draw: vrDrawSat };
+          W = spec.W;
+          H = spec.H;
+          cv = document.createElement("canvas");
+          cv.width = spec.cw;
+          cv.height = spec.ch;
+          const gg = cv.getContext("2d");
+          gg.clearRect(0, 0, spec.cw, spec.ch);
+          gg.save();
+          gg.translate(spec.cw / 2, spec.ch / 2);
+          gg.scale(spec.PS, spec.PS);
+          spec.draw(gg);
+          gg.restore();
+          const tx = new THREE.CanvasTexture(cv);
+          tx.colorSpace = THREE.SRGBColorSpace;
+          tx.generateMipmaps = true;
+          tx.minFilter = THREE.LinearMipmapLinearFilter;
+          tx.anisotropy = 4;
+          mesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({
+              map: tx,
+              transparent: true,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+              toneMapped: false,
+              clippingPlanes: vrClip,
+            }),
+          );
+          mesh.renderOrder = 2500;
+          mesh.frustumCulled = false;
+          mesh.scale.set(W, -H, 1);
           mesh.position.set(dir.sx, dir.sy, VR_SAT_Z);
           mesh.rotation.z = -(dir.angle * Math.PI) / 180; // como o original (rotate(dir.angle))
         }
@@ -9766,23 +10047,9 @@
         const F = vrFlyers[i];
         if (!F) return;
         if (vrFlyGroup) vrFlyGroup.remove(F.mesh);
-        if (F.hit && F.mesh !== F.hit) {
-          // satélite 3D: descarta cada peça (geometria/materiais/textura dos painéis)
-          F.mesh.traverse((o) => {
-            if (o.isMesh && o.geometry) {
-              o.geometry.dispose();
-              const mm = o.material;
-              if (mm) {
-                if (mm.map) mm.map.dispose();
-                mm.dispose();
-              }
-            }
-          });
-        } else {
-          F.mesh.geometry.dispose();
-          if (F.mesh.material.map) F.mesh.material.map.dispose();
-          F.mesh.material.dispose();
-        }
+        F.mesh.geometry.dispose();
+        if (F.mesh.material.map) F.mesh.material.map.dispose();
+        F.mesh.material.dispose();
         vrFlyers.splice(i, 1);
         const j = vrFlyMeshes.indexOf(F.hit || F.mesh);
         if (j >= 0) vrFlyMeshes.splice(j, 1);
@@ -9816,8 +10083,7 @@
             m.position.set(F.x, F.y, F.z0);
             m.rotation.z = F.rot0 - (720 * p * Math.PI) / 180;
             const sc = 1 - 0.7 * p;
-            if (F.isSat) m.scale.set(sc, sc, sc); // satélite 3D: grupo já está em tamanho real
-            else m.scale.set(F.W * sc, -F.H * sc, 1);
+            m.scale.set(F.W * sc, -F.H * sc, 1); // pássaro e satélite são planos desenhados
             if (p >= 1) vrFlyRemove(i, true);
           } else {
             const pr = (now - F.t0) / F.dur;
@@ -10069,6 +10335,13 @@
         }
         vrLabels = {};
         vrLblT = 0;
+        if (vrAirSusp) {
+          // etapa 65: o mini-plano do avião suspenso é recriado junto com os rótulos
+          vrAirSusp.tex.dispose();
+          vrAirSusp.mesh.geometry.dispose();
+          vrAirSusp.mesh.material.dispose();
+          vrAirSusp = null;
+        }
         vrPopMesh = {};
         vrPops = {};
         vrLabelGroup = VR_MAP_3D_LABELS ? new THREE.Group() : null;
@@ -10711,6 +10984,7 @@
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
+        vrAirSuspSync(); // etapa 65: avião suspenso num plano mais alto que o levante
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
         vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
         if (vrBatchOn) {
