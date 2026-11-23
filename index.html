@@ -7643,6 +7643,7 @@
         p.add(o);
         return o;
       };
+      const VR_ROOM_H = 10; // etapa 57: altura da sala = VR_TIERS*VR_TIER_STEP + 4 (6*1,0+4). Se mudar os degraus, ajuste aqui.
       box(16, 0.1, 20, 0, -0.05, 1, M_(0x3a0f1a));
       box(16, 0.1, 20, 0, VR_ROOM_H, 1, M_(0x15151f));
       box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, -9, M_(0x1a1a2a));
@@ -7680,7 +7681,6 @@
         VR_TIER_STEP = 1.0, // altura de cada degrau (m) — etapa 57: dobro (era 0,5)
         VR_ROW_Z = [-1.4, -0.1, 0.9, 1.9, 2.9, 3.9], // etapa 57: 1ª fileira mais à frente; demais bem juntas (1 m entre fileiras; antes 1,7 m)
         VR_ROW_HALF = 0.5;
-      const VR_ROOM_H = VR_TIERS ? VR_TIERS * VR_TIER_STEP + 4 : 6; // etapa 57: teto sobe junto com os degraus
       const vrTierEdge = (i) => VR_ROW_Z[i] - VR_ROW_HALF;
       const vrFloorY = (x, z) => {
         let h = 0;
