@@ -319,6 +319,41 @@
                   passo do escurecimento mudava a assinatura dos ~42 rótulos -> redesenho + envio + mipmaps de cada um (56 envios de 690x435 por clique,
                   ~17 Mpix). Correção: escurecer = cor do material do rótulo (vrLabelDimTick, todo quadro, sem canvas/GPU). Agora o clique só envia a
                   HUD (2880x1620) 1x. Resolução NÃO foi alterada. Se ainda pesar: VR_CANVAS_K 1.5 -> 1.25 (a HUD é o maior envio restante).
+           [x] 48. FEITO (pedido, 4 itens; TESTAR no Quest):
+                  (1) ZOOM COM AS DUAS GARRAS: segurar as 2 garras (grip) no mapa e afastar/aproximar as mãos = zoom +/- (a cada 12% de variação
+                      na distância entre as mãos = 1 nível; VR_GRIP_ZOOM_RATIO; ponto de zoom = meio das duas miras). Ver vGripOn/vZoom/vHandDist.
+                  (2) NÚMERO DE SOLDADOS do território igual ao original (.terr-count): TC() = Segoe UI normal, branco, contorno preto
+                      max(5, round(cs*0.176)) (antes T(): Arial negrito, contorno z/6).
+                  (3) REFORÇOS POR PASSOS como no original: vrRStep() = continente (um por vez) -> metade dos territórios -> troca de cartas ->
+                      tanques/fábricas. Caixa azul, limite da tela de peças (rchMax), confirmReinf e territórios suspensos seguem o passo atual.
+                      Regra 06-B: continentes em G.vrBc (somados em G.pend), colocação em qualquer território. Bots NÃO mudaram.
+                  (4) Configurador: com Mundo Equilibrado (regra 1 = A) a opção B da regra 5 fica opaca e sem clique; escolher A na regra 1
+                      com a regra 5 em B volta a regra 5 para A (igual a applyMapSelection do original).
+           [x] 49. FEITO (pedido: "faça a etapa 9: mais HUD em 3D"): HUD EM FAIXAS 3D (VR_HUD_BANDS, vrBands, vrBandBegin/vrBandEnd, vrBandsSync).
+                  Barra de cima, barra de baixo e "Zoom/⟲" viraram 3 mini-planos 3D com textura própria (3 x ~0,4 Mpix). Sem painel/modal/aviso
+                  aberto, o canvas grande (2880x1620 = 4,7 Mpix) NÃO é mais reenviado à GPU a cada clique (setter de tex.needsUpdate filtra:
+                  vrMainInk/vrMainLastInk). Com painel aberto (cartas, objetivo, config, soldados G.rch/mv/fortify, aviso, intro do turno, mão...) as
+                  faixas voltam ao canvas grande como antes. Testado em navegador de teste: HUD idêntica com true/false; reenvios 2 -> 0 por clique.
+                  AINDA NO CANVAS GRANDE (candidatos à próxima conversão, só se o FPS nos painéis ainda pesar): tela de soldados (G.rch/G.mv/G.fortify),
+                  aviso (toast), LOG, cartas, objetivo, configurações, dicas, introdução do turno, estatísticas e fim de jogo.
+           [x] 50. FEITO (pedido: bots mais rápidos como o original + conferir inteligência): (a) ritmo = original: início do turno 700 ms (era 1300),
+                  1ª rodada 700+500 ms (era 900+700), após o reforço max(450, bolhas+80) (era 1000), 480 ms entre ataques (era 800+1100 = 1900:
+                  agora escolhe e ataca no mesmo passo), reagrupar max(350, bolhas+120) (era 900/500); passar de ataque->reagrupar sem espera.
+                  vrPop agora devolve a duração (= popCounts). Interruptor VR_BOT_FAST (false = ritmo antigo). (b) INTELIGÊNCIA conferida contra
+                  aiTurn: teto de conquistas por turno (turnos 1-2: 90% 1 / 10% 2; 3-5: 50% 1-2, 50% até 3), maxAtks = min(30, max(2..8, poder/3)),
+                  ordem Tanques->Aviões->Troca->Reforço->Ataques->Reagrupar = IDÊNTICOS. Nada de regra mudou. TESTAR no Quest.
+           [x] 51. FEITO (pedido: sempre mais leve, sem perder nitidez): TELA DE PASSAR PEÇAS (reforço G.rch, conquista G.mv, reagrupamento
+                  G.fortify) agora é a FAIXA 3 (VR_CHOOSER_BAND, vrBands[3], 1230x390 px) em vez do canvas grande. Segurar o território (+1 a cada
+                  120 ms) ou clicar ◀ ▶ reenviava 4,7 Mpix + mipmaps por passo; agora ~0,5 Mpix. Mesma resolução (VR_CANVAS_K) e mesmo desenho.
+                  Os textos NÃO ficaram mais leves por si (são canvas 2D em textura, o jeito mais barato que há aqui); o ganho é reenviar menos.
+                  Ainda no canvas grande: aviso (toast), LOG, cartas, objetivo, configurações, dicas, intro do turno, estatísticas, fim de jogo.
+                  TESTAR no Quest: a tela aparece no mesmo lugar, com sombra, por cima da barra de baixo; ◀ ▶ −10/+10 X OK respondem.
+           [x] 52. FEITO: AVISO temporário (toast: eliminação / carta bônus) = FAIXA 4 (VR_TOAST_BAND, 1980x368 px) fora do canvas grande; mesmo desenho
+                  (drawToast), mesma resolução. Aparece/some sem reenviar 4,7 Mpix. false = canvas grande. TESTAR: aviso no mesmo lugar (canto inferior).
+           [x] 53. FEITO: PAINÉIS Informações, Dicas e Regras (faixa 5, esquerda 800x960) e Objetivo, LOG, Configurações (faixa 6, direita 1090x960)
+                  saem do canvas grande (VR_PANEL_BANDS): cada reenvio/hover cai de 4,7 Mpix para ~1,7/2,4 Mpix. Mesma resolução e desenho.
+                  Se cartas/mão/intro/míssil estiverem abertos junto, tudo volta ao canvas grande (como antes). TESTAR cada painel no Quest: posição, sombra,
+                  rolagem (SCAREA) e cliques. Se algum painel ficar cortado, aumente a faixa em VR_BAND_DEFS (5/6).
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -338,6 +373,13 @@
       /* etapa 38 (pedido): no VR o mapa só é arrastado SEGURANDO A GARRA (grip) esquerda ou direita. O gatilho volta a só clicar.
          No PC continua: segurar o botão do mouse e arrastar. (true = gatilho também arrasta, como na etapa 34) */
       const VR_TRIGGER_DRAGS_MAP = false;
+      /* etapa 50 (pedido: bots mais rápidos, como o original): tempos copiados de aiTurn/doNextAttack/doAiFortifyAndEnd/_doFirstRoundTurn.
+         false = ritmo lento antigo (etapas 18/48). */
+      const VR_BOT_FAST = true;
+      const VR_BOT_TURN_START = VR_BOT_FAST ? 700 : 1300; // original: setTimeout(aiTurn, 700)
+      const VR_BOT_P1_START = VR_BOT_FAST ? 700 : 900; // 1ª rodada: espera antes de colocar (original 700)
+      const VR_BOT_P1_NEXT = VR_BOT_FAST ? 500 : 700; // 1ª rodada: espera depois de colocar (original 500)
+      const VR_BOT_ATK_GAP = 480; // entre ataques (original 480)
       const VR_MAP_3D_FILLS = true;
       /* Etapa 5: bordas em 3D. Em false, as bordas voltam a ser desenhadas no canvas (c.stroke). */
       const VR_MAP_3D_STROKES = VR_MAP_3D_FILLS;
@@ -1196,6 +1238,40 @@
       const VR_CLOCK_3D = true;
       let vrClockOn = false, // true = o relógio é o mini-plano 3D (draw() NÃO o pinta no canvas)
         vrClockBad = false; // se der erro no mini-plano, desliga sozinho e volta ao canvas
+      /* etapa 49 (9): HUD EM FAIXAS 3D. A barra de cima (título, Dicas e Regras, relógio, Objetivo, Configurações), a de baixo (Informações,
+         caixa azul, botões de ação, Mísseis, Aviões) e o texto "Zoom"/⟲ viram 3 mini-planos 3D com textura própria (pequena), na frente da tela.
+         Enquanto NÃO há painel/modal/aviso desenhado no canvas grande, um clique só reenvia essas faixas (~0,8 Mpix) e NÃO a HUD inteira
+         (2880x1620 = 4,7 Mpix). Com qualquer painel aberto (cartas, objetivo, configurações, soldados, aviso, introdução do turno...), as faixas
+         voltam para o canvas grande, igual ao antigo (por isso a ordem de empilhamento dos painéis não muda).
+         false = tudo no canvas como antes. Se algo da HUD sumir/ficar desatualizado, teste com false. */
+      const VR_HUD_BANDS = true;
+      const VR_BAND_DEFS = [
+        { x0: 0, y0: 0, w: 1920, h: 90 }, // 0: barra de cima
+        { x0: 0, y0: 970, w: 1920, h: 110 }, // 1: barra de baixo
+        { x0: 0, y0: 880, w: 300, h: 105 }, // 2: "Zoom 1,2x" e botão ⟲
+        { x0: 760, y0: 820, w: 820, h: 260 }, // 3 (etapa 51): tela de passar peças (reforço / conquista / reagrupamento), com a sombra
+        { x0: 300, y0: 740, w: 1320, h: 245 }, // 4 (etapa 52): aviso temporário (toast), acima da barra de baixo
+        { x0: 0, y0: 60, w: 800, h: 960 }, // 5 (etapa 53): painéis da ESQUERDA: Informações (x10-330) e Dicas e Regras (x10-770)
+        { x0: 830, y0: 60, w: 1090, h: 960 }, // 6 (etapa 53): painéis da DIREITA: Objetivo (x853), LOG (x1200) e Configurações (x1610)
+      ];
+      /* etapa 53: os 5 painéis que abrem sob a barra de cima (Informações, Dicas e Regras, Objetivo, LOG, Configurações) saem do canvas grande:
+         cada um cai na faixa 5 (esquerda) ou 6 (direita), ~1/3 do tamanho do canvas. Cartas, mão, intro do turno, míssil e fim de jogo seguem no
+         canvas grande. false = tudo no canvas grande. */
+      const VR_PANEL_BANDS = true;
+      let vrPanelLOn = false,
+        vrPanelROn = false;
+      /* etapa 51: a tela de passar peças (◀ ▶ −10/+10 X OK) é a que mais redesenha (segurar o território = +1 a cada 120 ms).
+         Antes cada passo reenviava o canvas grande (2880x1620 = 4,7 Mpix + mipmaps) à GPU; agora só a faixa 3 (1230x390 = 0,5 Mpix).
+         Mesma resolução e aparência. false = a tela volta ao canvas grande. */
+      const VR_CHOOSER_BAND = true;
+      let vrChooserBandOn = false;
+      /* etapa 52: o AVISO temporário (toast: eliminação / carta bônus) também sai do canvas grande -> faixa 4. false = canvas grande. */
+      const VR_TOAST_BAND = true;
+      let vrToastBandOn = false;
+      let vrBands = null, // criado junto da tela (mais abaixo)
+        vrBandsOn = false, // true = a HUD deste draw() foi para as faixas
+        vrMainInk = true, // true = o canvas grande tem algo desenhado neste draw()
+        vrMainLastInk = true; // o que foi enviado à GPU da última vez
       const VR_LABEL_DENS_MIN = 2.5; // etapa 45: 2 -> 2.5 (nomes/números dos territórios; teto continua 3). etapa 39: 1.5 -> 2
 
       /* etapa 45 (NITIDEZ): a tela do cinema fica a ~9 m e a textura é MINIFICADA (mais texels que pixels do óculos). Com mipmap
@@ -1222,6 +1298,16 @@
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
       let c = S.getContext("2d"); // let: a etapa 7 troca c temporariamente pelo mini-canvas de cada rótulo
+      const vrMainCtx = c; // etapa 49: contexto do canvas grande (as faixas da HUD trocam c por um contexto próprio)
+      function vrBandBegin(i) {
+        if (!vrBandsOn || !vrBands) return;
+        const b = vrBands[i];
+        b.g.setTransform(b.D, 0, 0, b.D, -b.d.x0 * b.D, -b.d.y0 * b.D);
+        c = b.g;
+      }
+      function vrBandEnd() {
+        c = vrMainCtx;
+      }
       const COL = ["#d62828", "#2378c8", "#228b3a", "#f6e03e", "#85299a", "#f06a0a"],
         PN = ["Vermelho", "Azul", "Verde", "Amarelo", "Roxo", "Laranja"];
       const rl = (i) => RU[i].o.find((o) => o[0] == RS[i])[1];
@@ -1615,6 +1701,25 @@
       }
       const cpLeft = () => (G.cp || []).reduce((s, x) => s + x.n, 0),
         totPend = () => G.pend + cpLeft();
+      /* ===== etapa 48 (item 3): REFORÇOS POR PASSOS, igual ao original (advanceReinfFlow / reinfDistributeLabel) =====
+         Antes: todos os direitos juntos (continente + metade + troca) podiam ser colocados de uma vez e a caixa azul só mostrava o 1º.
+         Agora o jogador humano segue a ORDEM do original, um passo por vez (a caixa azul informa o passo atual):
+           s1 = soldados de direito de cada continente (um continente por vez; regra 06-A: só dentro dele; 06-B: em qualquer território)
+           s2 = metade dos territórios (livre)   s3 = troca de cartas (livre)   depois: tanques/fábricas (G.ts, como já era).
+         Os dados (G.cp, G.pend, G.tp) NÃO mudam de formato: na regra 06-B os continentes ficam em G.vrBc (só para os passos) e já estão
+         somados em G.pend. Bots não usam isto. Devolve null se não há nada pendente. */
+      function vrRStep() {
+        if (!G || G.ph != "R") return null;
+        const anyK = RS[5] != "A",
+          lst = anyK ? G.vrBc || [] : G.cp || [],
+          ce = lst.find((x) => x.n > 0 && (!anyK || G.pend > 0));
+        if (ce) return { s: "s1", ce, k: ce.k, kind: ce.kind, n: anyK ? Math.min(ce.n, G.pend) : ce.n, any: anyK };
+        if (G.pend <= 0) return null;
+        const free = G.pend - (anyK ? lst.reduce((a, x) => a + x.n, 0) : 0),
+          terr = free - (G.tp || 0);
+        if (terr > 0) return { s: "s2", n: terr, any: true };
+        return { s: "s3", n: Math.max(0, free), any: true };
+      }
       /* Regra 12: sistemas de aleatoriedade dos dados */
       const RNG = (() => {
         const u32 = () => crypto.getRandomValues(new Uint32Array(1))[0];
@@ -1835,7 +1940,7 @@
         if (needHand()) G.hand = 1;
         if (G.bot[G.cur]) {
           G.msg = "1ª Rodada: " + PN[G.cur] + " (BOT) posiciona 3 soldados…";
-          G.bt = performance.now() + 900;
+          G.bt = performance.now() + VR_BOT_P1_START;
         } else
           G.msg =
             "1ª Rodada — " +
@@ -2843,9 +2948,11 @@
           if (RS[5] == "A") {
             G.pend = bd.terr;
             G.cp = bd.cp.map((x) => ({ ...x }));
+            G.vrBc = [];
           } else {
             G.pend = bonus(G.cur);
             G.cp = [];
+            G.vrBc = bd.cp.map((x) => ({ ...x })); // etapa 48: passos de continente da regra 06-B (já somados em G.pend)
           }
         }
         G.sel = null;
@@ -2904,7 +3011,7 @@
         G.ai = null;
         if (G.bot[G.cur]) {
           G.msg = "Vez do " + PN[G.cur] + " (BOT)…";
-          G.bt = performance.now() + 1300;
+          G.bt = performance.now() + VR_BOT_TURN_START;
         }
       }
       function nextPhase(auto) {
@@ -3297,8 +3404,10 @@
         if (G.ph == "P1") return Math.max(0, G.pend);
         if (G.ph != "R") return 0;
         if (r.kind == "arm") {
-          const ce = (G.cp || []).find((x) => x.k == contOf(r.t) && x.n > 0);
-          return (ce ? ce.n : 0) + Math.max(0, G.pend);
+          const st = vrRStep(); // etapa 48: só o passo atual (antes: continente + livres juntos)
+          if (!st) return 0;
+          if (st.s == "s1" && !st.any && contOf(r.t) != st.k) return 0;
+          return st.n;
         }
         const m = G.ts && G.ts.mode;
         if (!G.ts || totPend() > 0) return 0;
@@ -3326,14 +3435,8 @@
         const r = { t, n: 1, max: 0, kind };
         r.max = rchMax(r);
         if (r.max < 1) {
-          if (kind == "arm" && G.ph == "R" && cpLeft() > 0)
-            G.msg =
-              "Os soldados restantes são de direito de " +
-              G.cp
-                .filter((x) => x.n)
-                .map((x) => x.k)
-                .join(", ") +
-              " e só podem ir para lá.";
+          if (kind == "arm" && G.ph == "R" && vrRStep() && vrRStep().s == "s1")
+            G.msg = "Os soldados restantes são de direito de " + vrRStep().k + " e só podem ir para lá.";
           return;
         }
         G.sel = null;
@@ -3352,22 +3455,21 @@
         if (n < 1) return;
         if (G.ph == "R") vrWaterFlashUntil = performance.now() + 450; // etapa 11d
         if (r.kind == "arm") {
-          for (let i = 0; i < n; i++) {
-            const k = contOf(t);
-            if (G.ph == "P1") {
+          if (G.ph == "P1") {
+            for (let i = 0; i < n; i++) {
+              const k = contOf(t);
               G.n[t]++;
               G.pend--;
               G.frc[k] = (G.frc[k] || 0) + 1;
-            } else {
-              const cp = G.cp.find((x) => x.k == k && x.n > 0);
-              if (cp) {
-                cp.n--;
-                G.n[t]++;
-              } else if (G.pend > 0) {
-                G.pend--;
-                G.n[t]++;
-              }
             }
+          } else {
+            /* etapa 48: o passo atual (vrRStep) decide de onde saem os soldados */
+            const st = vrRStep();
+            if (st && st.s == "s1") {
+              st.ce.n -= n;
+              if (st.any) G.pend -= n; // 06-B: o continente já estava somado em G.pend
+            } else G.pend -= n;
+            G.n[t] += n;
           }
           const L = totPend();
           vrPop([t]); // etapa 11a
@@ -4013,25 +4115,32 @@
             const ls = wrapL(L + "= " + s, 1480, 24, 4),
               h = ls.length * 32 + 22,
               sel = RS[ex] == L,
-              k = "o" + L;
-            btns.push({
-              x: 200,
-              y,
-              w: 1520,
-              h,
-              k,
-              fn: () => {
-                RS[ex] = L;
-                ex = -1;
-              },
-            });
+              k = "o" + L,
+              /* etapa 48 (item 4): igual ao original (applyMapSelection): com o Mundo Equilibrado (regra 01 = A) a opção B da
+                 regra 05 (Parcialidade) fica desativada (opaca e sem clique): só vale a Totalidade. */
+              off = ex == 4 && L == "B" && RS[0] == "A";
+            if (!off)
+              btns.push({
+                x: 200,
+                y,
+                w: 1520,
+                h,
+                k,
+                fn: () => {
+                  RS[ex] = L;
+                  if (ex == 0 && L == "A" && RS[4] == "B") RS[4] = "A"; // etapa 48: mapa equilibrado volta a regra 05 para A
+                  ex = -1;
+                },
+              });
+            if (off) c.globalAlpha = 0.35;
             rr(200, y, 1520, h, 10);
-            c.fillStyle = sel ? "#1a8f3a" : hover == "b:" + k ? "#25405f" : "#0e1828";
+            c.fillStyle = sel ? "#1a8f3a" : !off && hover == "b:" + k ? "#25405f" : "#0e1828";
             c.fill();
             c.lineWidth = sel ? 4 : 2;
             c.strokeStyle = sel ? "#fff" : "#2a3a52";
             c.stroke();
             ls.forEach((q, j) => TX(q, 220, y + 27 + j * 32, 24, "#fff", "left", 1));
+            if (off) c.globalAlpha = 1;
             y += h + 12;
           });
           btns.push({ x: 0, y: 0, w: 1920, h: 1080, k: "x", fn: () => (ex = -1) });
@@ -5691,6 +5800,11 @@
           f = (v) => Math.round(v + (255 - v) * a);
         return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
       };
+      /* etapa 48 (item 2): número de soldados do território igual ao original (.terr-count): Segoe UI normal, branco,
+         contorno preto de largura countStroke = max(5, round(cs*0.176)) (antes: T() = Arial negrito, contorno z/6, mais fino). */
+      function TC(n, x, y, lm) {
+        TK(String(n), x, y, lm.cs, "#fff", Math.max(5, Math.round(lm.cs * 0.176)));
+      }
       function TK(s, x, y, z, col, sw) {
         c.font = `${z}px "Segoe UI",Arial,sans-serif`;
         c.textAlign = "center";
@@ -5939,6 +6053,9 @@
         btns = [];
         OVR = [];
         vrClockOn = false; // etapa 44: só o trecho do relógio (mais abaixo) a liga
+        c = vrMainCtx; // etapa 49: segurança (se um desenho anterior parou no meio de uma faixa)
+        vrBandsOn = false;
+        vrMainInk = true;
         if (G && scr != "menu") {
           stUpd();
           if (scr == "win" && !G.gEnd) G.gEnd = Date.now();
@@ -6107,7 +6224,7 @@
             }
             if (G.fillHid && G.fillHid.has(t)) continue;
             drawTankIcons(t, x, y, lm);
-            T(G.n[t], x, y, lm.cs);
+            TC(G.n[t], x, y, lm);
             if (G.airMode && G.airTarget === t)
               T(
                 "✈",
@@ -6129,6 +6246,35 @@
           }
         }
         c.setTransform(VR_CANVAS_K, 0, 0, VR_CANVAS_K, 0, 0);
+        /* etapa 49: o canvas grande só tem tinta quando há painel/aviso/modal (tudo que é desenhado DEPOIS da HUD fixa, abaixo). */
+        const vrChB = VR_CHOOSER_BAND && !!vrBands && !!vrBands[3],
+          vrToB = VR_TOAST_BAND && !!vrBands && !!vrBands[4],
+          vrPaB = VR_PANEL_BANDS && !!vrBands && !!vrBands[6],
+          vrOvX = (!vrPaB && (showLog || showObj || showInfo || showRules || showCfg)) || (G && G.hand) || showCards; // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
+        vrMainInk = !(
+          VR_HUD_BANDS &&
+          vrBands &&
+          scr == "game" &&
+          (vrChB ? !vrOvX : !anyOv()) &&
+          (vrToB || !G.toast) &&
+          !G.intro &&
+          !G.p1intro &&
+          (vrChB || !G.rch) &&
+          !G.missileTrade &&
+          !G.hand
+        );
+        vrChooserBandOn = !vrMainInk && vrChB && !!(G.mv || G.fortify || G.rch);
+        vrToastBandOn = !vrMainInk && vrToB && !!G.toast;
+        vrPanelLOn = !vrMainInk && vrPaB && !!(showInfo || showRules);
+        vrPanelROn = !vrMainInk && vrPaB && !!(showLog || showObj || showCfg);
+        vrBandsOn = !vrMainInk;
+        if (vrBandsOn)
+          for (const b of vrBands) {
+            b.g.setTransform(1, 0, 0, 1, 0, 0);
+            b.g.clearRect(0, 0, b.cv.width, b.cv.height);
+            b.t.needsUpdate = true;
+          }
+        vrBandBegin(0);
         TITLE(912, 43, 46, 1);
         const ov = anyOv() || scr == "win";
         const tl = TL[RS[2].charCodeAt(0) - 65],
@@ -6181,9 +6327,15 @@
           },
           { z: 30 },
         );
+        vrBandEnd();
+        vrBandBegin(1);
         B(10, 990, 320, 80, "INFORMAÇÕES", cycleInfo, { z: 30 });
+        vrBandEnd();
+        vrBandBegin(2);
         if (scr == "game") ZW();
+        vrBandEnd();
         const nb = G.bot[G.cur];
+        vrBandBegin(1);
         /* ===== BARRA INFERIOR IGUAL AO ORIGINAL =====
            Original: caixa azul informativa (#actionGroup, esquerda 350) + botão de ação
            (#actionButtonGroup, encostado em 400px da direita). Sem "dica da fase", sem linha
@@ -6196,14 +6348,15 @@
             info = "DISTRIBUA SOLDADOS DE DIREITO\nPELA PRIMEIRA RODADA";
           } else if (G.ph == "R") {
             const st = G.ts || (G.tsQueue && G.tsQueue[0]);
-            const cpx = (G.cp || []).find((x) => x.n > 0),
+            /* etapa 48 (item 3): igual ao original (reinfDistributeLabel): a caixa azul mostra o PASSO ATUAL e só a quantidade dele */
+            const rs = vrRStep(),
               DA = { "América do Norte": "da América do Norte", "América do Sul": "da América do Sul", Europa: "da Europa", África: "da África", Ásia: "da Ásia", Oceania: "da Oceania" };
-            if (cpx) {
-              num = cpx.n;
-              info = "Soldados de Direito " + (DA[cpx.k] || "de " + cpx.k) + " (" + cpx.kind + ")";
-            } else if (totPend() > 0) {
-              num = totPend();
-              info = RS[5] != "A" ? "DISTRIBUA\nSUAS SOLDADOS" : G.pend - (G.tp || 0) > 0 ? "DISTRIBUA SOLDADOS DE DIREITO\nPELA METADE DOS TERRITÓRIOS" : "PELA TROCA\nDE CARTAS";
+            if (rs && rs.s == "s1") {
+              num = rs.n;
+              info = "Soldados de Direito " + (DA[rs.k] || "de " + rs.k) + " (" + (rs.kind || "Totalidade") + ")" + (rs.any ? "\nem qualquer Território de sua posse" : "");
+            } else if (rs) {
+              num = rs.n;
+              info = rs.s == "s2" ? "DISTRIBUA SOLDADOS DE DIREITO\nPELA METADE DOS TERRITÓRIOS" : "PELA TROCA\nDE CARTAS";
             } else if (st && st.mode == "factory") info = "POSICIONE SUA\nFÁBRICA DE TANQUES";
             else if (st && st.mode == "planeFactory") info = "POSICIONE SUA\nFÁBRICA DE AVIÕES";
             else if (st) {
@@ -6281,8 +6434,13 @@
             k: "airmode",
             bg: G.airMode ? "#ff6a00" : (G.pl[G.cur] || 0) > 0 ? "#1a8f3a" : "#333",
           });
+        vrBandEnd();
+        vrBandBegin(4); // etapa 52: aviso na faixa 4 (se ativa)
         if (scr == "game" && G.toast && !G.intro) drawToast();
+        vrBandEnd();
+        vrBandBegin(6);
         if (showLog && scr == "game") drawLogPanel();
+        vrBandEnd();
         if (G.hand && scr == "game" && !G.p1intro) {
           btns = [];
           PANEL(560, 300, 800, 420);
@@ -6340,6 +6498,7 @@
             { z: 28 },
           );
         }
+        vrBandBegin(3); // etapa 51: telas de passar peças na faixa 3 (se a faixa estiver ativa)
         if (G.mv && scr == "game") {
           const v = G.mv,
             adjust = (delta) => {
@@ -6395,6 +6554,7 @@
             btns = btns.concat(keep); // a tela fica na frente; zoom/menu continuam clicáveis
           }
         }
+        vrBandEnd();
         if (scr == "win" && showStats) {
           statsScreen();
           return;
@@ -6939,16 +7099,24 @@
         }
         SCAREA = {};
         if (showObj && scr == "game") {
+          vrBandBegin(6);
           drawObjectivePanel();
+          vrBandEnd();
         }
         if (showInfo && scr == "game") {
+          vrBandBegin(5);
           drawInfoPanel();
+          vrBandEnd();
         }
         if (showRules && scr == "game") {
+          vrBandBegin(5);
           drawTipsPanel();
+          vrBandEnd();
         }
         if (showCfg && scr == "game") {
+          vrBandBegin(6);
           drawConfigPanel();
+          vrBandEnd();
         }
       }
       function pick(x, y, noTerr) {
@@ -7155,7 +7323,7 @@
           now = performance.now();
         if (G.ph == "P1") {
           vrPopDiff(botP1, { maxTotal: 1200 });
-          G.bt = now + 900;
+          G.bt = now + VR_BOT_P1_START;
           G.ph = "P1w";
           setTimeout(() => {
             if (G.ph == "P1w") {
@@ -7163,7 +7331,7 @@
               draw();
               tex.needsUpdate = true;
             }
-          }, 700);
+          }, VR_BOT_P1_NEXT);
           return;
         }
         if (G.ph == "P1w" || G.ph == "P0") return;
@@ -7176,13 +7344,14 @@
           botPlaneTurn(p);
           const tr = botTrade(p);
           vrPopDiff(botReinforce, { maxTotal: 1200 }); // etapa 11a
+          const reinfMs = vrPopDiff.ms || 0;
           nextPhase(true);
           G.msg =
             PN[p] +
             " (BOT) reforçou suas posições." +
             (tr ? ` Trocou cartas por ${tr} soldados.` : "");
           addLog(G.msg);
-          G.bt = now + 1000;
+          G.bt = now + (VR_BOT_FAST ? Math.max(450, reinfMs + 80) : 1000); // etapa 50: original = max(450, popMs+80)
           return;
         }
         if (G.ph == "A") {
@@ -7199,34 +7368,35 @@
                 A.fc = bFocus(p);
               }
             }
-            G.bt = now + 1100;
+            G.bt = now + (VR_BOT_FAST ? VR_BOT_ATK_GAP : 1100); // etapa 50: original = 480 ms entre ataques
             return;
           }
           if (A.mx == null) A.mx = vrAiMaxAtks(p);
           if (A.a >= A.mx || A.cq >= A.cap) {
             nextPhase();
-            G.bt = now + 500;
+            G.bt = now + (VR_BOT_FAST ? 0 : 500);
             return;
           }
           const best = vrAiPick(p, A); // etapa 18: aiAttackPool + aiScoreAttack (melhor pontuação, sem sorteio)
           if (!best) {
             nextPhase();
-            G.bt = now + 500;
+            G.bt = now + (VR_BOT_FAST ? 0 : 500);
             return;
           }
           A.pa = best;
           G.sel = best[0];
           G.msg = PN[p] + " (BOT) ataca " + best[1] + " a partir de " + best[0] + "…";
-          G.bt = now + 800;
+          G.bt = now + (VR_BOT_FAST ? 0 : 800); // etapa 50: escolhe e ataca no mesmo ritmo do original (480 ms por ataque)
           return;
         }
         if (!A.fd) {
           A.fd = 1;
           const m = vrPopDiff(botFortify, { maxTotal: 1400 });
+          const fortMs = vrPopDiff.ms || 0;
           G.msg =
             PN[p] + (m ? " (BOT) reagrupou " + m + " soldado(s)." : " (BOT) manteve as posições.");
           addLog(G.msg);
-          G.bt = now + (m ? 900 : 500);
+          G.bt = now + (VR_BOT_FAST ? Math.max(350, fortMs + 120) : m ? 900 : 500); // original = max(350, popMs+120)
           return;
         }
         nextPhase();
@@ -7361,6 +7531,59 @@
         scene.add(mesh);
         return { R0, DENS, cv, t2, mesh, sig: "" };
       })();
+      /* etapa 49 (9): 3 faixas da HUD (ver VR_HUD_BANDS). Plano na frente da tela (renderOrder 1000,5; o relógio é 1001). */
+      vrBands = VR_BAND_DEFS.map((d) => {
+        const D = VR_CANVAS_K,
+          SC = 9.6 / 1920,
+          cv = document.createElement("canvas");
+        cv.width = Math.ceil(d.w * D);
+        cv.height = Math.ceil(d.h * D);
+        const t = new THREE.CanvasTexture(cv);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.premultiplyAlpha = true;
+        t.generateMipmaps = true;
+        t.minFilter = THREE.LinearMipmapLinearFilter;
+        t.anisotropy = 16;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(d.w * SC, d.h * SC),
+          new THREE.MeshBasicMaterial({
+            map: t,
+            toneMapped: false,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.CustomBlending,
+            blendSrc: THREE.OneFactor,
+            blendDst: THREE.OneMinusSrcAlphaFactor,
+          }),
+        );
+        mesh.renderOrder = 1000.5 + (d.x0 == 760 ? 0.1 : d.x0 == 300 ? 0.2 : d.h == 960 ? 0.3 : 0); // faixa 3 (tela de peças) por cima das barras, como no canvas
+        mesh.position.set((d.x0 + d.w / 2 - 960) * SC, 3.15 + (540 - (d.y0 + d.h / 2)) * SC, -8.8485);
+        mesh.visible = false;
+        scene.add(mesh);
+        return { d, D, cv, g: cv.getContext("2d"), t, mesh };
+      });
+      function vrBandsSync() {
+        const on = VR_HUD_BANDS && vrBandsOn && !!G && scr == "game";
+        vrBands.forEach((b, i) => {
+          const v = i == 3 ? on && vrChooserBandOn : i == 4 ? on && vrToastBandOn : i == 5 ? on && vrPanelLOn : i == 6 ? on && vrPanelROn : on;
+          if (b.mesh.visible !== v) b.mesh.visible = v;
+        });
+      }
+      /* Só reenvia o canvas grande à GPU se ele tem tinta agora OU tinha na última vez (para apagar o que sobrou). */
+      {
+        const proto = Object.getOwnPropertyDescriptor(THREE.Texture.prototype, "needsUpdate");
+        Object.defineProperty(tex, "needsUpdate", {
+          configurable: true,
+          get() {
+            return proto.get ? proto.get.call(this) : false;
+          },
+          set(v) {
+            if (v && VR_HUD_BANDS && !vrMainInk && !vrMainLastInk) return; // nada no canvas grande e já estava limpo na GPU
+            if (v) vrMainLastInk = vrMainInk;
+            proto.set.call(this, v);
+          },
+        });
+      }
       function vrClockSync() {
         if (!VR_CLOCK_3D || vrClockBad) {
           if (vrClk.mesh.visible) vrClk.mesh.visible = false;
@@ -7565,13 +7788,11 @@
           if (totPend() > 0) for (const t of owns) out.add(t);
           return out;
         }
-        if (G.pend > 0) {
-          for (const t of owns) out.add(t);
-        } else if (cpLeft() > 0) {
-          for (const x of G.cp || [])
-            if (x.n)
-              for (const t of (G.M.K[x.k] && G.M.K[x.k].t) || [])
-                if (G.own[t] === G.cur) out.add(t);
+        const rst = vrRStep(); // etapa 48: só os territórios do passo atual
+        if (rst) {
+          if (rst.s == "s1" && !rst.any) {
+            for (const t of (G.M.K[rst.k] && G.M.K[rst.k].t) || []) if (G.own[t] === G.cur) out.add(t);
+          } else for (const t of owns) out.add(t);
         } else if (G.ts) {
           for (const t of owns) {
             if (G.ts.mode === "factory" && G.fac[t]) continue;
@@ -8205,7 +8426,7 @@
           }
           if (!(G.fillHid && G.fillHid.has(t))) {
             drawTankIcons(t, 0, 0, lm);
-            if (!vrPopActive(t)) T(vrDispN(t), 0, 0, lm.cs); // prévia (setPreviewArmies); na bolha o número é outro plano
+            if (!vrPopActive(t)) TC(vrDispN(t), 0, 0, lm); // prévia (setPreviewArmies); na bolha o número é outro plano
             if (G.airMode && G.airTarget === t) vrDrawPlaneSusp(lm); // etapa 13
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
           }
@@ -8234,7 +8455,7 @@
         opts = opts || {};
         const now = performance.now(),
           list = [...new Set((items || []).filter(Boolean).map((it) => (typeof it == "string" ? it : it.t + "|k")))];
-        if (!list.length) return;
+        if (!list.length) return 0;
         let step = VR_POP_STEP;
         if (opts.maxTotal && list.length > 1) step = Math.max(25, Math.min(step, (opts.maxTotal - VR_POP_DUR) / (list.length - 1)));
         list.forEach((t, i) => {
@@ -8242,6 +8463,7 @@
           if (cur && cur.start <= now && now < cur.start + VR_POP_DUR * 0.4) return; // não reinicia enquanto infla
           vrPops[t] = { start: now + Math.round(i * step) };
         });
+        return Math.round((list.length - 1) * step + VR_POP_DUR); // etapa 50: = retorno de popCounts do original
       }
       function vrPopActive(t, kind) {
         const p = vrPops[kind ? t + "|k" : t];
@@ -8266,7 +8488,7 @@
           if (tkOf(t) < bk[t]) dec.push({ t });
           else if (tkOf(t) > bk[t]) inc.push({ t });
         }
-        vrPop(dec.concat(inc), opts);
+        vrPopDiff.ms = vrPop(dec.concat(inc), opts) || 0; // etapa 50: duração das bolhas, usada no ritmo do bot
         return r;
       }
       function vrPopTick() {
@@ -8337,7 +8559,7 @@
             c = g;
             try {
               if (isK) TK(num, 0, 0, Math.round(lm.cs * 0.78), lighten(COL[G.own[t]], 0.5), Math.max(5, Math.round(lm.cs * 0.176)));
-              else T(num, 0, 0, lm.cs);
+              else TC(num, 0, 0, lm);
             } finally {
               c = c0;
             }
@@ -9608,6 +9830,17 @@
         tm = new THREE.Matrix4(),
         ctl = [];
       ray.layers.enable(3); // etapa 35: malhas invisíveis de clique dos territórios (layer 3, fora do render)
+      /* etapa 48 (item 1): zoom com as duas garras. A cada VR_GRIP_ZOOM_RATIO de variação na distância entre as mãos = 1 nível de zoom. */
+      const VR_GRIP_ZOOM_RATIO = 1.12,
+        vGripOn = new Set(),
+        vhA = new THREE.Vector3(),
+        vhB = new THREE.Vector3();
+      let vZoom = null;
+      function vHandDist() {
+        ctl[0].getWorldPosition(vhA);
+        ctl[1].getWorldPosition(vhB);
+        return Math.max(0.01, vhA.distanceTo(vhB));
+      }
       let vGrab = null,
         vTrig = null, // etapa 34: gatilho segurado sobre o mapa (clique OU arrastar o mapa)
         zAcc = 0;
@@ -9799,6 +10032,13 @@
           if (vTrig && vTrig.k === k) vTrig = null;
         });
         k.addEventListener("squeezestart", () => {
+          vGripOn.add(k);
+          /* etapa 48 (item 1): as DUAS garras apertadas no mapa = zoom pela distância entre as mãos (afastar = +, aproximar = −). */
+          if (vGripOn.size >= 2 && mapOn()) {
+            vGrab = null;
+            vZoom = { d0: vHandDist() };
+            return;
+          }
           const h = aim(k);
           if (h && mapOn() && !inOvr(h.x, h.y)) {
             const zs = zsc();
@@ -9806,6 +10046,8 @@
           }
         });
         k.addEventListener("squeezeend", () => {
+          vGripOn.delete(k);
+          vZoom = null; // soltou uma das garras: acaba o zoom (a outra só volta a arrastar se apertar de novo)
           if (vGrab && vGrab.k === k) vGrab = null;
         });
         rig.add(k);
@@ -9981,6 +10223,7 @@
         vrSyncLabels(); // etapa 7
         vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
+        vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
         vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
@@ -10071,6 +10314,21 @@
               vGrab = { k: vTrig.k, mx: VB.x + vTrig.x0 / zs, my: VB.y + vTrig.y0 / zs, trig: true };
             }
           }
+          if (vZoom && vGripOn.size >= 2 && ctl.length >= 2 && mapOn()) {
+            const d = vHandDist(),
+              h0 = aim(ctl[0]),
+              h1 = aim(ctl[1]),
+              ax = h0 && h1 ? (h0.x + h1.x) / 2 : h0 ? h0.x : h1 ? h1.x : 960,
+              ay = h0 && h1 ? (h0.y + h1.y) / 2 : h0 ? h0.y : h1 ? h1.y : 540;
+            for (let g = 0; g < 4 && d / vZoom.d0 >= VR_GRIP_ZOOM_RATIO; g++) {
+              zoomAt(1, ax, ay);
+              vZoom.d0 *= VR_GRIP_ZOOM_RATIO;
+            }
+            for (let g = 0; g < 4 && d / vZoom.d0 <= 1 / VR_GRIP_ZOOM_RATIO; g++) {
+              zoomAt(-1, ax, ay);
+              vZoom.d0 /= VR_GRIP_ZOOM_RATIO;
+            }
+          } else if (vZoom) vZoom = null;
           if (vGrab) {
             const h = aim(vGrab.k);
             if (h) {
