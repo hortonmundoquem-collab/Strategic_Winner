@@ -524,6 +524,12 @@
                   saiu da faixa 5 e ganhou a FAIXA 7 (x0-440, y60-1020) com densidade própria VR_INFO_D = 3 (o resto da HUD e o mapa NÃO mudaram).
                   vrInfoBandOn controla a visibilidade; a faixa 7 só é limpa/enviada à GPU com o painel aberto. Dicas e Regras segue na faixa 5.
                   TESTAR no Quest: nitidez das 3 abas; se pesar/travar, VR_INFO_D 3 -> 2,5 ou 2.
+           [x] 76. FEITO (pedido: boa resolução/nitidez em TODAS as letras, incl. configurador de regras): VR_CANVAS_K 1.5 -> 2 (canvas 3840x2160),
+                  novo VR_BAND_D = 2.5 (faixas da HUD, antes 1.5), VR_LABEL_DENS_MIN 2.5 -> 3, VR_XR_SCALE 1.3 -> 1.5. Faixas 5/6/7 só são
+                  limpas/enviadas quando abertas. Ordem para aliviar se pesar: VR_XR_SCALE 1.3, VR_CANVAS_K 1.5, VR_BAND_D 2, VR_INFO_D 2.5.
+           [x] 77. FEITO (pedido): PUNHO ESQUERDO: botão INFORMAÇÕES + 3 abas giradas 90° para a esquerda (VR_WR_ROT, grupo vrWristRot). As abas
+                  Jogadores e Tanques/Aviões aparecem COMPLETAS, sem barra de rolagem (altura = conteúdo medido por drawInfoBody; canvas VR_WR_HMAX).
+                  Só a aba das cartas rola (barra vertical) e só quando as cartas passam de VR_WR_LH. A tela do cinema não mudou.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1459,7 +1465,7 @@
       /* Etapa 20: o original NÃO tem contornos amarelos pontilhados nos territórios de direito (continente/tanques/fábricas):
          ele só suspende (levante) e escurece o resto. false = igual ao original. */
       const VR_DASH_OVERLAYS = false;
-      const VR_CANVAS_K = 1.5; // etapa 45: 1 -> 1.5 (HUD 2880x1620: letras pequenas da HUD mais nítidas; se pesar, volte a 1.25 ou 1)
+      const VR_CANVAS_K = 2; // etapa 76: 1.5 -> 2 (canvas 3840x2160: telas de configuração/regras, cartas, modais; se pesar, volte a 1.5) | antes: etapa 45: 1 -> 1.5 (HUD 2880x1620: letras pequenas da HUD mais nítidas; se pesar, volte a 1.25 ou 1)
       /* etapa 44 (9d): RELÓGIO DO TURNO em mini-plano 3D. Com limite de tempo, o tick() redesenhava e reenviava o canvas inteiro
          (1920x1080) 1x POR SEGUNDO só para mudar "0:59" -> "0:58". Agora o relógio é um pequeno plano 3D (mesma aparência: reaproveita
          BADGE) e só ele é redesenhado. Quando algum painel/tela cobre o canto (anyOv, vitória, intro...), o relógio volta ao canvas
@@ -1478,6 +1484,7 @@
          com densidade VR_INFO_D (o resto da HUD segue em VR_CANVAS_K = 1,5). 3 = 1320x2880 px (3,8 Mpix, só enquanto o painel está aberto).
          Se pesar: 2,5 ou 2. Se quiser ainda mais nítido: 4. (o punho usa 2 sobre 320 px lógicos, o painel da tela é 411 px lógicos.) */
       const VR_INFO_D = 3;
+      const VR_BAND_D = 2.5; // etapa 76: densidade das demais faixas da HUD (barras, painéis, avisos); antes usavam VR_CANVAS_K = 1.5. Se pesar: 2
       const VR_BAND_DEFS = [
         { x0: 0, y0: 0, w: 1920, h: 90 }, // 0: barra de cima
         { x0: 0, y0: 970, w: 1920, h: 110 }, // 1: barra de baixo
@@ -1507,7 +1514,7 @@
         vrBandsOn = false, // true = a HUD deste draw() foi para as faixas
         vrMainInk = true, // true = o canvas grande tem algo desenhado neste draw()
         vrMainLastInk = true; // o que foi enviado à GPU da última vez
-      const VR_LABEL_DENS_MIN = 2.5; // etapa 45: 2 -> 2.5 (nomes/números dos territórios; teto continua 3). etapa 39: 1.5 -> 2
+      const VR_LABEL_DENS_MIN = 3; // etapa 76: 2.5 -> 3 (teto). antes: // etapa 45: 2 -> 2.5 (nomes/números dos territórios; teto continua 3). etapa 39: 1.5 -> 2
 
       /* etapa 45 (NITIDEZ): a tela do cinema fica a ~9 m e a textura é MINIFICADA (mais texels que pixels do óculos). Com mipmap
          trilinear o three escolhe um nível já suavizado, o que deixa as letras pequenas borradas. VR_LOD_BIAS < 0 faz a GPU
@@ -1529,7 +1536,7 @@
           );
         };
       const VR_FOVEATION = 0; // etapa 35/36: 0 = igual ao original (sem foveação, qualidade máxima). Valores maiores economizam GPU mas borram as bordas.
-      const VR_XR_SCALE = 1.3; // etapa 39: 1.0 -> 1.3 (imagem estava esfumaçada; se voltar a tremer, baixe para 1.15). etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
+      const VR_XR_SCALE = 1.5; // etapa 76: 1.3 -> 1.5 (é o que mais afina o texto no óculos; se travar/tremer volte a 1.3). antes: // etapa 39: 1.0 -> 1.3 (imagem estava esfumaçada; se voltar a tremer, baixe para 1.15). etapa 32: 1.2 -> 1.0 (imagem balançando = GPU no limite; 1.2 = mais nítido, mais pesado)
       S.width = Math.round(1920 * VR_CANVAS_K);
       S.height = Math.round(1080 * VR_CANVAS_K);
       let c = S.getContext("2d"); // let: a etapa 7 troca c temporariamente pelo mini-canvas de cada rótulo
@@ -6924,7 +6931,7 @@
         vrBandsOn = !vrMainInk;
         if (vrBandsOn)
           for (const [bi, b] of vrBands.entries()) {
-            if (bi === 7 && !vrInfoBandOn) continue; // etapa 75: faixa grande só é limpa/enviada com o painel Informações aberto
+            if ((bi === 5 && !vrPanelLOn) || (bi === 6 && !vrPanelROn) || (bi === 7 && !vrInfoBandOn)) continue; // etapas 75/76: faixas grandes só são limpas/enviadas com o painel aberto
             b.g.setTransform(1, 0, 0, 1, 0, 0);
             b.g.clearRect(0, 0, b.cv.width, b.cv.height);
             b.t.needsUpdate = true;
@@ -8387,14 +8394,16 @@
          tela NÃO mexe no do punho e vice-versa. Rolagem: aponte a mão direita para o painel do punho e use o analógico direito.
          Ajustes: VR_WR_W (largura em m), VR_WR_LH (altura lógica), VR_WR_POS (posição em cima da mão), VR_WR_TILT (inclinação). */
       const VR_WR_LW = 320, // largura lógica (igual ao original)
-        VR_WR_LH = 520, // altura lógica (o que passar disso rola)
+        VR_WR_LH = 520, // altura lógica MÁXIMA da aba das cartas (etapa 77: só ela rola, quando as cartas passam disso)
+        VR_WR_HMAX = 1400, // etapa 77: altura do canvas (as abas Jogadores e Tanques/Aviões mostram o conteúdo COMPLETO, sem rolagem)
+        VR_WR_ROT = Math.PI / 2, // etapa 77: giro do botão + abas no próprio plano (+90° = para a esquerda; use -Math.PI / 2 para a direita)
         VR_WR_D = 2, // densidade de pixels do canvas
         VR_WR_W = 0.26, // largura do painel em metros
         VR_WR_BW = 0.2, // largura do botão (m)
         VR_WR_BH = 0.06, // altura do botão (m)
         VR_WR_TILT = 0.45, // inclinação (rad) para o painel "olhar" para o jogador
         VR_WR_POS = [0, 0.07, 0.04]; // posição no controle esquerdo: x, y (para cima), z (para trás)
-      const VR_WR_H = (VR_WR_W * VR_WR_LH) / VR_WR_LW;
+      const VR_WR_H = (VR_WR_W * VR_WR_HMAX) / VR_WR_LW; // etapa 77: altura do plano cheio (o desenho usa só a parte de cima)
       const wr = { open: 0, tab: 1, hover: false, sig: "", sigB: "" };
       function wrMk(w, h) {
         const cv = document.createElement("canvas");
@@ -8408,7 +8417,7 @@
         t.anisotropy = 8;
         return { cv, g: cv.getContext("2d"), t };
       }
-      const wrP = wrMk(VR_WR_LW * VR_WR_D, VR_WR_LH * VR_WR_D),
+      const wrP = wrMk(VR_WR_LW * VR_WR_D, VR_WR_HMAX * VR_WR_D),
         wrB = wrMk(400, 120);
       const wrMat = (t) =>
         new THREE.MeshBasicMaterial({
@@ -8429,7 +8438,10 @@
       wrBtnMesh.renderOrder = 1300;
       wrPanMesh.renderOrder = 1301;
       wrBtnMesh.visible = wrPanMesh.visible = false;
-      vrWrist.add(wrBtnMesh, wrPanMesh);
+      const vrWristRot = new THREE.Group(); // etapa 77: gira botão + abas 90° no plano da mão
+      vrWristRot.rotation.z = VR_WR_ROT;
+      vrWristRot.add(wrBtnMesh, wrPanMesh);
+      vrWrist.add(vrWristRot);
       let wrHost = null;
       /* cola o grupo no controle esquerdo (todo quadro; barato) e liga/desliga a visibilidade */
       function vrWristAttach() {
@@ -8489,24 +8501,38 @@
         const g = wrP.g,
           c0 = c,
           W = VR_WR_LW,
-          H = VR_WR_LH,
           tab = wr.tab === 3 && !hasThirdTab() ? 1 : wr.tab;
-        g.setTransform(VR_WR_D, 0, 0, VR_WR_D, 0, 0);
-        g.clearRect(0, 0, W, H);
         c = g;
         try {
+          /* etapa 77: 1) mede o conteúdo (desenho de teste numa altura grande); 2) abas Jogadores / Tanques e Aviões ficam COMPLETAS
+             (altura = conteúdo, sem rolagem); a aba das cartas cresce com as cartas até VR_WR_LH e, só depois, rola (barra vertical). */
+          g.setTransform(VR_WR_D, 0, 0, VR_WR_D, 0, 0);
+          g.clearRect(0, 0, W, VR_WR_HMAX);
+          const total = drawInfoBody(tab, 0, 0, W, VR_WR_HMAX, 0, false, null);
+          let H = Math.min(VR_WR_HMAX, Math.ceil(total + 6));
+          if (tab === 2) H = Math.max(90, Math.min(VR_WR_LH, H));
+          const scrolls = tab === 2 && total + 6 > H;
+          SCMAX.wrist = scrolls ? Math.max(0, total - (H - 6)) : 0;
+          SCR.wrist = clampN(SCR.wrist, 0, SCMAX.wrist);
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, W * VR_WR_D, VR_WR_HMAX * VR_WR_D);
+          g.setTransform(VR_WR_D, 0, 0, VR_WR_D, 0, 0);
           /* moldura azul do original (sem registrar nada em OVR) */
           rr(0, 0, W, H, 14);
           c.fillStyle = "#0a3a6a";
           c.fill();
-          const total = drawInfoBody(tab, 0, 0, W, H, SCR.wrist, false, null);
-          SCMAX.wrist = Math.max(0, total - (H - 6));
-          SCR.wrist = clampN(SCR.wrist, 0, SCMAX.wrist);
-          SBAR(0, 0, W, H, SCR.wrist, SCMAX.wrist);
+          drawInfoBody(tab, 0, 0, W, H, SCR.wrist, false, null);
+          if (scrolls) SBAR(0, 0, W, H, SCR.wrist, SCMAX.wrist);
           rr(1.5, 1.5, W - 3, H - 3, 12.5);
           c.lineWidth = 3;
           c.strokeStyle = "#fff";
           c.stroke();
+          /* o plano mostra só a parte de cima (H) do canvas */
+          const f = H / VR_WR_HMAX;
+          wrP.t.repeat.set(1, f);
+          wrP.t.offset.set(0, 1 - f);
+          wrPanMesh.scale.y = f;
+          wrPanMesh.position.y = VR_WR_BH / 2 + 0.012 + (VR_WR_H * f) / 2;
         } catch (e) {
           console.error("wrDrawPanel", e);
         } finally {
@@ -8573,7 +8599,7 @@
       })();
       /* etapa 49 (9): 3 faixas da HUD (ver VR_HUD_BANDS). Plano na frente da tela (renderOrder 1000,5; o relógio é 1001). */
       vrBands = VR_BAND_DEFS.map((d) => {
-        const D = d.D || VR_CANVAS_K,
+        const D = d.D || VR_BAND_D,
           SC = 9.6 / 1920,
           cv = document.createElement("canvas");
         cv.width = Math.ceil(d.w * D);
