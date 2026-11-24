@@ -461,6 +461,47 @@
                       (reforço G.rch, conquista G.mv, reagrupamento G.fortify) usam a mesma função.
                   TESTAR no Quest: início na 3ª fileira; G em Configurações; pilares ausentes; tela de passar
                   peças com a moldura de baixo inteira e na mesma altura do original.
+           [x] 69. FEITO (pedido do dono: BOTÃO MÍSSEIS não subia nenhum território): BUG DE VERDADE, achado e
+                  corrigido em missileCardTargets(). O `else` do Coringa estava PRESO no `if` de dentro do `for`
+                  (else pendurado), então com G.missileJokerPick = false a função não percorria carta nenhuma e
+                  devolvia {} — o modo ligava, mas nenhum alvo entrava em vrLiftedSet(), o mapa não escurecia e
+                  clicar em qualquer território dizia "Nenhuma carta sua corresponde a um território inimigo
+                  atacável agora." Agora com chaves: sem Coringa = cartas do jogador; com Coringa = inimigos 2+.
+                  Testado: modo liga, os 3 territórios das cartas sobem, o resto escurece, o painel de troca por
+                  mísseis abre com ALVO DO MÍSSIL na 1ª carta e "ATACAR COM MÍSSEIS" apagado com 1 ponto (modo A
+                  exige 2+), como no original. Nenhuma regra de combate mudou.
+           [x] 70. FEITO (pedido do dono: tela de vitória com texto errado + estatísticas travando):
+                  (1) VITÓRIA refeita IGUAL ao showVictory do original: caixa 520 px, padding 24/26, nome 34,
+                      "VITORIA!(APOCALIPTICA)" 26 com letter-spacing 2, hype com as margens/fontes do original
+                      (o CSS global do original força Arial em tudo, então as fontes inline do hype não valem),
+                      subtítulo 14, OBJETIVO 12 respeitando cada <br> do texto e ALTURA CALCULADA. Antes a caixa
+                      tinha 600 px, fontes maiores e o objetivo era limitado a 2 linhas — o fim da frase saía
+                      cortado ("…") e passava por baixo dos botões.
+                  (2) ESTATÍSTICAS: VR_STATS_ANIM_MS 100 -> 0. A cada 100 ms a tela redesenhava o canvas da HUD
+                      inteiro (2880x1620 = 4,7 Mpix) e reenviava a textura COM MIPMAPS (~47 Mpix/s): era isso que
+                      travava. Agora é desenhada uma vez (com os destaques acesos, pzT fixo em 0,42) e fica parada.
+                      Para reativar os pulsos, use 250 (1/4 do custo) ou 100 (custo antigo).
+                  TESTAR no Quest: mísseis subindo os alvos das cartas; tela de vitória igual à do PC (nada cortado);
+                  estatísticas abrindo sem engasgo.
+           [x] 71. FEITO (pedido do dono): BOTÃO E AS 3 TELAS DE "INFORMAÇÕES" NA PAREDE ESQUERDA.
+                  O botão saiu da barra de baixo da tela e foi para a PAREDE ESQUERDA da sala, no canto
+                  perto do mapa, com o MESMO desenho (verde "INFORMAÇÕES") e o mesmo comportamento
+                  (cada toque: tela 1 -> 2 -> 3 -> fecha). As 3 telas (Jogadores / Cartas / Tanques e
+                  Aviões) deixaram o canvas da tela e agora são desenhadas num painel 3D próprio na
+                  parede (vrWall): 6,9 m ao longo da parede (VR_WALL_W) x 8,91 m de altura, do chão
+                  (0,45 m, mesma linha de baixo da tela) até a altura do mapa (~9,36 m) -> MUITO maior
+                  que a tira de 320 px de antes, com layout largo e fontes grandes (título 40, nomes 40,
+                  números 48; cartas 3 ou 4 por linha até 10, com silhueta e nome grandes).
+                  Canvas do painel: 1200x1550 (VR_WALL_CW/CH) -> textura 1,86 Mpix, redesenhada SÓ quando
+                  o conteúdo muda (vrWallSig, conferida a cada 150 ms) = custo praticamente zero.
+                  Clique: gatilho VR (vrWallAim) e mouse (vrWallHitRay) apontando para o painel; o botão
+                  acende no hover. O painel só existe na partida (scr == "game"). Para deixar o painel
+                  mais baixo/mais horizontal, diminua VR_WALL_CH (ou aumente VR_WALL_W).
+                  Removidos: o botão "INFORMAÇÕES" da barra de baixo e o desenho do painel estreito na
+                  tela (drawInfoPanel não é mais chamado; a faixa 5 ficou só para Dicas e Regras), e
+                  showInfo saiu de anyOv() — abrir as informações não escurece mais a HUD.
+                  TESTAR no Quest: botão no canto da parede esquerda, 3 telas grandes e legíveis, troca
+                  por gatilho/mouse, e o mapa continua clicável normalmente com a tela aberta.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -2766,9 +2807,15 @@
       }
       function missileCardTargets() {
         const set = {};
-        /* etapa 65: com o CORINGA escolhido como 1ª carta, o mapa mostra TODOS os inimigos com 2+ pontos. */
-        if (G.missileJokerPick) for (const t of G.T) if (missileJokerEligible(t)) set[t] = 1;
-        else for (const card of G.cards[G.cur] || []) if (missileCardCanAttack(card)) set[card.t] = 1;
+        /* etapa 69 (BUG CORRIGIDO): o `else` estava preso no `if` de DENTRO do for (else pendurado), então
+           com missileJokerPick = false a função NÃO percorria carta nenhuma e devolvia sempre {} —
+           por isso o botão MÍSSEIS não subia nenhum território ("Nenhuma carta sua corresponde...").
+           Agora com chaves: normal = cartas do jogador; Coringa = qualquer inimigo com 2+ pontos. */
+        if (G.missileJokerPick) {
+          for (const t of G.T) if (missileJokerEligible(t)) set[t] = 1;
+        } else {
+          for (const card of G.cards[G.cur] || []) if (missileCardCanAttack(card)) set[card.t] = 1;
+        }
         return set;
       }
       function cancelMissileArm() {
@@ -4538,6 +4585,7 @@
       let showLog = 0;
       function cycleInfo() {
         SCR.info = 0;
+        vrWallSig0 = ""; // etapa 71: força o painel da parede a se redesenhar
         const hasThird =
           tanksOn() || planesOn() || (missilesOn() && RS[7] === "A");
         const lastTab = hasThird ? 3 : 2;
@@ -5438,9 +5486,8 @@
         (G && G.hand) ||
         showCards ||
         showObj ||
-        showInfo ||
         showRules ||
-        showCfg;
+        showCfg; // etapa 71: showInfo não é mais um painel da tela (vive na parede)
       /* Só telas realmente modais bloqueiam o mapa inteiro. */
       /* etapa 46: conquista (G.mv) e reagrupamento (G.fortify) NÃO bloqueiam mais o mapa: o painel de peças é pequeno e flutuante (como no original)
          e o clique/segurar nos territórios de origem/destino faz ▶/◀ (vChooserStep). */
@@ -5883,7 +5930,10 @@
           blk = 1;
         /* etapa 57: animações de pulso do original (bdNamePulse, bdStatusPulse, bdStar, bdPulseTxt, bdFrame, bdObj).
            pls(T) = 0..1..0 suave com período T segundos; PULSE = texto centrado com escala/rotação/brilho (como transform+text-shadow). */
-        const pzT = performance.now() / 1000,
+        /* etapa 70: com a animação desligada (VR_STATS_ANIM_MS = 0) a fase é FIXA em 0,42 -> os destaques
+           (nome do campeão, ★ CAMPEÃO, ✔ OBJETIVO CUMPRIDO, moldura do objetivo) aparecem acesos, e não no
+           instante apagado em que o dedo do jogador caiu. */
+        const pzT = VR_STATS_ANIM_MS ? performance.now() / 1000 : 0.42,
           pls = (T) => 0.5 - 0.5 * Math.cos((2 * Math.PI * (pzT % T)) / T),
           PULSE = (q, xc, y, z, col, sc, rot, gA, bA, gB, bB) => {
             q = translateCanvasText(q).toUpperCase();
@@ -6811,7 +6861,7 @@
         const vrChB = VR_CHOOSER_BAND && !!vrBands && !!vrBands[3],
           vrToB = VR_TOAST_BAND && !!vrBands && !!vrBands[4],
           vrPaB = VR_PANEL_BANDS && !!vrBands && !!vrBands[6],
-          vrOvX = (!vrPaB && (showLog || showObj || showInfo || showRules || showCfg)) || (G && G.hand) || showCards; // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
+          vrOvX = (!vrPaB && (showLog || showObj || showRules || showCfg)) || (G && G.hand) || showCards; // etapa 71: sem showInfo // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
         vrMainInk = !(
           VR_HUD_BANDS &&
           vrBands &&
@@ -6826,7 +6876,7 @@
         );
         vrChooserBandOn = !vrMainInk && vrChB && !!(G.mv || G.fortify || G.rch);
         vrToastBandOn = !vrMainInk && vrToB && !!G.toast;
-        vrPanelLOn = !vrMainInk && vrPaB && !!(showInfo || showRules);
+        vrPanelLOn = !vrMainInk && vrPaB && !!showRules; // etapa 71: showInfo vive na parede (vrWall)
         vrPanelROn = !vrMainInk && vrPaB && !!(showLog || showObj || showCfg);
         vrBandsOn = !vrMainInk;
         if (vrBandsOn)
@@ -6890,7 +6940,7 @@
         );
         vrBandEnd();
         vrBandBegin(1);
-        B(10, 990, 320, 80, "INFORMAÇÕES", cycleInfo, { z: 30 });
+        /* etapa 71: o botão INFORMAÇÕES saiu daqui e foi para a PAREDE ESQUERDA (vrWall / vrWallDraw). */
         vrBandEnd();
         vrBandBegin(2);
         if (scr == "game") ZW();
@@ -7009,11 +7059,7 @@
             drawObjectivePanel();
             vrBandEnd();
           }
-          if (showInfo && scr == "game") {
-            vrBandBegin(5);
-            drawInfoPanel();
-            vrBandEnd();
-          }
+          /* etapa 71: as 3 telas de INFORMAÇÕES agora são desenhadas na PAREDE ESQUERDA (vrWallDraw). */
           if (showRules && scr == "game") {
             vrBandBegin(5);
             drawTipsPanel();
@@ -7191,58 +7237,82 @@
           }, "#1a8f3a", "w-new");
           ZW();
         } else if (scr == "win") {
-          // Tela de VITÓRIA igual ao original
+          /* ===== etapa 70 (pedido do dono): TELA DE VITÓRIA IGUAL AO ORIGINAL (showVictory) =====
+             Antes: caixa de 600 px com fontes grandes e o texto do OBJETIVO cortado em 2 linhas — o
+             fim da frase aparecia truncado e por baixo dos botões. Agora são as MESMAS medidas do
+             original (caixa 520, padding 24/26, nome 34, "VITORIA!" 26 com letter-spacing 2, hype
+             com as mesmas margens, subtítulo 14, objetivo 12 respeitando cada <br> do texto, botões
+             14 com padding 10x26) e a ALTURA é CALCULADA: nada se sobrepõe nem é cortado.
+             Obs.: no original o CSS global `*{font-family:Arial!important}` sobrepõe as fontes
+             inline do hype (Impact/Trebuchet/Georgia/Verdana), então aqui tudo usa Arial também. */
           btns = [];
-          const world = G.why == "Conquistou todos os territórios do mundo!" || cnt(G.win) == G.T.length, // etapa 57: igual ao original (conqueredWorld = todos os territórios)
-            obj = String(G.why || "").replace(/^Objetivo cumprido:\s*/, ""),
+          const world = G.why == "Conquistou todos os territórios do mundo!" || cnt(G.win) == G.T.length,
+            objTxt = String(
+              (G.winObj && G.winObj.txt) || String(G.why || "").replace(/^Objetivo cumprido:\s*/, ""),
+            ),
             col = COL[G.win],
+            W = 520,
+            PADX = 26,
+            PADY = 24,
+            IW = W - PADX * 2,
             hype = world
               ? [
-                  /* etapa 9h: fonte, brilho (text-shadow), rotação e espaçamento iguais ao hype do original */
-                  ["Conquistou o mundo, seu bucêêêêt.", "#ffdd55", 30, "Impact, Haettenschweiler, 'Arial Black', sans-serif", "#ff7a00", 18, -4, 0, ""],
-                  ["ABSURDO. MÍTICO. TOTAL.", "#8ef7ff", 26, "'Trebuchet MS', Arial, sans-serif", "#00d0ff", 16, 0, 3, ""],
-                  ["Não sobrou pedra sobre pedra.", "#ffd6f5", 24, "Georgia, serif", "#ff44cc", 14, 0, 0, "italic "],
-                  ["DOMÍNIO GLOBAL SEM MISERICÓRDIA.", "#ffffff", 24, "Verdana, sans-serif", "#ffffff", 14, 0, 2, ""],
+                  ["Conquistou o mundo, seu bucêêêêt.", "#ffdd55", 22, "#ff7a00", 18, -4, 0, ""],
+                  ["ABSURDO. MÍTICO. TOTAL.", "#8ef7ff", 18, "#00d0ff", 16, 0, 3, ""],
+                  ["Não sobrou pedra sobre pedra.", "#ffd6f5", 16, "#ff44cc", 14, 0, 0, "italic "],
+                  ["DOMÍNIO GLOBAL SEM MISERICÓRDIA.", "#ffffff", 16, "#ffffff", 14, 0, 2, ""],
                 ]
-              : [["Você é o bichão mermo em doido!", "#ffffff", 28, "Arial", "rgba(255,255,255,0.35)", 16, 0, 0, ""]],
-            hh = 330 + hype.length * 44,
-            y0 = (1080 - hh) / 2;
+              : [["Você é o bichão mermo em doido!", "#ffffff", 18, "rgba(255,255,255,0.35)", 16, 0, 0, ""]];
+          /* linhas do objetivo: cada <br> do original começa uma linha nova; o resto quebra na largura */
+          const objLines = [];
+          for (const seg of objTxt.split(/<br\s*\/?>/i))
+            for (const q of wrapL(seg, IW, 12, 20)) objLines.push(q);
+          const HNAME = 41,
+            HVIT = 31,
+            HSUB = 17,
+            LHOBJ = 15,
+            HBTN = 38,
+            HYPE_H = hype.reduce((a, q) => a + q[2] * 1.2 + 12, 0);
+          const H =
+            PADY + HNAME + 8 + HVIT + 12 + HYPE_H + 12 + HSUB + 6 + 8 + objLines.length * LHOBJ + 16 + HBTN + PADY;
+          const X0 = 960 - W / 2,
+            Y0 = Math.max(24, (1080 - H) / 2);
           c.fillStyle = "rgba(0,0,0,.85)";
           c.fillRect(0, 0, 1920, 1080);
-          /* etapa 9h: sombra da caixa (box-shadow 0 8px 40px rgba(0,0,0,.9)) */
+          /* sombra da caixa (box-shadow 0 8px 40px rgba(0,0,0,.9)) */
           c.save();
           c.shadowColor = "rgba(0,0,0,0.9)";
           c.shadowBlur = 40;
           c.shadowOffsetY = 8;
-          rr(660, y0, 600, hh, 14);
+          rr(X0, Y0, W, H, 14);
           c.fillStyle = "#0a1628";
           c.fill();
           c.restore();
-          /* etapa 9h: listras diagonais douradas (repeating-linear-gradient 135deg, opacity .15) */
+          /* listras diagonais douradas (repeating-linear-gradient 135deg, opacity .15) */
           c.save();
-          rr(660, y0, 600, hh, 14);
+          rr(X0, Y0, W, H, 14);
           c.clip();
           c.globalAlpha = 0.15;
           c.fillStyle = "rgba(255,215,0,0.18)";
-          c.translate(960, y0 + hh / 2);
+          c.translate(960, Y0 + H / 2);
           c.rotate(Math.PI / 4);
-          const sd = Math.hypot(600, hh) / 2 + 28;
+          const sd = Math.hypot(W, H) / 2 + 28;
           for (let k = -sd; k < sd; k += 28) c.fillRect(k + 14, -sd, 14, sd * 2);
           c.restore();
-          rr(660, y0, 600, hh, 14);
-          c.lineWidth = 3;
+          rr(X0, Y0, W, H, 14);
+          c.lineWidth = 2; // original: border 2px na cor do jogador
           c.strokeStyle = col;
           c.stroke();
-          /* etapa 9h: texto com brilho colorido (text-shadow 0 0 Npx cor) */
-          const GTX = (q, x, y, z, cl, font, glow, blur, rot = 0, ls = 0, sty = "") => {
+          /* texto com brilho colorido (text-shadow 0 0 Npx cor) */
+          const GTX = (q, x, y, z, cl, glow, blur, rot = 0, ls = 0, sty = "") => {
             c.save();
             c.translate(x, y);
             if (rot) c.rotate((rot * Math.PI) / 180);
-            c.font = `${sty}${z}px ${font}`;
+            c.font = `${sty}${z}px Arial`;
             c.textAlign = "center";
             c.textBaseline = "middle";
             if ("letterSpacing" in c) c.letterSpacing = ls + "px";
-            q = translateCanvasText(q).toUpperCase(); // etapa 57: o original tem text-transform:uppercase em tudo
+            q = translateCanvasText(q).toUpperCase();
             c.shadowColor = glow;
             c.shadowBlur = blur;
             c.fillStyle = cl;
@@ -7251,18 +7321,30 @@
             if ("letterSpacing" in c) c.letterSpacing = "0px";
             c.restore();
           };
-          GTX(String(cfg.names[G.win]), 960, y0 + 50, 44, col, "Arial", col, 18);
-          GTX(world ? "VITORIA APOCALIPTICA!" : "VITORIA!", 960, y0 + 108, 36, "#ffdd00", "Arial", "rgba(0,0,0,0)", 0, 0, 2);
-          hype.forEach(([q, cl, z, f, gl, bl, rot, ls, sty], i) => GTX(q, 960, y0 + 165 + i * 44, z, cl, f, gl, bl, rot, ls, sty));
-          const yb = y0 + 165 + hype.length * 44;
-          TX(world ? "Objetivo concluido e o mundo inteiro ajoelhou." : "Objetivo concluido.", 960, yb + 4, 22, "#dfe8ff", "center");
-          wrapL(obj, 540, 20, 2).forEach((q, i) => TX(q, 960, yb + 40 + i * 26, 20, "#aec", "center"));
-          B(690, y0 + hh - 90, 260, 64, "Estatísticas", () => (showStats = 1), { z: 26, bg: "#0a1e2a", borderColor: "#7fc9ff", textColor: "#7fc9ff" });
-          B(970, y0 + hh - 90, 260, 64, "Nova Partida", () => {
+          let yv = Y0 + PADY;
+          GTX(String(cfg.names[G.win]), 960, yv + HNAME / 2, 34, col, col, 18); // nome
+          yv += HNAME + 8;
+          TX(world ? "VITORIA APOCALIPTICA!" : "VITORIA!", 960, yv + HVIT / 2, 26, "#ffdd00", "center", 1); // letter-spacing 2
+          yv += HVIT + 12;
+          hype.forEach(([q, cl, z, gl, bl, rot, ls, sty]) => {
+            GTX(q, 960, yv + 6 + (z * 1.2) / 2, z, cl, gl, bl, rot, ls, sty);
+            yv += z * 1.2 + 12;
+          });
+          yv += 12;
+          TX(world ? "Objetivo concluido e o mundo inteiro ajoelhou." : "Objetivo concluido.", 960, yv + HSUB / 2, 14, "#dfe8ff", "center", 1);
+          yv += HSUB + 6 + 8;
+          objLines.forEach((q, i) => TX(q, 960, yv + LHOBJ / 2 + i * LHOBJ, 12, "#aec", "center", 1));
+          yv += objLines.length * LHOBJ + 16;
+          const bwA = Math.ceil(chooserTextWidth("Estatísticas", 14)) + 52,
+            bwB = Math.ceil(chooserTextWidth("Nova Partida", 14)) + 52,
+            bx = 960 - (bwA + bwB + 10) / 2;
+          B(bx, yv, bwA, HBTN, "Estatísticas", () => (showStats = 1), { z: 14, bg: "#0a1e2a", borderColor: "#7fc9ff", textColor: "#7fc9ff", k: "win-stats" });
+          B(bx + bwA + 10, yv, bwB, HBTN, "Nova Partida", () => {
             scr = "menu";
             hover = "";
-          }, { z: 26, bg: "#1a2a00", borderColor: "#ffdd00", textColor: "#ffdd00" });
+          }, { z: 14, bg: "#1a2a00", borderColor: "#ffdd00", textColor: "#ffdd00", k: "win-new" });
         }
+
         if (G.missileTrade && showCards && scr == "game" && !showObj) {
           /* etapa 46: tela de troca por MÍSSEIS refeita igual ao original (renderMissileTradePanel + missileCardHTML + missileFigureHTML):
              painel azul #0a3a6a 1265 px, título, caixa de cálculo (#0f2540), texto explicativo, instrução, cartas 200x262 com silhueta do continente,
@@ -8246,6 +8328,314 @@
       screen.renderOrder = 1000;
       screen.position.set(0, 3.15, -8.85);
       vrStage.add(screen); // etapa 67: a tela entra no palco (zoom geral)
+      /* =====================================================================================
+         ETAPA 71 (pedido do dono): BOTÃO E TELAS DE "INFORMAÇÕES" NA PAREDE ESQUERDA.
+         O botão sai da barra de baixo da tela e vai para a PAREDE ESQUERDA da sala, no canto
+         perto do mapa. As 3 telas (Jogadores / Cartas / Tanques e Aviões) também saem da tela
+         e passam a ser desenhadas nesse painel da parede, MUITO maiores: o painel vai do chão
+         (mesma linha de baixo da tela, 0,45 m) até a altura do mapa (topo da tela no zoom G) e
+         cresce lateralmente ao longo da parede (VR_WALL_W metros), com o conteúdo em layout
+         largo/horizontal e fontes grandes — é isso que deixa as letras grandes.
+         Para deixar mais baixo/mais horizontal: diminua VR_WALL_CH (ou aumente VR_WALL_W).
+         O botão continua com o mesmo desenho de antes (verde, "INFORMAÇÕES") e continua
+         trocando de tela a cada toque (1 -> 2 -> 3 -> fecha), igual ao cicloInfo() antigo. */
+      const VR_WALL_Z0 = -8.86, // borda da FRENTE (colada no canto do mapa / parede da frente)
+        VR_WALL_W = 6.9, // largura do painel ao longo da parede (metros) -> "cresceu lateralmente"
+        VR_WALL_X = -7.92, // encostado na parede esquerda (a parede fica em x = -8)
+        VR_WALL_BOTTOM = 0.45, // mesma linha de baixo da tela do cinema
+        VR_WALL_CW = 1200, // resolução lógica do painel (px)
+        VR_WALL_CH = 1550;
+      const VR_WALL_H = (VR_WALL_W * VR_WALL_CH) / VR_WALL_CW; // 8,91 m: do chão até ~9,36 m (altura do mapa em G)
+      const wrWallBtnX = 800,
+        wrWallBtnY = 40,
+        wrWallBtnW = 360,
+        wrWallBtnH = 116;
+      const vrWallCv = document.createElement("canvas");
+      vrWallCv.width = VR_WALL_CW;
+      vrWallCv.height = VR_WALL_CH;
+      const vrWallCtx = vrWallCv.getContext("2d");
+      const vrWallTex = new THREE.CanvasTexture(vrWallCv);
+      vrWallTex.colorSpace = THREE.SRGBColorSpace;
+      vrWallTex.premultiplyAlpha = true;
+      vrWallTex.generateMipmaps = true;
+      vrWallTex.minFilter = THREE.LinearMipmapLinearFilter;
+      vrWallTex.anisotropy = 8;
+      const vrWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(VR_WALL_W, VR_WALL_H),
+        new THREE.MeshBasicMaterial({
+          map: vrWallTex,
+          toneMapped: false,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.CustomBlending, // textura pré-multiplicada
+          blendSrc: THREE.OneFactor,
+          blendDst: THREE.OneMinusSrcAlphaFactor,
+        }),
+      );
+      vrWall.rotation.y = Math.PI / 2; // normal para +X (dentro da sala); o texto corre do fundo para a frente
+      vrWall.position.set(VR_WALL_X, VR_WALL_BOTTOM + VR_WALL_H / 2, VR_WALL_Z0 + VR_WALL_W / 2);
+      vrWall.renderOrder = 1200;
+      vrWall.visible = false;
+      scene.add(vrWall);
+      let vrWallSig0 = "", vrWallHover = false;
+      const vrWallInBtn = (x, y) =>
+        x >= wrWallBtnX && x <= wrWallBtnX + wrWallBtnW && y >= wrWallBtnY && y <= wrWallBtnY + wrWallBtnH;
+      /* desenha o painel inteiro (botão sempre; as 3 telas quando showInfo) */
+      function vrWallDraw() {
+        const g = vrWallCtx,
+          c0 = c;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, VR_WALL_CW, VR_WALL_CH);
+        c = g;
+        try {
+          /* --- BOTÃO (mesmo modelo de antes: verde com borda branca) --- */
+          rr(wrWallBtnX, wrWallBtnY, wrWallBtnW, wrWallBtnH, 12);
+          c.fillStyle = vrWallHover ? "#25b34a" : "#1a8f3a";
+          c.fill();
+          c.lineWidth = 5;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          TX("INFORMAÇÕES", wrWallBtnX + wrWallBtnW / 2, wrWallBtnY + wrWallBtnH / 2 - 8, 36, "#fff", "center", 1);
+          const hasT = hasThirdTab(),
+            lastTab = hasT ? 3 : 2,
+            tab = infoTab === 3 && !hasT ? 1 : infoTab;
+          if (!showInfo) {
+            TX("TOQUE PARA ABRIR", wrWallBtnX + wrWallBtnW / 2, wrWallBtnY + wrWallBtnH / 2 + 30, 18, "#cfe", "center", 1);
+            return;
+          }
+          /* --- CABEÇALHO --- */
+          const titles = { 1: "JOGADORES E ESTATÍSTICAS", 2: "SUAS CARTAS", 3: "TANQUES E AVIÕES" };
+          TX(titles[tab] || "INFORMAÇÕES", 40, 78, 40, "#ffdd00", "left", 1);
+          TX(`TELA ${tab} DE ${lastTab}  •  TOQUE NO BOTÃO PARA TROCAR`, 40, 128, 20, "#7fa9c9", "left", 1);
+          const vp = G.bot[G.cur] ? 0 : G.cur;
+          if (tab === 1) {
+            /* ---------- TELA 1: JOGADORES (linhas largas com números grandes) ---------- */
+            const n = cfg.n,
+              humans = G.bot.filter((b) => !b).length,
+              showPl = planesOn(),
+              rowGap = 14,
+              rowH = Math.min(220, Math.floor((1320 - (n - 1) * rowGap) / n));
+            let y = 195;
+            for (let i = 0; i < n; i++) {
+              const act = i === G.cur,
+                terr = cnt(i),
+                elim = !terr,
+                sold = solOf(i),
+                cards = (G.cards[i] || []).length,
+                plPts = showPl ? Math.max(0, (G.pl[i] || 0) * evoLv() - (G.planeDmg[i] || 0)) : 0,
+                tag = G.bot[i] ? "(IA)" : humans > 1 ? "(HUMANO)" : "(VOCÊ)";
+              rr(40, y, 1120, rowH, 14);
+              c.fillStyle = act ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.30)";
+              c.fill();
+              c.lineWidth = act ? 5 : 2;
+              c.strokeStyle = act ? "#fff" : COL[i];
+              c.stroke();
+              c.beginPath();
+              c.arc(82, y + 48, 18, 0, Math.PI * 2);
+              c.fillStyle = COL[i];
+              c.fill();
+              c.lineWidth = 3;
+              c.strokeStyle = "#000";
+              c.stroke();
+              OT(`${cfg.names[i]} ${tag}`, 118, y + 48, 40, COL[i], "left");
+              if (act) TX("JOGANDO AGORA", 1120, y + 48, 24, "#fff", "right", 1);
+              else TX(`VEZ DE ${cfg.names[G.cur]}`, 1120, y + 48, 20, "#7fa9c9", "right", 1);
+              if (elim) TX("ELIMINADO", 1120, y + 84, 26, "#ff4444", "right", 1);
+              const cells = [
+                  ["TERRITÓRIOS", terr],
+                  ["SOLDADOS", sold],
+                  ["CARTAS", cards],
+                ],
+                cwid = 1100 / cells.length,
+                cyy = y + rowH - 62;
+              cells.forEach((cell, k) => {
+                const cx2 = 50 + k * cwid;
+                rr(cx2 + 6, cyy - 44, cwid - 12, 100, 10);
+                c.fillStyle = "rgba(0,0,0,.28)";
+                c.fill();
+                c.lineWidth = 1;
+                c.strokeStyle = "#3a5a8a";
+                c.stroke();
+                TX(cell[0], cx2 + cwid / 2, cyy - 20, 20, "#cfe0ff", "center", 1);
+                TX(String(cell[1]), cx2 + cwid / 2, cyy + 28, 48, "#fff", "center", 1);
+              });
+              y += rowH + rowGap;
+            }
+          } else if (tab === 2) {
+            /* ---------- TELA 2: CARTAS (caixas grandes + 5 cartas por linha) ---------- */
+            const cardsArr = G.cards[vp] || [],
+              nextTrade = tradeBonusFor((G.tc || 0) + 1);
+            rr(40, 180, 548, 150, 12);
+            c.fillStyle = "#0a1a0a";
+            c.fill();
+            c.lineWidth = 2;
+            c.strokeStyle = "#4a8a4a";
+            c.stroke();
+            TX("PRÓXIMA TROCA DE CARTAS:", 314, 220, 22, RY, "center", 1);
+            TX(`${nextTrade} SOLDADOS`, 314, 275, 46, RG, "center", 1);
+            rr(612, 180, 548, 150, 12);
+            c.fillStyle = "rgba(0,0,0,.3)";
+            c.fill();
+            c.lineWidth = 2;
+            c.strokeStyle = "#3a5a8a";
+            c.stroke();
+            TX("TROCAS JÁ FEITAS", 886, 220, 22, "#cfe0ff", "center", 1);
+            TX(`${G.tc || 0}`, 886, 275, 46, "#fff", "center", 1);
+            TX(`${cfg.names[vp]} — ${cardsArr.length} CARTA${cardsArr.length === 1 ? "" : "S"}`, 40, 380, 34, COL[vp], "left", 1);
+            if (!cardsArr.length) TX("SEM CARTAS AINDA.", 600, 700, 34, "#557", "center", 1);
+            else {
+              /* cartas grandes, centralizadas na área livre (5 por linha até 5; depois 4 por linha) */
+              const nC = Math.min(cardsArr.length, 10),
+                rows = nC <= 4 ? 1 : nC <= 8 ? 2 : 3,
+                cols = Math.ceil(nC / rows),
+                gap = 18,
+                areaY = 420,
+                areaH = 1520 - areaY,
+                cardW = Math.min((1120 - (cols - 1) * gap) / cols, 420),
+                cardH = Math.min(cardW * 1.32, (areaH - (rows - 1) * gap) / rows),
+                blockW = cols * cardW + (cols - 1) * gap,
+                bx0 = 40 + Math.max(0, (1120 - blockW) / 2),
+                by0 = areaY;
+              cardsArr.slice(0, 10).forEach((card, i) => {
+                const cxx = bx0 + (i % cols) * (cardW + gap),
+                  cy2 = by0 + Math.floor(i / cols) * (cardH + gap),
+                  cont = card.joker ? "CORINGA" : card.cont || contOf(card.t) || "?",
+                  bg = card.joker ? "#06260f" : CONT_BG[cont] || "#1a1a1a",
+                  bd = card.joker ? "#1fa84a" : CONT_BORDER[cont] || "#444",
+                  short = card.joker ? "Qualquer Continente" : cont.replace("América do Norte", "Am. Norte").replace("América do Sul", "Am. Sul"),
+                  zN = Math.round(cardW * 0.105),
+                  zC = Math.round(cardW * 0.09),
+                  silH = cardH * 0.34,
+                  tl = wrapL(card.joker ? "CORINGA" : card.t, cardW - 28, zN, 4),
+                  sl = wrapL(short, cardW - 28, zC, 3),
+                  contentH = silH + 10 + tl.length * zN * 1.2 + 8 + 2 + 10 + sl.length * zC * 1.2;
+                rr(cxx, cy2, cardW, cardH, 10);
+                c.fillStyle = bg;
+                c.fill();
+                rr(cxx + 2, cy2 + 2, cardW - 4, cardH - 4, 8);
+                c.lineWidth = 4;
+                c.strokeStyle = bd;
+                c.stroke();
+                /* conteúdo centralizado verticalmente no cartão (antes ficava tudo no topo) */
+                let ty = cy2 + Math.max(8, (cardH - contentH) / 2);
+                drawSil(cont, cxx + cardW / 2 - cardW * 0.3, ty, cardW * 0.6, silH);
+                ty += silH + 10;
+                tl.forEach((qq, j) => OT(qq, cxx + cardW / 2, ty + j * zN * 1.2 + zN * 0.6, zN, "#ccffff", "center"));
+                ty += tl.length * zN * 1.2 + 8;
+                c.fillStyle = bd;
+                c.fillRect(cxx + 16, ty, cardW - 32, 2);
+                ty += 10;
+                sl.forEach((qq, j) => OT(qq, cxx + cardW / 2, ty + j * zC * 1.2 + zC * 0.6, zC, "#ccffee", "center"));
+              });
+            }
+            if (cardsArr.length > 10) TX(`+${cardsArr.length - 10}`, 1160, 1470, 30, "#fff", "right", 1);
+          } else {
+            /* ---------- TELA 3: TANQUES / AVIÕES (evolução, com ícones e números grandes) ---------- */
+            const lv = evoLv(),
+              tc = (G.tc || 0) + 1,
+              soldiersNow = tradeBonusFor(tc),
+              tkQty = tkTot(vp),
+              tkPts = tkQty * lv,
+              plQty = G.pl[vp] || 0,
+              plPts = Math.max(0, plQty * lv - (G.planeDmg[vp] || 0)),
+              hasT = tanksOn(),
+              hasP = planesOn(),
+              hasM = missilesOn(),
+              E = EVO_STEP,
+              nextTE = lv * E,
+              nextLv = lv + 1,
+              pl = (q) => (q === 1 ? "" : "s");
+            let mk = "";
+            if (hasM && !hasT && !hasP) {
+              if (RS[7] === "A")
+                mk =
+                  'No Modo de Jogo Sem Dados\nna Proporção "2 pra 1",\nSó poderá Atacar com Aviões ou Mísseis\nSe tiver mais de 1 Ponto.';
+              else mk = "Mísseis: veja as regras na tela de Dicas e Regras.";
+            } else if (hasT && !hasP)
+              mk = `[y]Evolução dos Tanques:[/]\n\nTanques Evoluem a cada [y]${E}[/] trocas.\n\n[y]Evolução Atual:[/]\nTroca [y]${tc}[/], [g]${soldiersNow}[/] Soldados.\nCada Tanque vale [g]${lv}[/] Ponto${pl(lv)}, LV=[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nNa Troca [y]${nextTE}[/], [g]${tradeBonusFor(nextTE)}[/] Soldados.\nCada Tanque valerá [g]${nextLv}[/] Ponto${pl(nextLv)}, LV=[y]${nextLv}[/]`;
+            else if (hasP && !hasT)
+              mk = `[y]Evolução dos Aviões:[/]\n\nAviões Evoluem a cada [y]${E}[/] trocas.\n\n[y]Evolução Atual:[/]\nTroca [y]${tc}[/], [g]${soldiersNow}[/] Soldados.\nCada Avião vale [g]${lv}[/] Ponto${pl(lv)}, LV=[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nNa Troca [y]${nextTE}[/], [g]${tradeBonusFor(nextTE)}[/] Soldados.\nCada Avião valerá [g]${nextLv}[/] Ponto${pl(nextLv)}, LV=[y]${nextLv}[/]`;
+            else
+              mk = `[y]Evolução dos Tanques e Aviões:[/]\nEles evoluem de acordo com o andamento do jogo,\nBaseado nas Trocas de Cartas Território por Soldados.\n\nTanques e Aviões evoluem a cada [y]${E}[/] Trocas.\nOu seja, nas Trocas Múltiplas de [y]${E}[/].\n\n[y]Evolução Atual:[/]\nEstamos na [y]${tc}ª[/] Troca.\nCada Tanque e Avião valem:\n[g]${lv}[/] Ponto${pl(lv)}, LV.[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nSerá na [y]${nextTE}ª[/] Troca.\nCada Tanque e Avião valerão:\n[g]${nextLv}[/] Ponto${pl(nextLv)}, LV.[y]${nextLv}[/]`;
+            let y = 180;
+            if (mk && !(hasM && !hasT && !hasP && RS[7] !== "A")) {
+              const ls = rtLines(mk, 1080, 26);
+              y += infoBox(40, y, 1120, ls, 26, 37) + 20;
+            }
+            /* colunas (tanque / avião), com ícones e números grandes */
+            const colX = (cxx, cwid, kind) => {
+              const ico = kind === "T" ? ICO.v[vp] : ICO.p[vp],
+                iw = kind === "T" ? 300 : 330,
+                ih = kind === "T" ? 206 : 291,
+                qty = kind === "T" ? tkQty : plQty,
+                pts = kind === "T" ? tkPts : plPts;
+              const boxH = Math.max(300, Math.min(620, 1516 - y)),
+                contentH = 16 + ih + 14 + 34 + 34 + 32 + 40,
+                ly0 = y + Math.max(0, (boxH - contentH) / 2);
+              let ly = ly0;
+              rr(cxx, y, cwid, boxH, 14);
+              c.fillStyle = "rgba(0,0,0,.30)";
+              c.fill();
+              c.lineWidth = 2;
+              c.strokeStyle = COL[vp];
+              c.stroke();
+              if (ico) c.drawImage(ico, cxx + cwid / 2 - iw / 2, ly + 16, iw, ih);
+              ly += 16 + ih + 14;
+              TX(kind === "T" ? `TANQUE: LV. ${lv}` : `AVIÃO: LV. ${lv}`, cxx + cwid / 2, ly + 14, 30, RY, "center", 1);
+              ly += 34;
+              TX(`QUANTIDADE: ${qty}`, cxx + cwid / 2, ly + 14, 30, "#fff", "center", 1);
+              ly += 34;
+              TX("TOTAL:", cxx + cwid / 2, ly + 14, 28, "#fff", "center", 1);
+              ly += 32;
+              TX(`${pts} PONTO${pl(pts)}`, cxx + cwid / 2, ly + 16, 34, RG, "center", 1);
+            };
+            if (hasT && hasP) {
+              colX(40, 545, "T");
+              colX(615, 545, "P");
+            } else if (hasT) colX(327, 545, "T");
+            else if (hasP) colX(327, 545, "P");
+          }
+        } catch (e) {
+          console.error("vrWallDraw", e);
+        } finally {
+          c = c0;
+        }
+      }
+      /* assinatura do conteúdo: só redesenha quando algo muda (nada de gastar GPU à toa) */
+      function vrWallSig() {
+        if (!G || scr != "game") return "off";
+        const parts = [showInfo ? infoTab : 0, G.cur, G.round || 1, G.tc || 0, evoLv(), vrWallHover ? 1 : 0, tanksOn() ? 1 : 0, planesOn() ? 1 : 0, G.bot[G.cur] ? 1 : 0];
+        if (showInfo) for (let i = 0; i < cfg.n; i++) parts.push(cnt(i), solOf(i), (G.cards[i] || []).length, G.pl[i] || 0, G.planeDmg[i] || 0, G.bot[i] ? 1 : 0);
+        return parts.join("|");
+      }
+      let vrWallT = -1e9;
+      function vrWallSync() {
+        const on = !!G && scr == "game";
+        if (vrWall.visible !== on) vrWall.visible = on;
+        if (!on) return;
+        const sg = vrWallSig();
+        if (sg === vrWallSig0) return;
+        vrWallSig0 = sg;
+        vrWallDraw();
+        vrWallTex.needsUpdate = true;
+      }
+      /* mira no painel da parede (devolve coordenadas do canvas do painel) */
+      function vrWallAim(k) {
+        if (!vrWall.visible) return null;
+        tm.identity().extractRotation(k.matrixWorld);
+        ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
+        ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
+        const h = ray.intersectObject(vrWall)[0];
+        if (!h) return null;
+        return { x: h.uv.x * VR_WALL_CW, y: (1 - h.uv.y) * VR_WALL_CH, d: h.distance };
+      }
+      function vrWallHitRay(e) {
+        if (!vrWall.visible) return null;
+        nd.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+        ray.setFromCamera(nd, cam);
+        const h = ray.intersectObject(vrWall)[0];
+        return h && { x: h.uv.x * VR_WALL_CW, y: (1 - h.uv.y) * VR_WALL_CH };
+      }
 
       /* etapa 44 (9d): mini-plano 3D do relógio do turno. Coordenadas em px de 1920x1080 (mesmas do BADGE). Região coberta:
          x 336..512, y 2..83 (contém a moldura preta de 3 px do BADGE de 150x65 em (346,10)). Densidade 2 = nítido. */
@@ -10863,6 +11253,16 @@
             vrTeleport(sa);
             return;
           }
+          /* etapa 71: apontando para o painel da PAREDE ESQUERDA (botão INFORMAÇÕES) = troca de tela */
+          const wa = vrWallAim(k);
+          if (wa) {
+            if (vrWallInBtn(wa.x, wa.y)) {
+              cycleInfo();
+              vrWallSync();
+              draw();
+            }
+            return;
+          }
           const h = aim(k);
           if (!h) return;
           const pb = pickScreenButton(h.x, h.y);
@@ -10997,6 +11397,16 @@
       });
       R.domElement.addEventListener("pointermove", (e) => {
         if (R.xr.isPresenting) return;
+        /* etapa 71: hover do mouse no painel da parede */
+        const wv = vrWallHitRay(e);
+        if (wv) {
+          const hv = vrWallInBtn(wv.x, wv.y);
+          if (hv !== vrWallHover) {
+            vrWallHover = hv;
+            vrWallSig0 = "";
+          }
+          return;
+        }
         const h = scrHit(e);
         if (!h) return;
         if (mDrag) {
@@ -11029,6 +11439,15 @@
         }
         if (mPanned) {
           mPanned = false;
+          return;
+        }
+        /* etapa 71: clique no painel da PAREDE ESQUERDA (botão INFORMAÇÕES) */
+        const wv = vrWallHitRay(e);
+        if (wv) {
+          if (vrWallInBtn(wv.x, wv.y)) {
+            cycleInfo();
+            vrWallSig0 = "";
+          }
           return;
         }
         const h = scrHit(e);
@@ -11082,7 +11501,14 @@
         vrHvY = -1e9,
         vrHvT0 = 0, // etapa 21: limitador do hover
         vrWalkNow = false; // etapa 38: andando (stick esquerdo) = hover mais espaçado
-      const VR_STATS_ANIM_MS = 100; // etapa 57: intervalo de redesenho da tela Estatísticas p/ os pulsos (0 = sem animação)
+      /* etapa 70 (pedido do dono: a tela de ESTATÍSTICAS travava o jogo): 100 -> 0.
+         A cada 100 ms essa tela redesenha o canvas da HUD INTEIRO (2880x1620 = 4,7 Mpix com VR_CANVAS_K = 1,5)
+         e reenvia a textura para a GPU COM GERAÇÃO DE MIPMAPS. Eram ~47 Mpix/s de envio + mipmaps 10x/s:
+         é isso que engasgava o Quest. Como os pulsos são só brilho/escala da decoração e a tela é de leitura,
+         ela agora é desenhada UMA vez (quando abre / quando o mouse-laser troca de botão) e fica parada,
+         com os destaques já no estado aceso (pzT fixo em 0,42 no statsScreen). Custo: praticamente zero.
+         Se quiser os pulsos de volta, use 250 (4 quadros/s = ~1/4 do custo antigo) ou 100 (custo antigo). */
+      const VR_STATS_ANIM_MS = 0;
       let vrStatsT = 0;
       R.setAnimationLoop(() => {
         tick();
@@ -11119,6 +11545,10 @@
         vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
+        if (performance.now() - vrWallT > 150) {
+          vrWallT = performance.now();
+          try { vrWallSync(); } catch (e) { console.error("vrWallSync", e); } // etapa 71: painel INFORMAÇÕES na parede
+        }
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrAirSuspSync(); // etapa 65: avião suspenso num plano mais alto que o levante
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
@@ -11280,6 +11710,16 @@
           }
           hk = hkR || hk;
           if (hkR) hkK = hkRK; // etapa 21: a mão esquerda é a de andar; o hover segue a direita quando ela mira a tela
+          /* etapa 71: botão da parede acende quando o laser passa por ele */
+          let whv = false;
+          for (const k of ctl) {
+            const wa = vrWallAim(k);
+            if (wa && vrWallInBtn(wa.x, wa.y)) {
+              whv = true;
+              break;
+            }
+          }
+          if (whv !== vrWallHover) vrWallHover = whv;
           if (hk) {
             /* etapa 21: onHover (pick = isPointInPath em todos os territórios + draw() + textura) só roda
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
