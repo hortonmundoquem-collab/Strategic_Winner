@@ -419,6 +419,32 @@
                       mini-plano próprio (vrAirSusp/vrAirSuspSync, desenhado pela mesma vrDrawPlaneSusp), em z = VR_LIFT_Z +
                       VR_AIR_SUSP_DZ = 0,20 m — pouco ACIMA dos territórios suspensos (0,10 m). Só desenho; nenhuma regra de
                       ataque mudou. TESTAR no Quest (profundidade do avião, clique do ataque aéreo e seta saindo do ícone).
+           [x] 66. FEITO (pedido do dono): TERRITÓRIO SEM INIMIGO NA FRONTEIRA NÃO SUSPENDE MAIS. Antes, na fase de ATAQUE,
+                  clicar num território seu com pontos suficientes levantava ele mesmo sem nenhum inimigo vizinho
+                  (ficava suspenso, "sozinho", e inútil). Agora vale a mesma condição do original (canBeAttackSource:
+                  own==cur && pontos >= mínimo && hasEnemyNeighbor):
+                    (1) clique na fase A: `G.sel = ptsOf(t) >= mn() && vrHasEnemyNb(t) ? t : null` (nada acontece se não
+                        houver inimigo na fronteira, igual ao original);
+                    (2) fim de attack(): se após o combate/conquista o atacante ficou sem inimigo na fronteira
+                        (ex.: conquistou o último vizinho inimigo) ou com pontos abaixo do mínimo, `G.sel = null`;
+                    (3) vrLiftedSetRaw(): na fase A a origem só entra no levante se vrHasEnemyNb(G.sel) — nas fases F/R/P1
+                        nada mudou.
+                  Função nova: vrHasEnemyNb(t) (recalculada sempre, pois o dono muda). Só visual/fluxo de clique; nenhuma
+                  regra de combate foi alterada.
+           [x] 67. FEITO (pedido do dono): ZOOM GERAL DA TELA (a TELA INTEIRA, não só o mapa) em 3 tamanhos P / M / G.
+                  Configurações > "Zoom da Tela:". P = tamanho de sempre (9,6 x 5,4 m); M = meio caminho (12,3 m);
+                  G = as laterais vão até as paredes laterais da sala (15,0 m de largura; a sala tem 16 m). Cresce
+                  proporcionalmente (mesma escala em X e Y, nada deforma) e SEM passar do chão: a borda de BAIXO da
+                  tela fica sempre a 0,45 m e o crescimento vai todo para CIMA (em G o topo fica ~8,9 m; o teto tem 10 m).
+                  Como foi feito: TODO o conteúdo da tela (canvas/HUD, mar, preenchimentos, bordas, linhas, rótulos,
+                  relógio, faixas da HUD, pássaro/satélite, explosões) agora é filho de um grupo único, VR_STAGE
+                  ("vrStage"); o zoom só escala esse grupo (vrStageApply / vrStageTick, suave em ~0,3 s). O recorte do
+                  mapa (vrClip) é recalculado junto porque as tesouras do three são em coordenadas do mundo. Clicar na
+                  tela e apontar territórios continuam certos (o raio do controle usa a matriz real do plano). NENHUMA
+                  regra do jogo mudou. Nada de brilho/texto alterado: só tamanho. As 2 faixas vermelhas decorativas
+                  viraram colunas finas junto às paredes (x = ±7,78) para não ficarem por cima da tela no tamanho G.
+                  TESTAR no Quest: P/M/G em Configurações, textura/HUD nítidas, cliques nos botões e nos territórios nos
+                  3 tamanhos, e o pássaro/satélite alinhados com o mapa.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1442,6 +1468,7 @@
           lang: readSavedLanguage(),
           walk: true,
           pose: "sit", // etapa 58: "sit" = Sentado (padrão: personagem fica na altura de em pé) | "stand" = Em Pé (altura real)
+          stageZoom: "P", // etapa 67: tamanho da tela inteira do jogo: "P" (atual) | "M" | "G" (laterais até as paredes)
           bots: [0, 1, 1, 1, 1, 1].map(Boolean),
           names: ["Jogador 1", "Bonaparte", "Gengis Khan", "Napoleao", "Bismarck", "Sun Tzu"],
         },
@@ -3520,7 +3547,18 @@
         // etapa 9j: como no original: atacante short-atk; defensor short-def, ou fast se foi conquistado
         vrShake(s, "short-atk");
         vrShake(t, G.fx.cq ? "fast" : "short-def");
-        if (ptsOf(s) < mn()) G.sel = null;
+        /* etapa 66: se o atacante deixou de ter inimigo na fronteira (ex.: conquistou o último vizinho inimigo),
+           ele desce — não faz sentido continuar suspenso sem nenhum alvo. */
+        if (ptsOf(s) < mn() || !vrHasEnemyNb(s)) G.sel = null;
+      }
+      /* etapa 66: existe pelo menos 1 território INIMIGO fazendo fronteira com t?
+         (hasEnemyNeighbor() do original; o dono pode ter mudado, então é sempre recalculado) */
+      function vrHasEnemyNb(t) {
+        const J = (G.M && G.M.J) || {};
+        const nb = J[t];
+        if (!nb) return false;
+        for (const v of nb) if (G.own[v] !== G.cur) return true;
+        return false;
       }
       function openFortifyChooser(from, to) {
         G.fortReceived = G.fortReceived || {};
@@ -3858,7 +3896,11 @@
               return;
             }
             resolvePlaneAttack(t, G.cur);
-          } else if (me) G.sel = ptsOf(t) >= mn() ? t : null;
+          } else if (me)
+            /* etapa 66 (pedido do dono): igual a canBeAttackSource() do original — só seleciona (e portanto
+               só suspende) o território se ele tiver pontos suficientes E pelo menos 1 território INIMIGO na
+               fronteira. Antes, um território cercado só de aliados subia sozinho e ficava inútil/"travado". */
+            G.sel = ptsOf(t) >= mn() && vrHasEnemyNb(t) ? t : null;
           else if (G.sel && J[G.sel].includes(t)) attack(G.sel, t);
           else G.sel = null;
         } else {
@@ -4857,6 +4899,13 @@
             "Tamanho dos aviões:",
             ["P", "M", "G"].map((v) => [sz(v), planeSize === v, () => (planeSize = v)]),
             "plane",
+          ],
+          /* etapa 67 (pedido do dono): ZOOM GERAL da tela inteira (P/M/G). Cresce proporcionalmente,
+             sem deformar, e sem passar do chão. Ver vrStage / vrStageTick no topo do 3D. */
+          [
+            "Zoom da Tela:",
+            ["P", "M", "G"].map((v) => [sz(v), (cfg.stageZoom || "P") === v, () => (cfg.stageZoom = v)]),
+            "stage",
           ],
           [
             "Mostrar LOG:",
@@ -8017,8 +8066,10 @@
       box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, 11, M_(0x1a1a2a));
       box(0.1, VR_ROOM_H, 20, -8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
       box(0.1, VR_ROOM_H, 20, 8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
-      box(1.6, 5.6, 0.3, -6.4, 3, -8.8, M_(0x8a1020));
-      box(1.6, 5.6, 0.3, 6.4, 3, -8.8, M_(0x8a1020));
+      /* etapa 67: as duas faixas vermelhas decorativas ficavam em x = ±6,4 (à frente da tela). Com o zoom G a tela chega a
+         ±7,5 m e passaria POR CIMA delas. Viraram colunas finas encostadas nas paredes (x = ±7,78), livres em qualquer tamanho. */
+      box(0.36, 5.6, 0.3, -7.78, 3, -8.8, M_(0x8a1020));
+      box(0.36, 5.6, 0.3, 7.78, 3, -8.8, M_(0x8a1020));
       for (let i = -3; i <= 3; i += 2)
         box(0.6, 0.05, 0.6, i * 2, VR_ROOM_H - 0.05, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
       /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
@@ -8090,6 +8141,55 @@
           for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
       }
       for (const col in seatParts) scene.add(new THREE.Mesh(mergeGeometries(seatParts[col]), M_(Number(col))));
+      /* =====================================================================================
+         ETAPA 67 (pedido do dono): ZOOM GERAL DA TELA INTEIRA EM 3 TAMANHOS — P / M / G.
+         TUDO o que é "tela do jogo" (canvas da HUD, mar, preenchimentos, bordas, linhas,
+         rótulos, relógio, faixas da HUD, pássaro/satélite, explosões) é filho deste grupo
+         vrStage. Aumentar o zoom = escalar ESTE grupo. O jogo inteiro cresce junto, na mesma
+         proporção em X e Y (sem deformar) e NENHUMA regra do jogo muda.
+           P = tamanho de sempre (9,6 x 5,4 m).
+           M = meio caminho (12,3 m de largura).
+           G = as laterais vão até as paredes laterais da sala (15,0 m; a sala tem 16 m).
+         A borda de BAIXO da tela fica SEMPRE em VR_STAGE_BOTTOM (0,45 m acima do chão):
+         o zoom cresce só para CIMA, nunca "entra" no chão. Em G o topo da tela fica em
+         ~8,9 m (o teto tem 10 m). Para desligar/voltar ao tamanho de sempre: cfg.stageZoom = "P".
+         O recorte do mapa (vrClip) é recalculado junto, porque as "tesouras" do three são
+         em coordenadas do mundo. A opção está em Configurações > "Zoom da Tela:". */
+      const vrStage = new THREE.Group();
+      scene.add(vrStage);
+      const VR_STAGE_BOTTOM = 3.15 - 5.4 / 2, // 0,45 m: borda de baixo da tela (nunca muda)
+        VR_STAGE_W = 9.6,
+        VR_STAGE_H = 5.4,
+        VR_STAGE_W_G = 15.0, // largura em G (entre as colunas laterais, encostando nas paredes)
+        VR_STAGE_ANIM = 9; // velocidade do crescimento (maior = mais rápido)
+      let vrStageK = 1; // fator aplicado agora (animado)
+      function vrStageKGoal() {
+        const w =
+          cfg.stageZoom === "G"
+            ? VR_STAGE_W_G
+            : cfg.stageZoom === "M"
+              ? (VR_STAGE_W + VR_STAGE_W_G) / 2
+              : VR_STAGE_W;
+        return w / VR_STAGE_W;
+      }
+      function vrStageApply(k) {
+        vrStageK = k;
+        vrStage.scale.set(k, k, 1);
+        vrStage.position.set(0, VR_STAGE_BOTTOM * (1 - k), 0);
+        const half = (VR_STAGE_W / 2) * k;
+        vrClip[0].constant = half;
+        vrClip[1].constant = half;
+        vrClip[2].constant = -VR_STAGE_BOTTOM;
+        vrClip[3].constant = VR_STAGE_BOTTOM + VR_STAGE_H * k;
+      }
+      function vrStageTick(dt) {
+        const goal = vrStageKGoal();
+        if (Math.abs(goal - vrStageK) < 0.0015) {
+          if (vrStageK !== goal) vrStageApply(goal);
+          return;
+        }
+        vrStageApply(vrStageK + (goal - vrStageK) * Math.min(1, dt * VR_STAGE_ANIM));
+      }
       const tex = new THREE.CanvasTexture(S);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.generateMipmaps = true; // etapa 30: mipmaps = sem cintilar/tremer ao andar
@@ -8113,7 +8213,7 @@
       );
       screen.renderOrder = 1000;
       screen.position.set(0, 3.15, -8.85);
-      scene.add(screen);
+      vrStage.add(screen); // etapa 67: a tela entra no palco (zoom geral)
 
       /* etapa 44 (9d): mini-plano 3D do relógio do turno. Coordenadas em px de 1920x1080 (mesmas do BADGE). Região coberta:
          x 336..512, y 2..83 (contém a moldura preta de 3 px do BADGE de 150x65 em (346,10)). Densidade 2 = nítido. */
@@ -8145,7 +8245,7 @@
         mesh.renderOrder = 1001; // logo acima da tela/HUD (1000)
         mesh.position.set((R0.x + R0.w / 2 - 960) * SC, 3.15 + (540 - (R0.y + R0.h / 2)) * SC, -8.847);
         mesh.visible = false;
-        scene.add(mesh);
+        vrStage.add(mesh); // etapa 67: relógio no palco
         return { R0, DENS, cv, t2, mesh, sig: "" };
       })();
       /* etapa 49 (9): 3 faixas da HUD (ver VR_HUD_BANDS). Plano na frente da tela (renderOrder 1000,5; o relógio é 1001). */
@@ -8176,7 +8276,7 @@
         mesh.renderOrder = 1000.5 + (d.x0 == 760 ? 0.1 : d.x0 == 300 ? 0.2 : d.h == 960 ? 0.3 : 0); // faixa 3 (tela de peças) por cima das barras, como no canvas
         mesh.position.set((d.x0 + d.w / 2 - 960) * SC, 3.15 + (540 - (d.y0 + d.h / 2)) * SC, -8.8485);
         mesh.visible = false;
-        scene.add(mesh);
+        vrStage.add(mesh); // etapa 67: faixas da HUD no palco
         return { d, D, cv, g: cv.getContext("2d"), t, mesh };
       });
       function vrBandsSync() {
@@ -8330,8 +8430,9 @@
       if (vrSea) {
         vrSea.position.set(0, 3.15, -8.865);
         vrSea.visible = false;
-        scene.add(vrSea);
+        vrStage.add(vrSea); // etapa 67: mar no palco
       }
+      vrStageApply(vrStageKGoal()); // etapa 67: aplica já o tamanho escolhido em Configurações (padrão P = 1)
       /* Destaque 3D (hover) dos territórios: branco 30% igual ao canvas, recortado nas bordas da tela. */
       const vrHLMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
@@ -8456,8 +8557,11 @@
         // Território selecionado: sobe ele + os ALVOS válidos (vizinhos inimigos no ataque; vizinhos
         // seus no reagrupamento; TODOS os seus no reagrupamento "livre"), como no original.
         if (G.sel && G.own[G.sel] === G.cur) {
-          set.add(G.sel);
           const nb = J[G.sel] || [];
+          /* etapa 66 (pedido): na fase de ATAQUE só sobe a origem se houver ao menos 1 inimigo na fronteira
+             (no original, isSel só aparece junto com alvos possíveis). Sem isso o território suspenso.
+             Nas demais fases (reagrupamento) a origem sempre sobe, como antes. */
+          if (G.ph !== "A" || vrHasEnemyNb(G.sel)) set.add(G.sel);
           if (G.ph === "A") {
             for (const n of nb) if (G.own[n] !== G.cur) set.add(n);
           } else if (G.ph === "F") {
@@ -9720,7 +9824,7 @@
           VR_FLY_Z,
         );
         vrFlyGroup.scale.set(VR_MAP_SCALE, -VR_MAP_SCALE, 1);
-        scene.add(vrFlyGroup);
+        vrStage.add(vrFlyGroup); // etapa 67: pássaro/satélite no palco (cresce junto com a tela)
       }
       function vrDrawBird(g) {
         const ell = (cx, cy, rx, ry) => {
@@ -10311,14 +10415,14 @@
         }
         if (vrMapGroup) {
           clearVRHighlight();
-          scene.remove(vrMapGroup);
+          vrStage.remove(vrMapGroup); // etapa 67: os grupos do mapa vivem no palco (vrStage)
           if (vrStrokeGroup) {
-            scene.remove(vrStrokeGroup);
+            vrStage.remove(vrStrokeGroup);
             for (const t in vrStrokeGeo)
               for (const k in vrStrokeGeo[t]) if (vrStrokeGeo[t][k]) vrStrokeGeo[t][k].dispose();
           }
           if (vrFillGroup) {
-            scene.remove(vrFillGroup);
+            vrStage.remove(vrFillGroup);
             for (const k in vrFillMesh) vrFillMesh[k].material.dispose();
             for (const t in vrLiftShadow) vrLiftShadow[t].material.dispose(); // etapa 9p
             for (const t in vrLiftWall) { vrLiftWall[t].material.dispose(); vrLiftWall[t].geometry.dispose(); } // etapa 33
@@ -10326,7 +10430,7 @@
           for (const m of vrTerritoryMeshes) m.geometry.dispose();
         }
         if (vrLabelGroup) {
-          scene.remove(vrLabelGroup);
+          vrStage.remove(vrLabelGroup);
           for (const k in vrLabels) {
             vrLabels[k].tex.dispose();
             vrLabels[k].mesh.geometry.dispose();
@@ -10405,7 +10509,7 @@
         }
         vrMapGroup = g;
         vrMapSource = M;
-        scene.add(g);
+        vrStage.add(g); // etapa 67: mapa no palco
         if (vrFillGroup && VR_MAP_3D_LINES) {
           const cm = vrBuildConn(M);
           if (cm) vrFillGroup.add(cm);
@@ -10414,9 +10518,9 @@
         if (vrStrokeGroup && VR_MAP_3D_FX) vrFxInit(vrStrokeGroup);
         vrArr = null;
         if (vrStrokeGroup && VR_MAP_3D_STROKES) vrArrowInit(vrStrokeGroup); // etapa 10d
-        if (vrFillGroup) scene.add(vrFillGroup);
-        if (vrStrokeGroup) scene.add(vrStrokeGroup);
-        if (vrLabelGroup) scene.add(vrLabelGroup);
+        if (vrFillGroup) vrStage.add(vrFillGroup);
+        if (vrStrokeGroup) vrStage.add(vrStrokeGroup);
+        if (vrLabelGroup) vrStage.add(vrLabelGroup);
         syncVRMapTransform();
       }
       /* ===== SOM 3D (portado do jogo original; sai da tela do cinema) ===== */
@@ -10998,6 +11102,7 @@
         } else if (vrB) vrBatchRelease();
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
+        vrStageTick(dt); // etapa 67: zoom geral da tela (P/M/G) — animado, cresce só para cima
         if (vrSitCal > 0 && s) {
           vrSitCal -= dt;
           if (vrSitCal <= 0) {
