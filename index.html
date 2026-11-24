@@ -445,6 +445,22 @@
                   viraram colunas finas junto às paredes (x = ±7,78) para não ficarem por cima da tela no tamanho G.
                   TESTAR no Quest: P/M/G em Configurações, textura/HUD nítidas, cliques nos botões e nos territórios nos
                   3 tamanhos, e o pássaro/satélite alinhados com o mapa.
+           [x] 68. FEITO (pedido do dono, 4 itens):
+                  (1) PADRÃO = G: cfg.stageZoom começa em "G" (a tela já abre de parede a parede) e o jogador
+                      começa na TERCEIRA FILEIRA, na CADEIRA DO MEIO, de frente para a tela (vrHome). O botão
+                      "Centralizar" das Configurações também volta para essa cadeira.
+                  (2) O CONFIGURADOR DE REGRAS (menu) usa o mesmo tamanho padrão G, porque o menu é desenhado na
+                      mesma tela (vrStage) — nada extra a fazer, só o padrão novo.
+                  (3) REMOVIDOS os 2 pilares vermelhos ao lado da tela. G agora = 15,9 m de largura (largura útil
+                      da parede da frente, parede a parede nas laterais); com k = 1,65625 a tela fica com 8,94 m
+                      de altura e o topo em 9,39 m (o teto tem 10 m). M = 12,75 m (meio caminho de P para G).
+                  (4) TELA DE PASSAR PEÇAS (setinhas) 6 px mais ALTA, igual ao original: lá o #overlay.chooser tem
+                      padding-bottom 10 px e o #modal margin-bottom -12 px sobre um overlay que começa em y=2,
+                      ou seja a borda de baixo fica em 1076 (4 px acima da borda). O VR usava 1082 (2 px FORA da
+                      tela, cortando a moldura de baixo). Agora chooserFrame() usa y = 1080 - 4 - h. Os três usos
+                      (reforço G.rch, conquista G.mv, reagrupamento G.fortify) usam a mesma função.
+                  TESTAR no Quest: início na 3ª fileira; G em Configurações; pilares ausentes; tela de passar
+                  peças com a moldura de baixo inteira e na mesma altura do original.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1468,7 +1484,7 @@
           lang: readSavedLanguage(),
           walk: true,
           pose: "sit", // etapa 58: "sit" = Sentado (padrão: personagem fica na altura de em pé) | "stand" = Em Pé (altura real)
-          stageZoom: "P", // etapa 67: tamanho da tela inteira do jogo: "P" (atual) | "M" | "G" (laterais até as paredes)
+          stageZoom: "G", // etapa 68: padrão do jogo = "G" (tela de parede a parede). "P" = tamanho antigo, "M" = meio caminho
           bots: [0, 1, 1, 1, 1, 1].map(Boolean),
           names: ["Jogador 1", "Bonaparte", "Gengis Khan", "Napoleao", "Bismarck", "Sun Tzu"],
         },
@@ -4974,7 +4990,9 @@
           "Centralizar",
           false,
           () => {
-            rig.position.set(0, 0, 0);
+            rig.position.set(vrHome.x, vrHome.y, vrHome.z); // etapa 68: volta para a 3ª fileira, cadeira do meio
+            vrBaseY = vrHome.y;
+            vrJumpY = vrJumpV = 0;
             rig.rotation.y = 0;
             vrCalibSit(); // etapa 58: recalibra também a altura de Sentado
           },
@@ -5743,7 +5761,13 @@
           w = centerW + (hasCancel ? side : 0) + (hasConfirm ? side : 0) + 22,
           h = centerH + 22,
           x = 1920 - 400 - w,
-          y = 1080 - 10 - h + 12;
+          /* etapa 68 (pedido do dono: "está um pouco para baixo"): conferido no original. Lá o #overlay é
+             position:fixed com inset:0 (sobram 2 px no topo) + padding-bottom 10 px e o #modal leva
+             margin-bottom -12 px -> a borda de BAIXO da tela de passar peças fica em 1080 - 4 = 1076,
+             ou seja 4 px acima da borda de baixo (com a borda preta/branca inteira visível).
+             Antes o VR usava 1080 - 10 + 12 = 1082, isto é, 2 px PARA FORA da tela: a moldura de baixo
+             era cortada e a tela ficava mais baixa que no original. Agora bate exatamente. */
+          y = 1080 - 4 - h;
         FLOAT(x, y, w, h);
         return {
           x,
@@ -8066,10 +8090,8 @@
       box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, 11, M_(0x1a1a2a));
       box(0.1, VR_ROOM_H, 20, -8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
       box(0.1, VR_ROOM_H, 20, 8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
-      /* etapa 67: as duas faixas vermelhas decorativas ficavam em x = ±6,4 (à frente da tela). Com o zoom G a tela chega a
-         ±7,5 m e passaria POR CIMA delas. Viraram colunas finas encostadas nas paredes (x = ±7,78), livres em qualquer tamanho. */
-      box(0.36, 5.6, 0.3, -7.78, 3, -8.8, M_(0x8a1020));
-      box(0.36, 5.6, 0.3, 7.78, 3, -8.8, M_(0x8a1020));
+      /* etapa 68 (pedido do dono): os 2 pilares vermelhos ao lado da tela foram REMOVIDOS — no tamanho G a tela
+         ocupa a parede da frente de ponta a ponta (parede a parede), encostando nas paredes laterais. */
       for (let i = -3; i <= 3; i += 2)
         box(0.6, 0.05, 0.6, i * 2, VR_ROOM_H - 0.05, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
       /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
@@ -8141,6 +8163,16 @@
           for (let i = 0; i < 6; i++) seat(-3 + i * 1.2, 4.4 + r * 1.8, 0.75, 0x23305e); // cadeiras
       }
       for (const col in seatParts) scene.add(new THREE.Mesh(mergeGeometries(seatParts[col]), M_(Number(col))));
+      /* etapa 68 (pedido do dono): o jogador começa sentado na TERCEIRA FILEIRA, na CADEIRA DO MEIO,
+         de frente para a tela (e o botão "Centralizar" das Configurações volta para cá). */
+      const vrHome = {
+        x: 0,
+        z: VR_TIERS ? VR_ROW_Z[2] : 4.4,
+        y: VR_TIERS ? 3 * VR_TIER_STEP : 0,
+      };
+      rig.position.set(vrHome.x, vrHome.y, vrHome.z);
+      vrBaseY = vrHome.y;
+      rig.updateMatrixWorld(true);
       /* =====================================================================================
          ETAPA 67 (pedido do dono): ZOOM GERAL DA TELA INTEIRA EM 3 TAMANHOS — P / M / G.
          TUDO o que é "tela do jogo" (canvas da HUD, mar, preenchimentos, bordas, linhas,
@@ -8148,11 +8180,11 @@
          vrStage. Aumentar o zoom = escalar ESTE grupo. O jogo inteiro cresce junto, na mesma
          proporção em X e Y (sem deformar) e NENHUMA regra do jogo muda.
            P = tamanho de sempre (9,6 x 5,4 m).
-           M = meio caminho (12,3 m de largura).
-           G = as laterais vão até as paredes laterais da sala (15,0 m; a sala tem 16 m).
+           M = meio caminho (12,75 m de largura).
+           G = a tela vai de parede a parede, até o fim da parede da frente (15,9 m; a sala tem 16 m).
          A borda de BAIXO da tela fica SEMPRE em VR_STAGE_BOTTOM (0,45 m acima do chão):
          o zoom cresce só para CIMA, nunca "entra" no chão. Em G o topo da tela fica em
-         ~8,9 m (o teto tem 10 m). Para desligar/voltar ao tamanho de sempre: cfg.stageZoom = "P".
+         ~9,4 m (o teto tem 10 m). Para desligar/voltar ao tamanho de sempre: cfg.stageZoom = "P".
          O recorte do mapa (vrClip) é recalculado junto, porque as "tesouras" do three são
          em coordenadas do mundo. A opção está em Configurações > "Zoom da Tela:". */
       const vrStage = new THREE.Group();
@@ -8160,7 +8192,7 @@
       const VR_STAGE_BOTTOM = 3.15 - 5.4 / 2, // 0,45 m: borda de baixo da tela (nunca muda)
         VR_STAGE_W = 9.6,
         VR_STAGE_H = 5.4,
-        VR_STAGE_W_G = 15.0, // largura em G (entre as colunas laterais, encostando nas paredes)
+        VR_STAGE_W_G = 15.9, // etapa 68: largura em G = largura útil da PAREDE DA FRENTE (a sala tem 16 m; as paredes têm 0,1 m de espessura)
         VR_STAGE_ANIM = 9; // velocidade do crescimento (maior = mais rápido)
       let vrStageK = 1; // fator aplicado agora (animado)
       function vrStageKGoal() {
