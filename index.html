@@ -512,6 +512,14 @@
                   abrem no CHÃO começando no canto superior esquerdo (parede esquerda + pé da tela) e vão até o MEIO da sala (7,9 x 5,1 m,
                   maior que antes). Painel do chão só para leitura. TESTAR no Quest: olhar para baixo, ler as 3 telas,
                   trocar pelo botão, andar/teleportar entre fileiras (o painel desce/sobe junto).
+           [x] 74. FEITO (pedido do dono, REVERTE a etapa 72/73 do chão): (1) INFORMAÇÕES VOLTOU PARA A TELA no desenho exato do original
+                  (botão na barra de baixo + painel à esquerda), só que o painel ficou mais LARGO (x 10..421 = até o meio do botão do cronômetro)
+                  e mais ALTO (y 88..980, até perto do botão Dicas e Regras); o conteúdo é o mesmo desenho do original, escalado 411/320
+                  (drawInfoBody + drawInfoPanel; showInfo voltou em anyOv/vrOvX/vrPanelLOn e em vrDrawSidePanels). (2) PUNHO ESQUERDO:
+                  botão verde INFORMAÇÕES em cima da mão esquerda + as MESMAS 3 telas em cima do punho (vrWrist, wr.open/wr.tab). Estado
+                  INDEPENDENTE da tela: apertar um não aperta o outro. Gatilho da mão DIREITA aponta para o botão (troca 1->2->3->fecha);
+                  analógico direito rola o painel do punho. O painel do chão foi removido. TESTAR no Quest: posição/inclinação do punho
+                  (VR_WR_POS, VR_WR_TILT, VR_WR_W), letras legíveis e a tela de Informações larga na parede.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -4573,14 +4581,6 @@
         });
       }
       /* teclado físico (PC): só age com o editor de nome aberto no menu */
-      /* etapa 72 (PC): setas CIMA/BAIXO inclinam a câmera para olhar o painel INFORMAÇÕES no chão (no óculos basta olhar para baixo) */
-      document.addEventListener("keydown", (e) => {
-        if (typeof R === "undefined" || R.xr.isPresenting || scr != "game") return;
-        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-          e.preventDefault();
-          cam.rotation.x = Math.max(-1.2, Math.min(0.35, cam.rotation.x + (e.key === "ArrowDown" ? -0.08 : 0.08)));
-        }
-      });
       document.addEventListener("keydown", (e) => {
         if (scr != "menu" || nameEdit < 0) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -4603,7 +4603,6 @@
       let showLog = 0;
       function cycleInfo() {
         SCR.info = 0;
-        vrWallSig0 = ""; // etapa 71: força o painel da parede a se redesenhar
         const hasThird =
           tanksOn() || planesOn() || (missilesOn() && RS[7] === "A");
         const lastTab = hasThird ? 3 : 2;
@@ -4626,8 +4625,8 @@
       const RY = "#ffdd00",
         RG = "#44ff44";
       let SCAREA = {};
-      const SCR = { tips: 0, cfg: 0, info: 0, log: 0 },
-        SCMAX = { tips: 0, cfg: 0, info: 0, log: 0 };
+      const SCR = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0 },
+        SCMAX = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0 };
       const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
       function scrollAt(x, y) {
         for (const k in SCAREA) {
@@ -5292,22 +5291,18 @@
         rtDraw(lines, x + 9, yy + 11, z, lh, w - 18, true);
         return h;
       }
-      function drawInfoPanel() {
-        const x = 10,
-          y = 138,
-          w = 320,
-          h = 842,
-          cx = x + 19,
+      /* etapa 73/74: corpo das 3 telas desenhado em coordenadas LÓGICAS (largura 320, como no original). Usado pela tela (escalado)
+         e pelo punho (outro canvas, outra aba). scr = rolagem; reg = registra o clique do ícone do avião (só na tela); M = mapa lógico->tela. */
+      function drawInfoBody(tab, x, y, w, h, scr, reg, M) {
+        const cx = x + 19,
           cw = 282,
           rx = cx - 12,
           rw = cw + 24,
-          vp = G.bot[G.cur] ? 0 : G.cur,
-          tab = infoTab === 3 && !hasThirdTab() ? 1 : infoTab;
-        FRAME(x, y, w, h);
+          vp = G.bot[G.cur] ? 0 : G.cur;
         const vy0 = y + 3,
           vy1 = y + h - 3;
         clipPad(x, y, w, h);
-        let yy = y + 19 - SCR.info;
+        let yy = y + 19 - scr;
         const top = yy;
         if (tab === 1) {
           rr(cx, yy, cw, 30.4, 6);
@@ -5439,7 +5434,7 @@
               iw = kind === "T" ? 99 : 118,
               ih = kind === "T" ? 68 : 104;
             if (ico) c.drawImage(ico, cxx + cwid / 2 - iw / 2, yy + 6 + (104 - ih) / 2, iw, ih);
-            if (kind === "P" && !G.bot[G.cur]) btnVis(cxx + cwid / 2 - iw / 2, yy + 6, iw, 104, "info-plane", togglePlaneMode, vy0, vy1);
+            if (reg && kind === "P" && !G.bot[G.cur]) btnVis(M.ox + (cxx + cwid / 2 - iw / 2) * M.s, M.oy + (yy + 6) * M.s, iw * M.s, 104 * M.s, "info-plane", togglePlaneMode, M.oy + vy0 * M.s, M.oy + vy1 * M.s);
             const qty = kind === "T" ? tkQty : plQty,
               pts = kind === "T" ? tkPts : plPts;
             let ly = yy + 6 + 104 + 6;
@@ -5491,11 +5486,29 @@
           }
         }
         c.restore();
-        const total = yy - top + 32;
-        SCAREA.info = { x, y, w, h };
-        SCMAX.info = Math.max(0, total - (h - 6));
+        return yy - top + 32;
+      }
+      /* etapa 73 (pedido do dono): painel INFORMAÇÕES NA TELA = igual ao original, só mais LARGO (da esquerda até o meio do botão do
+         cronômetro, x 10..421) e mais ALTO (do fim do botão Dicas e Regras, y 88, até a barra de baixo, y 980). O conteúdo é o
+         mesmo desenho do original, escalado por s = 411/320 (letras e cartas maiores). */
+      function drawInfoPanel() {
+        const PX = 10,
+          PY = 88,
+          PW = 411,
+          PH = 892,
+          sc = PW / 320,
+          lh = PH / sc,
+          tab = infoTab === 3 && !hasThirdTab() ? 1 : infoTab;
+        FRAME(PX, PY, PW, PH);
+        c.save();
+        c.translate(PX, PY);
+        c.scale(sc, sc);
+        const total = drawInfoBody(tab, 0, 0, 320, lh, SCR.info, true, { s: sc, ox: PX, oy: PY });
+        c.restore();
+        SCAREA.info = { x: PX, y: PY, w: PW, h: PH };
+        SCMAX.info = Math.max(0, total - (lh - 6));
         SCR.info = clampN(SCR.info, 0, SCMAX.info);
-        SBAR(x, y, w, h, SCR.info, SCMAX.info);
+        SBAR(PX, PY, PW, PH, SCR.info, SCMAX.info);
       }
       const anyOv = () =>
         (G && G.mv) ||
@@ -5505,7 +5518,8 @@
         showCards ||
         showObj ||
         showRules ||
-        showCfg; // etapa 71: showInfo não é mais um painel da tela (vive na parede)
+        showCfg ||
+        showInfo; // etapa 73: o painel INFORMAÇÕES voltou para a tela (original)
       /* Só telas realmente modais bloqueiam o mapa inteiro. */
       /* etapa 46: conquista (G.mv) e reagrupamento (G.fortify) NÃO bloqueiam mais o mapa: o painel de peças é pequeno e flutuante (como no original)
          e o clique/segurar nos territórios de origem/destino faz ▶/◀ (vChooserStep). */
@@ -6879,7 +6893,7 @@
         const vrChB = VR_CHOOSER_BAND && !!vrBands && !!vrBands[3],
           vrToB = VR_TOAST_BAND && !!vrBands && !!vrBands[4],
           vrPaB = VR_PANEL_BANDS && !!vrBands && !!vrBands[6],
-          vrOvX = (!vrPaB && (showLog || showObj || showRules || showCfg)) || (G && G.hand) || showCards; // etapa 71: sem showInfo // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
+          vrOvX = (!vrPaB && (showLog || showObj || showRules || showInfo || showCfg)) || (G && G.hand) || showCards; // etapa 73: showInfo voltou // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
         vrMainInk = !(
           VR_HUD_BANDS &&
           vrBands &&
@@ -6894,7 +6908,7 @@
         );
         vrChooserBandOn = !vrMainInk && vrChB && !!(G.mv || G.fortify || G.rch);
         vrToastBandOn = !vrMainInk && vrToB && !!G.toast;
-        vrPanelLOn = !vrMainInk && vrPaB && !!showRules; // etapa 71: showInfo vive na parede (vrWall)
+        vrPanelLOn = !vrMainInk && vrPaB && !!(showInfo || showRules); // etapa 73: showInfo voltou à tela
         vrPanelROn = !vrMainInk && vrPaB && !!(showLog || showObj || showCfg);
         vrBandsOn = !vrMainInk;
         if (vrBandsOn)
@@ -6958,15 +6972,14 @@
         );
         vrBandEnd();
         vrBandBegin(1);
-        /* etapa 71: o botão INFORMAÇÕES saiu daqui e foi para a PAREDE ESQUERDA (vrWall / vrWallDraw). */
         vrBandEnd();
         vrBandBegin(2);
         if (scr == "game") ZW();
         vrBandEnd();
         const nb = G.bot[G.cur];
         vrBandBegin(1);
-        /* etapa 73: o botão INFORMAÇÕES VOLTOU para a barra de baixo, no lugar do original (x10, y990, 320x80, verde).
-           Cada toque troca a tela (1 -> 2 -> 3 -> fecha); as telas abrem no CHÃO (vrWall). */
+        /* etapa 73: o botão INFORMAÇÕES está de volta na barra de baixo, no lugar do original (x10, y990, 320x80, verde).
+           Cada toque troca a tela (1 -> 2 -> 3 -> fecha). O punho esquerdo (etapa 74) tem o seu próprio botão, independente. */
         if (scr == "game")
           B(10, 990, 320, 80, "INFORMAÇÕES", () => cycleInfo(), { z: 30, k: "info" });
         /* ===== BARRA INFERIOR IGUAL AO ORIGINAL =====
@@ -7081,7 +7094,11 @@
             drawObjectivePanel();
             vrBandEnd();
           }
-          /* etapa 71: as 3 telas de INFORMAÇÕES agora são desenhadas na PAREDE ESQUERDA (vrWallDraw). */
+          if (showInfo && scr == "game") {
+            vrBandBegin(5); // etapa 73: as 3 telas de INFORMAÇÕES voltaram para a tela (faixa 5, painéis da esquerda)
+            drawInfoPanel();
+            vrBandEnd();
+          }
           if (showRules && scr == "game") {
             vrBandBegin(5);
             drawTipsPanel();
@@ -8351,336 +8368,162 @@
       screen.position.set(0, 3.15, -8.85);
       vrStage.add(screen); // etapa 67: a tela entra no palco (zoom geral)
       /* =====================================================================================
-         ETAPA 72 (pedido do dono): BOTÃO E AS 3 TELAS DE "INFORMAÇÕES" NO CHÃO DA SALA.
-         (Substitui a etapa 71, que usava a parede esquerda.) O jogador olha PARA BAIXO e vê um
-         painel horizontal deitado no chão, logo à frente dos pés. Ele acompanha a fileira onde o
-         jogador está (altura do degrau) e se move suave quando o jogador anda/teleporta.
-         Mesmas 3 telas e MESMOS DADOS do original (index_7), em layout horizontal e letras grandes:
-           tela 1: Nª RODADA + jogadores (Territórios, Soldados, Cartas, Pontos de Avião, Eliminado)
-           tela 2: Próxima troca de cartas / Estamos na Nª Troca / cartas do jogador
-           tela 3: Evolução dos Tanques/Aviões + ícones, LV, quantidade e total de pontos.
-         O botão verde "INFORMAÇÕES" fica de volta na barra de baixo da tela (etapa 73). Cada toque: 1 -> 2 -> 3 -> fecha.
-         Ajustes: VR_WALL_W (largura em metros), VR_FLOOR_X0 / VR_FLOOR_ZF (canto superior esquerdo),
-         VR_FLOOR_LIFT (altura sobre o piso). Os nomes vrWall e wrWall foram mantidos. */
-      const VR_WALL_W = 7.9, // largura do painel no chão (m): da parede esquerda (x -7,9) até o MEIO da sala (x 0)
-        VR_WALL_CW = 2000, // resolução lógica do painel (px)
-        VR_WALL_CH = 1300,
-        VR_FLOOR_X0 = -7.9, // borda esquerda (colada na parede esquerda)
-        VR_FLOOR_ZF = -8.85, // borda de LONGE (embaixo da tela): o canto superior esquerdo do painel fica aqui
-        VR_FLOOR_LIFT = 0.03; // altura (m) acima do piso
-      const VR_WALL_H = (VR_WALL_W * VR_WALL_CH) / VR_WALL_CW; // profundidade (m): 5,14 (vai de z -8,85 até -3,7; a 1ª fileira começa em -1,9)
-      const vrWallCv = document.createElement("canvas");
-      vrWallCv.width = VR_WALL_CW;
-      vrWallCv.height = VR_WALL_CH;
-      const vrWallCtx = vrWallCv.getContext("2d");
-      const vrWallTex = new THREE.CanvasTexture(vrWallCv);
-      vrWallTex.colorSpace = THREE.SRGBColorSpace;
-      vrWallTex.premultiplyAlpha = true;
-      vrWallTex.generateMipmaps = true;
-      vrWallTex.minFilter = THREE.LinearMipmapLinearFilter;
-      vrWallTex.anisotropy = 8;
-      const vrWall = new THREE.Mesh(
-        new THREE.PlaneGeometry(VR_WALL_W, VR_WALL_H),
+         ETAPA 74 (pedido do dono): BOTÃO INFORMAÇÕES NO PUNHO ESQUERDO (OPCIONAL, INDEPENDENTE DA TELA).
+         Em cima do punho/mão esquerda fica um botão verde "INFORMAÇÕES". Ao apertar (gatilho da mão DIREITA apontando para ele),
+         as MESMAS 3 telas (Jogadores / Cartas / Tanques e Aviões, mesmo desenho do painel da tela) aparecem em cima da mão
+         esquerda. Cada toque troca de tela (1 -> 2 -> 3 -> fecha). O estado é PRÓPRIO (wr.open / wr.tab): apertar o botão da
+         tela NÃO mexe no do punho e vice-versa. Rolagem: aponte a mão direita para o painel do punho e use o analógico direito.
+         Ajustes: VR_WR_W (largura em m), VR_WR_LH (altura lógica), VR_WR_POS (posição em cima da mão), VR_WR_TILT (inclinação). */
+      const VR_WR_LW = 320, // largura lógica (igual ao original)
+        VR_WR_LH = 520, // altura lógica (o que passar disso rola)
+        VR_WR_D = 2, // densidade de pixels do canvas
+        VR_WR_W = 0.26, // largura do painel em metros
+        VR_WR_BW = 0.2, // largura do botão (m)
+        VR_WR_BH = 0.06, // altura do botão (m)
+        VR_WR_TILT = 0.45, // inclinação (rad) para o painel "olhar" para o jogador
+        VR_WR_POS = [0, 0.07, 0.04]; // posição no controle esquerdo: x, y (para cima), z (para trás)
+      const VR_WR_H = (VR_WR_W * VR_WR_LH) / VR_WR_LW;
+      const wr = { open: 0, tab: 1, hover: false, sig: "", sigB: "" };
+      function wrMk(w, h) {
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        const t = new THREE.CanvasTexture(cv);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.premultiplyAlpha = true;
+        t.generateMipmaps = true;
+        t.minFilter = THREE.LinearMipmapLinearFilter;
+        t.anisotropy = 8;
+        return { cv, g: cv.getContext("2d"), t };
+      }
+      const wrP = wrMk(VR_WR_LW * VR_WR_D, VR_WR_LH * VR_WR_D),
+        wrB = wrMk(400, 120);
+      const wrMat = (t) =>
         new THREE.MeshBasicMaterial({
-          map: vrWallTex,
+          map: t,
           toneMapped: false,
           transparent: true,
           depthWrite: false,
           blending: THREE.CustomBlending, // textura pré-multiplicada
           blendSrc: THREE.OneFactor,
           blendDst: THREE.OneMinusSrcAlphaFactor,
-        }),
-      );
-      vrWall.rotation.x = -Math.PI / 2; // deitado no chão; o TOPO do painel aponta para a tela do cinema
-      vrWall.position.set(VR_FLOOR_X0 + VR_WALL_W / 2, VR_FLOOR_LIFT, VR_FLOOR_ZF + VR_WALL_H / 2); // FIXO no chão, embaixo da tela
-      vrWall.renderOrder = 1200;
-      vrWall.visible = false;
-      scene.add(vrWall);
-      let vrWallSig0 = "", vrWallHover = false, vrWallPosInit = false;
-      const vrWallInBtn = () => false;
-      /* o painel agora é FIXO no chão (embaixo da tela, parede esquerda até o meio da sala): nada a seguir */
-      function vrWallFollow() {
-        if (!vrWall.visible || vrWallPosInit) return;
-        vrWallPosInit = true;
-        vrWall.updateMatrixWorld(true);
+        });
+      const vrWrist = new THREE.Group();
+      vrWrist.position.set(VR_WR_POS[0], VR_WR_POS[1], VR_WR_POS[2]);
+      vrWrist.rotation.x = -Math.PI / 2 + VR_WR_TILT; // deitado em cima da mão, inclinado para o jogador (topo aponta para frente)
+      const wrBtnMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_BW, VR_WR_BH), wrMat(wrB.t));
+      const wrPanMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_W, VR_WR_H), wrMat(wrP.t));
+      wrPanMesh.position.y = VR_WR_BH / 2 + 0.012 + VR_WR_H / 2;
+      wrBtnMesh.renderOrder = 1300;
+      wrPanMesh.renderOrder = 1301;
+      wrBtnMesh.visible = wrPanMesh.visible = false;
+      vrWrist.add(wrBtnMesh, wrPanMesh);
+      let wrHost = null;
+      /* cola o grupo no controle esquerdo (todo quadro; barato) e liga/desliga a visibilidade */
+      function vrWristAttach() {
+        const kl = ctl.find((k) => k.userData.hand == "left") || null;
+        if (kl !== wrHost) {
+          if (vrWrist.parent) vrWrist.parent.remove(vrWrist);
+          wrHost = kl;
+          if (kl) kl.add(vrWrist);
+        }
+        const on = !!G && scr == "game" && !!wrHost && R.xr.isPresenting;
+        wrBtnMesh.visible = on;
+        wrPanMesh.visible = on && !!wr.open;
       }
-      /* desenha o painel inteiro (botão sempre; as 3 telas quando showInfo) */
-      function vrWallDraw() {
-        const g = vrWallCtx,
-          c0 = c,
-          CW = VR_WALL_CW;
+      /* toque no botão do punho: 1 -> 2 -> 3 -> fecha (igual ao cycleInfo da tela, mas com estado próprio) */
+      function wristCycle() {
+        const last = hasThirdTab() ? 3 : 2;
+        if (!wr.open) {
+          wr.open = 1;
+          wr.tab = 1;
+        } else if (wr.tab < last) wr.tab++;
+        else {
+          wr.open = 0;
+          wr.tab = 1;
+        }
+        SCR.wrist = 0;
+        wr.sig = wr.sigB = "";
+      }
+      /* só a mão DIREITA aponta para o punho esquerdo */
+      function wrHit(k, mesh) {
+        if (!mesh.visible || k.userData.hand == "left") return null;
+        tm.identity().extractRotation(k.matrixWorld);
+        ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
+        ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
+        return ray.intersectObject(mesh, false)[0] || null;
+      }
+      const wristBtnAim = (k) => !!wrHit(k, wrBtnMesh),
+        wristPanelAim = (k) => !!wrHit(k, wrPanMesh);
+      function wrDrawBtn() {
+        const g = wrB.g,
+          c0 = c;
         g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, CW, VR_WALL_CH);
+        g.clearRect(0, 0, 400, 120);
         c = g;
         try {
-          const hasT = hasThirdTab(),
-            lastTab = hasT ? 3 : 2,
-            tab = infoTab === 3 && !hasT ? 1 : infoTab;
-          if (!showInfo) return; // fechado: nada no chão (o botão fica na barra de baixo da tela)
-          /* --- MOLDURA azul do original (fundo #0a3a6a, borda branca por dentro, contorno preto) --- */
-          rr(20, 20, 1960, VR_WALL_CH - 40, 16);
-          c.fillStyle = "#0a3a6a";
+          rr(6, 6, 388, 108, 16);
+          c.fillStyle = wr.hover ? "#25b34a" : "#1a8f3a";
           c.fill();
-          rr(18, 18, 1964, VR_WALL_CH - 36, 18);
-          c.lineWidth = 4;
-          c.strokeStyle = "#000";
-          c.stroke();
-          rr(24, 24, 1952, VR_WALL_CH - 48, 14);
-          c.lineWidth = 4;
+          c.lineWidth = 6;
           c.strokeStyle = "#fff";
           c.stroke();
-          /* --- CABEÇALHO --- */
-          const titles = { 1: "JOGADORES", 2: "CARTAS", 3: "TANQUES E AVIÕES" };
-          TX(titles[tab] || "INFORMAÇÕES", 60, 76, 52, "#ffdd00", "left", 1);
-          TX(`TELA ${tab} DE ${lastTab}  •  USE O BOTÃO INFORMAÇÕES PARA TROCAR`, 1940, 76, 24, "#9fc3e8", "right", 1);
-          const AY = 130, AH = VR_WALL_CH - 130 - 40; // área de conteúdo (y 130..1260)
-          const vp = G.bot[G.cur] ? 0 : G.cur;
-          if (tab === 1) {
-            /* ---------- TELA 1: Nª RODADA + JOGADORES (linhas largas, tudo numa linha só) ---------- */
-            rr(760, 40, 480, 72, 8);
-            c.fillStyle = "rgba(255,221,0,.06)";
-            c.fill();
-            c.lineWidth = 2;
-            c.strokeStyle = "#3a5a8a";
-            c.stroke();
-            TX(`${G.round || 1}ª RODADA`, 1000, 77, 46, RY, "center", 1);
-            const n = cfg.n,
-              humans = G.bot.filter((b) => !b).length,
-              showPl = planesOn(),
-              rowGap = 10,
-              rowH = Math.min(200, Math.floor((AH - (n - 1) * rowGap) / n)),
-              sx0 = 790,
-              sw = 1140;
-            let y = AY;
-            for (let i = 0; i < n; i++) {
-              const act = i === G.cur,
-                terr = cnt(i),
-                elim = !terr,
-                sold = solOf(i),
-                cards = (G.cards[i] || []).length,
-                plPts = showPl ? Math.max(0, (G.pl[i] || 0) * evoLv() - (G.planeDmg[i] || 0)) : 0,
-                tag = G.bot[i] ? "(IA)" : humans > 1 ? "(Humano)" : "(Você)",
-                my = y + rowH / 2;
-              rr(50, y, 1900, rowH, 12);
-              c.fillStyle = act ? "rgba(255,255,255,.14)" : "rgba(0,0,0,.28)";
-              c.fill();
-              c.lineWidth = act ? 5 : 2;
-              c.strokeStyle = act ? "#fff" : "#3a5a8a";
-              c.stroke();
-              c.beginPath();
-              c.arc(100, my, 24, 0, Math.PI * 2);
-              c.fillStyle = COL[i];
-              c.fill();
-              c.lineWidth = 3;
-              c.strokeStyle = "#000";
-              c.stroke();
-              const nm = `${cfg.names[i]} ${tag}`;
-              let nz = Math.min(60, Math.round(rowH * 0.42));
-              while (nz > 24 && tw(nm, nz) > 610) nz -= 2;
-              TX(nm, 140, my, nz, COL[i], "left", 1);
-              if (elim) TX("ELIMINADO", sx0 + sw / 2, my, 54, "#ff4444", "center", 1);
-              else {
-                const cells = [
-                    ["Territórios:", terr],
-                    ["Soldados:", sold],
-                    ["Cartas:", cards],
-                  ],
-                  cwid = sw / (showPl ? 4 : 3);
-                if (showPl) cells.push(["Pontos de Avião:", plPts]);
-                cells.forEach((cell, k) => {
-                  const cx0 = sx0 + k * cwid;
-                  rr(cx0 + 5, y + 8, cwid - 10, rowH - 16, 10);
-                  c.fillStyle = "rgba(0,0,0,.28)";
-                  c.fill();
-                  c.lineWidth = 1;
-                  c.strokeStyle = "#3a5a8a";
-                  c.stroke();
-                  let lz = 32;
-                  while (lz > 18 && tw(cell[0], lz) > cwid - 30) lz -= 1;
-                  TX(cell[0], cx0 + cwid / 2, y + rowH * 0.3, lz, "#cfe0ff", "center", 1);
-                  TX(String(cell[1]), cx0 + cwid / 2, y + rowH * 0.7, Math.min(72, Math.round(rowH * 0.42)), "#fff", "center", 1);
-                });
-              }
-              y += rowH + rowGap;
-            }
-          } else if (tab === 2) {
-            /* ---------- TELA 2: PRÓXIMA TROCA (esquerda) + CARTAS EM FILEIRAS (direita) ---------- */
-            const cardsArr = G.cards[vp] || [],
-              nextTrade = tradeBonusFor((G.tc || 0) + 1),
-              by = AY + (AH - 300) / 2;
-            rr(50, by, 600, 300, 14);
-            c.fillStyle = "#0a1a0a";
-            c.fill();
-            c.lineWidth = 3;
-            c.strokeStyle = "#4a8a4a";
-            c.stroke();
-            TX("PRÓXIMA TROCA DE CARTAS:", 350, by + 58, 33, RY, "center", 1);
-            TX(`${nextTrade} SOLDADOS`, 350, by + 150, 68, RG, "center", 1);
-            TX(`ESTAMOS NA ${(G.tc || 0) + 1}ª TROCA`, 350, by + 244, 42, "#fff", "center", 1);
-            const RX = 700, RW = 1250;
-            TX(`${cfg.names[vp]} (${cardsArr.length} carta${cardsArr.length === 1 ? "" : "s"})`, RX + RW / 2, AY + 28, 48, COL[vp], "center", 1);
-            if (!cardsArr.length) TX("SEM CARTAS AINDA.", RX + RW / 2, AY + AH / 2, 46, "#557", "center", 1);
-            else {
-              const CAP = 14,
-                nC = Math.min(cardsArr.length, CAP),
-                rows = nC <= 5 ? 1 : 2,
-                cols = Math.ceil(nC / rows),
-                gap = 16,
-                areaY = AY + 75,
-                areaH = AH - 75,
-                cardW = Math.min((RW - (cols - 1) * gap) / cols, 300),
-                cardH = Math.min(cardW * 1.3, (areaH - (rows - 1) * gap) / rows),
-                base = Math.min(cardW, cardH / 1.3),
-                blockW = cols * cardW + (cols - 1) * gap,
-                blockH = rows * cardH + (rows - 1) * gap,
-                bx0 = RX + (RW - blockW) / 2,
-                by0 = areaY + Math.max(0, (areaH - blockH) / 2);
-              cardsArr.slice(0, CAP).forEach((card, i) => {
-                const cxx = bx0 + (i % cols) * (cardW + gap),
-                  cy2 = by0 + Math.floor(i / cols) * (cardH + gap),
-                  cont = card.joker ? "CORINGA" : card.cont || contOf(card.t) || "?",
-                  bg = card.joker ? "#06260f" : CONT_BG[cont] || "#1a1a1a",
-                  bd = card.joker ? "#1fa84a" : CONT_BORDER[cont] || "#444",
-                  short = card.joker ? "Qualquer Continente" : cont.replace("América do Norte", "Am. Norte").replace("América do Sul", "Am. Sul"),
-                  zN = Math.round(base * 0.105),
-                  zC = Math.round(base * 0.09),
-                  silH = cardH * 0.34,
-                  tl = wrapL(card.joker ? "CORINGA" : card.t, cardW - 28, zN, 4),
-                  sl = wrapL(short, cardW - 28, zC, 3),
-                  contentH = silH + 10 + tl.length * zN * 1.2 + 8 + 2 + 10 + sl.length * zC * 1.2;
-                rr(cxx, cy2, cardW, cardH, 10);
-                c.fillStyle = bg;
-                c.fill();
-                rr(cxx + 2, cy2 + 2, cardW - 4, cardH - 4, 8);
-                c.lineWidth = 4;
-                c.strokeStyle = bd;
-                c.stroke();
-                let ty = cy2 + Math.max(8, (cardH - contentH) / 2);
-                drawSil(cont, cxx + cardW / 2 - cardW * 0.3, ty, cardW * 0.6, silH);
-                ty += silH + 10;
-                tl.forEach((qq, j) => OT(qq, cxx + cardW / 2, ty + j * zN * 1.2 + zN * 0.6, zN, "#ccffff", "center"));
-                ty += tl.length * zN * 1.2 + 8;
-                c.fillStyle = bd;
-                c.fillRect(cxx + 16, ty, cardW - 32, 2);
-                ty += 10;
-                sl.forEach((qq, j) => OT(qq, cxx + cardW / 2, ty + j * zC * 1.2 + zC * 0.6, zC, "#ccffee", "center"));
-              });
-              if (cardsArr.length > CAP) TX(`+${cardsArr.length - CAP}`, 1930, AY + AH - 20, 34, "#fff", "right", 1);
-            }
-          } else {
-            /* ---------- TELA 3: EVOLUÇÃO (texto à esquerda) + TANQUE / AVIÃO (direita) ---------- */
-            const lv = evoLv(),
-              tc = (G.tc || 0) + 1,
-              soldiersNow = tradeBonusFor(tc),
-              tkQty = tkTot(vp),
-              tkPts = tkQty * lv,
-              plQty = G.pl[vp] || 0,
-              plPts = Math.max(0, plQty * lv - (G.planeDmg[vp] || 0)),
-              hasTk = tanksOn(),
-              hasP = planesOn(),
-              hasM = missilesOn(),
-              E = EVO_STEP,
-              nextTE = lv * E,
-              nextLv = lv + 1,
-              pl = (q) => (q === 1 ? "" : "s");
-            let mk = "";
-            if (hasM && !hasTk && !hasP) {
-              if (RS[7] === "A")
-                mk =
-                  'No Modo de Jogo Sem Dados\nna Proporção "2 pra 1",\nSó poderá Atacar com Aviões ou Mísseis\nSe tiver mais de 1 Ponto.';
-              else mk = "Mísseis: veja as regras na tela de Dicas e Regras.";
-            } else if (hasTk && !hasP)
-              mk = `[y]Evolução dos Tanques:[/]\n\nTanques Evoluem a cada [y]${E}[/] trocas.\n\n[y]Evolução Atual:[/]\nTroca [y]${tc}[/], [g]${soldiersNow}[/] Soldados.\nCada Tanque vale [g]${lv}[/] Ponto${pl(lv)}, LV=[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nNa Troca [y]${nextTE}[/], [g]${tradeBonusFor(nextTE)}[/] Soldados.\nCada Tanque valerá [g]${nextLv}[/] Ponto${pl(nextLv)}, LV=[y]${nextLv}[/]`;
-            else if (hasP && !hasTk)
-              mk = `[y]Evolução dos Aviões:[/]\n\nAviões Evoluem a cada [y]${E}[/] trocas.\n\n[y]Evolução Atual:[/]\nTroca [y]${tc}[/], [g]${soldiersNow}[/] Soldados.\nCada Avião vale [g]${lv}[/] Ponto${pl(lv)}, LV=[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nNa Troca [y]${nextTE}[/], [g]${tradeBonusFor(nextTE)}[/] Soldados.\nCada Avião valerá [g]${nextLv}[/] Ponto${pl(nextLv)}, LV=[y]${nextLv}[/]`;
-            else
-              mk = `[y]Evolução dos Tanques e Aviões:[/]\nEles evoluem de acordo com o andamento do jogo,\nBaseado nas Trocas de Cartas Território por Soldados.\n\nTanques e Aviões evoluem a cada [y]${E}[/] Trocas.\nOu seja, nas Trocas Múltiplas de [y]${E}[/].\n\n[y]Evolução Atual:[/]\nEstamos na [y]${tc}ª[/] Troca.\nCada Tanque e Avião valem:\n[g]${lv}[/] Ponto${pl(lv)}, LV.[y]${lv}[/]\n\n[y]Próxima Evolução:[/]\nSerá na [y]${nextTE}ª[/] Troca.\nCada Tanque e Avião valerão:\n[g]${nextLv}[/] Ponto${pl(nextLv)}, LV.[y]${nextLv}[/]`;
-            const hasCols = hasTk || hasP;
-            if (mk && !(hasM && !hasTk && !hasP && RS[7] !== "A")) {
-              if (hasCols) {
-                const ls = rtLines(mk, 940, 34);
-                infoBox(50, AY, 960, ls, 34, 46);
-              } else {
-                const ls = rtLines(mk, 1800, 46);
-                const hh = ls.length * 64 + 22;
-                infoBox(50, AY + Math.max(0, (AH - hh) / 2), 1900, ls, 46, 64);
-              }
-            }
-            /* colunas (tanque / avião), com ícones e números grandes */
-            const colX = (cxx, cwid, kind) => {
-              const ico = kind === "T" ? ICO.v[vp] : ICO.p[vp],
-                iw = kind === "T" ? 390 : 360,
-                ih = kind === "T" ? 268 : 317,
-                qty = kind === "T" ? tkQty : plQty,
-                pts = kind === "T" ? tkPts : plPts,
-                contentH = 16 + ih + 14 + 4 * 56,
-                ly0 = AY + Math.max(0, (AH - contentH) / 2);
-              let ly = ly0;
-              rr(cxx, AY, cwid, AH, 14);
-              c.fillStyle = "rgba(0,0,0,.30)";
-              c.fill();
-              c.lineWidth = 3;
-              c.strokeStyle = COL[vp];
-              c.stroke();
-              if (ico) c.drawImage(ico, cxx + cwid / 2 - iw / 2, ly + 16, iw, ih);
-              ly += 16 + ih + 14;
-              TX(kind === "T" ? `TANQUE: LV. ${lv}` : `AVIÃO: LV. ${lv}`, cxx + cwid / 2, ly + 28, 42, RY, "center", 1);
-              ly += 56;
-              TX(`QUANTIDADE: ${qty}`, cxx + cwid / 2, ly + 28, 40, "#fff", "center", 1);
-              ly += 56;
-              TX("TOTAL:", cxx + cwid / 2, ly + 28, 38, "#fff", "center", 1);
-              ly += 56;
-              TX(`${pts} PONTO${pl(pts)}`, cxx + cwid / 2, ly + 28, 50, RG, "center", 1);
-            };
-            if (hasTk && hasP) {
-              colX(1040, 440, "T");
-              colX(1510, 440, "P");
-            } else if (hasTk) colX(1275, 440, "T");
-            else if (hasP) colX(1275, 440, "P");
-          }
-        } catch (e) {
-          console.error("vrWallDraw", e);
+          TX("INFORMAÇÕES", 200, 60, 46, "#fff", "center", 1);
         } finally {
           c = c0;
         }
       }
-      /* assinatura do conteúdo: só redesenha quando algo muda (nada de gastar GPU à toa) */
-      function vrWallSig() {
-        if (!G || scr != "game") return "off";
-        const parts = [showInfo ? infoTab : 0, G.cur, G.round || 1, G.tc || 0, evoLv(), vrWallHover ? 1 : 0, tanksOn() ? 1 : 0, planesOn() ? 1 : 0, G.bot[G.cur] ? 1 : 0];
-        if (showInfo) {
-          for (let i = 0; i < cfg.n; i++) parts.push(cnt(i), solOf(i), (G.cards[i] || []).length, G.pl[i] || 0, G.planeDmg[i] || 0, G.bot[i] ? 1 : 0);
-          const vc = G.cards[G.bot[G.cur] ? 0 : G.cur] || [];
-          parts.push(vc.map((k) => (k.joker ? "J" : k.t)).join(","), tkTot(G.bot[G.cur] ? 0 : G.cur));
+      function wrDrawPanel() {
+        const g = wrP.g,
+          c0 = c,
+          W = VR_WR_LW,
+          H = VR_WR_LH,
+          tab = wr.tab === 3 && !hasThirdTab() ? 1 : wr.tab;
+        g.setTransform(VR_WR_D, 0, 0, VR_WR_D, 0, 0);
+        g.clearRect(0, 0, W, H);
+        c = g;
+        try {
+          /* moldura azul do original (sem registrar nada em OVR) */
+          rr(0, 0, W, H, 14);
+          c.fillStyle = "#0a3a6a";
+          c.fill();
+          const total = drawInfoBody(tab, 0, 0, W, H, SCR.wrist, false, null);
+          SCMAX.wrist = Math.max(0, total - (H - 6));
+          SCR.wrist = clampN(SCR.wrist, 0, SCMAX.wrist);
+          SBAR(0, 0, W, H, SCR.wrist, SCMAX.wrist);
+          rr(1.5, 1.5, W - 3, H - 3, 12.5);
+          c.lineWidth = 3;
+          c.strokeStyle = "#fff";
+          c.stroke();
+        } catch (e) {
+          console.error("wrDrawPanel", e);
+        } finally {
+          c = c0;
         }
+      }
+      function wrSig() {
+        if (!G || scr != "game") return "off";
+        const vp = G.bot[G.cur] ? 0 : G.cur,
+          parts = [wr.tab, G.cur, G.round || 1, G.tc || 0, evoLv(), cfg.lang, cfg.n, tanksOn() ? 1 : 0, planesOn() ? 1 : 0, missilesOn() ? 1 : 0, G.bot[G.cur] ? 1 : 0, SCR.wrist | 0];
+        for (let i = 0; i < cfg.n; i++) parts.push(cnt(i), solOf(i), (G.cards[i] || []).length, G.pl[i] || 0, G.planeDmg[i] || 0, G.bot[i] ? 1 : 0);
+        parts.push((G.cards[vp] || []).map((k) => (k.joker ? "J" : k.t)).join(","), tkTot(vp));
         return parts.join("|");
       }
-      let vrWallT = -1e9;
-      function vrWallSync() {
-        const on = !!G && scr == "game";
-        if (vrWall.visible !== on) vrWall.visible = on;
-        if (!on) return;
-        const sg = vrWallSig();
-        if (sg === vrWallSig0) return;
-        vrWallSig0 = sg;
-        vrWallDraw();
-        vrWallTex.needsUpdate = true;
-      }
-      /* com o painel FECHADO só o botão responde à mira (o resto é transparente e não bloqueia nada) */
-      const vrWallPt = () => null; // etapa 73: o painel do chão é só leitura; o botão fica na barra de baixo da tela
-      /* mira no painel do chão (devolve coordenadas do canvas do painel) */
-      function vrWallAim(k) {
-        if (!vrWall.visible) return null;
-        tm.identity().extractRotation(k.matrixWorld);
-        ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
-        ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
-        return vrWallPt(ray.intersectObject(vrWall)[0]);
-      }
-      function vrWallHitRay(e) {
-        if (!vrWall.visible) return null;
-        nd.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-        ray.setFromCamera(nd, cam);
-        return vrWallPt(ray.intersectObject(vrWall)[0]);
+      let wrT = -1e9;
+      function vrWristSync() {
+        if (!wrBtnMesh.visible) return;
+        const sb = "b" + (wr.hover ? 1 : 0) + "|" + cfg.lang;
+        if (sb !== wr.sigB) {
+          wr.sigB = sb;
+          wrDrawBtn();
+          wrB.t.needsUpdate = true;
+        }
+        if (!wr.open) return;
+        const sg = wrSig();
+        if (sg === wr.sig) return;
+        wr.sig = sg;
+        wrDrawPanel();
+        wrP.t.needsUpdate = true;
       }
 
       /* etapa 44 (9d): mini-plano 3D do relógio do turno. Coordenadas em px de 1920x1080 (mesmas do BADGE). Região coberta:
@@ -11299,16 +11142,13 @@
             vrTeleport(sa);
             return;
           }
-          /* etapa 71: apontando para o painel da PAREDE ESQUERDA (botão INFORMAÇÕES) = troca de tela */
-          const wa = vrWallAim(k);
-          if (wa) {
-            if (vrWallInBtn(wa.x, wa.y)) {
-              cycleInfo();
-              vrWallSync();
-              draw();
-            }
+          /* etapa 74: apontando (mão direita) para o botão INFORMAÇÕES do PUNHO esquerdo = troca de aba do punho (independente da tela) */
+          if (wristBtnAim(k)) {
+            wristCycle();
+            vrWristSync();
             return;
           }
+          if (wristPanelAim(k)) return; // clicar no painel do punho não clica no mapa
           const h = aim(k);
           if (!h) return;
           const pb = pickScreenButton(h.x, h.y);
@@ -11443,16 +11283,6 @@
       });
       R.domElement.addEventListener("pointermove", (e) => {
         if (R.xr.isPresenting) return;
-        /* etapa 71: hover do mouse no painel da parede */
-        const wv = vrWallHitRay(e);
-        if (wv) {
-          const hv = vrWallInBtn(wv.x, wv.y);
-          if (hv !== vrWallHover) {
-            vrWallHover = hv;
-            vrWallSig0 = "";
-          }
-          return;
-        }
         const h = scrHit(e);
         if (!h) return;
         if (mDrag) {
@@ -11485,15 +11315,6 @@
         }
         if (mPanned) {
           mPanned = false;
-          return;
-        }
-        /* etapa 71: clique no painel da PAREDE ESQUERDA (botão INFORMAÇÕES) */
-        const wv = vrWallHitRay(e);
-        if (wv) {
-          if (vrWallInBtn(wv.x, wv.y)) {
-            cycleInfo();
-            vrWallSig0 = "";
-          }
           return;
         }
         const h = scrHit(e);
@@ -11591,9 +11412,10 @@
         vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
-        if (performance.now() - vrWallT > 150) {
-          vrWallT = performance.now();
-          try { vrWallSync(); } catch (e) { console.error("vrWallSync", e); } // etapa 71: painel INFORMAÇÕES na parede
+        vrWristAttach(); // etapa 74: botão/abas INFORMAÇÕES em cima do punho esquerdo
+        if (performance.now() - wrT > 150 || wr.sig === "") {
+          wrT = performance.now();
+          try { vrWristSync(); } catch (e) { console.error("vrWristSync", e); }
         }
         syncVRLift(); // etapa 9p: territórios suspensos/levantados (define a base + userData.lb)
         vrAirSuspSync(); // etapa 65: avião suspenso num plano mais alto que o levante
@@ -11611,7 +11433,6 @@
         const dt = Math.min(clk.getDelta(), 0.1),
           s = R.xr.getSession();
         vrStageTick(dt); // etapa 67: zoom geral da tela (P/M/G) — animado, cresce só para cima
-        vrWallFollow(); // etapa 72: painel INFORMAÇÕES fixo no chão
         if (vrSitCal > 0 && s) {
           vrSitCal -= dt;
           if (vrSitCal <= 0) {
@@ -11685,14 +11506,16 @@
             if (src.handedness == "right") {
               const kr = ctl.find((k) => k.userData.hand == "right"),
                 h = kr && aim(kr),
-                pointingAtTips = h ? scrollAt(h.x, h.y) : null;
+                pointingAtTips = h ? scrollAt(h.x, h.y) : kr && wristPanelAim(kr) ? "wrist" : null; // etapa 74: "wrist" = rolagem do painel do punho
               if (Math.abs(y) > 0.35 && Math.abs(y) > Math.abs(x) && pointingAtTips) {
                 zAcc -= dt;
                 if (zAcc <= 0) {
                   zAcc = 0.12;
                   SCR[pointingAtTips] = THREE.MathUtils.clamp(SCR[pointingAtTips] + y * 48, 0, SCMAX[pointingAtTips]);
-                  draw();
-                  tex.needsUpdate = true;
+                  if (pointingAtTips !== "wrist") {
+                    draw();
+                    tex.needsUpdate = true;
+                  }
                 }
               } else if (Math.abs(y) > 0.55 && Math.abs(y) > Math.abs(x) && mapOn()) {
                 zAcc -= dt;
@@ -11757,16 +11580,10 @@
           }
           hk = hkR || hk;
           if (hkR) hkK = hkRK; // etapa 21: a mão esquerda é a de andar; o hover segue a direita quando ela mira a tela
-          /* etapa 71: botão da parede acende quando o laser passa por ele */
+          /* etapa 74: o botão do punho acende quando o laser da mão direita passa por ele */
           let whv = false;
-          for (const k of ctl) {
-            const wa = vrWallAim(k);
-            if (wa && vrWallInBtn(wa.x, wa.y)) {
-              whv = true;
-              break;
-            }
-          }
-          if (whv !== vrWallHover) vrWallHover = whv;
+          for (const k of ctl) if (wristBtnAim(k)) whv = true;
+          if (whv !== wr.hover) wr.hover = whv;
           if (hk) {
             /* etapa 21: onHover (pick = isPointInPath em todos os territórios + draw() + textura) só roda
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
