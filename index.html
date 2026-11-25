@@ -5399,14 +5399,14 @@
             const gy = oy + 24.15 + 4;
             if (elim) TX("Eliminado", ox, gy + 9.2, 16, "#ff4444", "left", 1);
             else {
-              const cw1 = (a, b) => tw(a[0], 13) + 6 + tw(String(a[1]), 18),
+              const cw1 = (a, b) => tw(a[0], 14.5) + 6 + tw(String(a[1]), 18),
                 col1 = Math.max(cw1(cells[0]), cells[2] ? cw1(cells[2]) : 0),
                 col2 = Math.max(cw1(cells[1]), cells[3] ? cw1(cells[3]) : 0);
               cells.forEach((cell, k) => {
                 const cxx = ox + (k % 2 ? col1 + 22 : 0),
                   cwd = k % 2 ? col2 : col1,
                   cyy = gy + Math.floor(k / 2) * 23.7 + 10.35;
-                TX(cell[0], cxx, cyy + 1, 13, "#cfe0ff", "left", 1);
+                TX(cell[0], cxx, cyy + 1, 14.5, "#cfe0ff", "left", 1);
                 TX(String(cell[1]), cxx + cwd, cyy, 18, "#fff", "right", 1);
               });
             }
@@ -8431,7 +8431,7 @@
       const VR_WR_LW = 320, // largura lógica (igual ao original)
         VR_WR_LH = 520, // altura lógica MÁXIMA da aba das cartas (etapa 77: só ela rola, quando as cartas passam disso)
         VR_WR_HMAX = 1400, // etapa 77: altura do canvas (as abas Jogadores e Tanques/Aviões mostram o conteúdo COMPLETO, sem rolagem)
-        VR_WR_ROT = -Math.PI / 2, // etapa 87: agora -90° = para a DIREITA (todas as abas do punho). Etapa 77: giro do botão + abas no próprio plano (+90° = para a esquerda; use -Math.PI / 2 para a direita)
+        VR_WR_ROT = 0, // etapa 88: abas no mesmo sentido dos botões (0°). Etapa 87: agora -90° = para a DIREITA (todas as abas do punho). Etapa 77: giro do botão + abas no próprio plano (+90° = para a esquerda; use -Math.PI / 2 para a direita)
         VR_WR_D = 2, // densidade de pixels do canvas
         VR_WR_W = 0.26, // largura do painel em metros
         VR_WR_BW = 0.2, // largura do botão (m)
