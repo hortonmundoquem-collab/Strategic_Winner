@@ -546,6 +546,11 @@
                   move; fixar volta à mão. Aba Cartas do INF com a mesma altura da aba Jogadores (rola se passar). OBJ/Config/Dicas abrem os painéis
                   da TELA (showObj/showCfg/showRules). Constantes: VR_WR_BW2, VR_WR_BH2, VR_WR_GAP, VR_WR_PS. TESTAR no Quest.
                   PRÓXIMA: desenhar Objetivo, Dicas e Config no próprio punho (como as abas do INF), com fixar/desafixar.
+           [x] 87. FEITO (pedido): OBJ, Config e Dicas do PUNHO abrem as SUAS abas no próprio punho (estado próprio m.open; NÃO abrem os
+                  painéis da tela, e os botões da tela não abrem os do punho). Mesmo desenho das funções da tela (wrDrawExtra, WR_PDEF).
+                  Config do punho é clicável (gatilho da mão direita). Rolagem: analógico direito apontando para a aba (SCR.wr_*).
+                  TODAS as abas giradas 90° para a DIREITA (VR_WR_ROT = -PI/2). GARRA em qualquer parte (botão, alfinete ou aba) pega e
+                  move; se estava fixado, solta da mão automaticamente. Tamanho: VR_WR_MPX2. TESTAR no Quest.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -4661,7 +4666,7 @@
       const RY = "#ffdd00",
         RG = "#44ff44";
       let SCAREA = {};
-      const SCR = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0 },
+      const SCR = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0, wr_obj: 0, wr_cfg: 0, wr_tips: 0 },
         SCMAX = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0 };
       const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
       function scrollAt(x, y) {
@@ -8426,7 +8431,7 @@
       const VR_WR_LW = 320, // largura lógica (igual ao original)
         VR_WR_LH = 520, // altura lógica MÁXIMA da aba das cartas (etapa 77: só ela rola, quando as cartas passam disso)
         VR_WR_HMAX = 1400, // etapa 77: altura do canvas (as abas Jogadores e Tanques/Aviões mostram o conteúdo COMPLETO, sem rolagem)
-        VR_WR_ROT = Math.PI / 2, // etapa 77: giro do botão + abas no próprio plano (+90° = para a esquerda; use -Math.PI / 2 para a direita)
+        VR_WR_ROT = -Math.PI / 2, // etapa 87: agora -90° = para a DIREITA (todas as abas do punho). Etapa 77: giro do botão + abas no próprio plano (+90° = para a esquerda; use -Math.PI / 2 para a direita)
         VR_WR_D = 2, // densidade de pixels do canvas
         VR_WR_W = 0.26, // largura do painel em metros
         VR_WR_BW = 0.2, // largura do botão (m)
@@ -8475,11 +8480,22 @@
       const wrPanMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_W, VR_WR_H), wrMat(wrP.t));
       wrPanMesh.renderOrder = 1301;
       wrPanMesh.visible = false;
+      /* etapa 87: abas OBJ / Config / Dicas desenhadas no punho com as MESMAS funções da tela (drawObjectivePanel, drawConfigPanel,
+         drawTipsPanel), num canvas próprio: x/y = canto do painel na tela 1920x1080; w/hmax = tamanho lógico. Estado, rolagem
+         (SCR.wr_obj/wr_cfg/wr_tips) e cliques (Config) são próprios do punho: não abrem/fecham nada na tela do cinema. */
+      const VR_WR_D2 = 2, // densidade de pixels das abas OBJ/Config/Dicas
+        VR_WR_MPX2 = 0.00065, // metros por pixel lógico (INF usa 0,26/320 = 0,0008125). Diminua se ficarem grandes
+        WR_PDEF = {
+          obj: { x: 853, y: 87, w: 749, hmax: 700, key: "wr_obj" },
+          cfg: { x: 1610, y: 84, w: 300, hmax: 842, key: "wr_cfg" },
+          tips: { x: 10, y: 84, w: 760, hmax: 842, key: "wr_tips" },
+        };
       const WR_DEFS = [
         { id: "inf", label: "INF", act: () => wristCycle(), on: () => !!wr.open },
-        { id: "obj", label: "OBJ", act: () => { showObj = !showObj; }, on: () => !!showObj },
-        { id: "cfg", label: "Config", act: () => { showCfg = !showCfg; SCR.cfg = 0; }, on: () => !!showCfg },
-        { id: "tips", label: "Dicas", act: () => { showRules = !showRules; SCR.tips = 0; }, on: () => !!showRules },
+        /* etapa 87: OBJ/Config/Dicas têm estado PRÓPRIO no punho (m.open) e abas desenhadas no próprio punho; NÃO abrem os painéis da tela */
+        { id: "obj", label: "OBJ", act: function () { this.open = !this.open; SCR.wr_obj = 0; this.psig = ""; }, on: function () { return !!this.open; } },
+        { id: "cfg", label: "Config", act: function () { this.open = !this.open; SCR.wr_cfg = 0; this.psig = ""; }, on: function () { return !!this.open; } },
+        { id: "tips", label: "Dicas", act: function () { this.open = !this.open; SCR.wr_tips = 0; this.psig = ""; }, on: function () { return !!this.open; } },
       ];
       const wrMods = WR_DEFS.map((d, i) => {
         const b = wrMk(280, 180),
@@ -8492,15 +8508,22 @@
         btn.renderOrder = pin.renderOrder = 1300;
         btn.visible = pin.visible = false;
         g.add(btn, pin);
-        if (d.id == "inf") {
-          const rot = new THREE.Group(); // etapa 77: abas giradas 90° (ficam à ESQUERDA do botão INF)
-          rot.rotation.z = VR_WR_ROT;
-          rot.add(wrPanMesh);
-          g.add(rot);
+        const rot = new THREE.Group(); // etapa 77/87: abas giradas 90° (VR_WR_ROT; -90° = à DIREITA do botão)
+        rot.rotation.z = VR_WR_ROT;
+        let pan = wrPanMesh,
+          pc = null;
+        if (d.id != "inf") {
+          const PD = WR_PDEF[d.id];
+          pc = wrMk(PD.w * VR_WR_D2, PD.hmax * VR_WR_D2);
+          pan = new THREE.Mesh(new THREE.PlaneGeometry(PD.w * VR_WR_MPX2, PD.hmax * VR_WR_MPX2), wrMat(pc.t));
+          pan.renderOrder = 1301;
+          pan.visible = false;
         }
+        rot.add(pan);
+        g.add(rot);
         g.position.set(hx, 0, 0);
         vrWrist.add(g);
-        return { ...d, b, p, g, btn, pin, hx, pinned: true, grab: null, hover: "", sig: "" };
+        return { ...d, b, p, g, btn, pin, pan, pc, hx, pinned: true, grab: null, hover: "", sig: "", open: false, psig: "", hits: [], ph: 0 };
       });
       let wrHost = null;
       /* volta o módulo para a mão, na posição original */
@@ -8532,6 +8555,7 @@
           const v = on && (m.pinned ? !!wrHost : true);
           m.btn.visible = m.pin.visible = v;
           if (m.id == "inf") wrPanMesh.visible = v && !!wr.open;
+          else m.pan.visible = v && !!m.open;
         }
       }
       /* toque no INF: 1 -> 2 -> 3 -> fecha (igual ao cycleInfo da tela, mas com estado próprio) */
@@ -8561,21 +8585,44 @@
         let best = null;
         for (const m of wrMods) {
           if (m.grab === k) continue;
-          for (const part of ["btn", "pin"]) {
+          for (const part of ["btn", "pin", "pan"]) {
             const h = wrHit(k, m[part], !m.pinned);
-            if (h && (!best || h.distance < best.d)) best = { m, part, d: h.distance };
+            if (h && (!best || h.distance < best.d)) best = { m, part, d: h.distance, uv: h.uv };
           }
         }
         return best;
       }
       const wristBtnAim = (k) => !!wrAim(k),
-        wristPanelAim = (k) => !!wrHit(k, wrPanMesh, !wrMods[0].pinned);
+        wristPanelAim = (k) => !!wristPanKey(k);
+      /* etapa 87: chave de rolagem do painel do punho apontado (null = nenhum) */
+      function wristPanKey(k) {
+        for (const m of wrMods) {
+          if (m.grab === k) continue;
+          if (wrHit(k, m.pan, !m.pinned)) return m.id == "inf" ? "wrist" : WR_PDEF[m.id].key;
+        }
+        return null;
+      }
       /* gatilho: botão = ação; alfinete = fixar/desafixar. true = consumiu o clique */
       function wristPress(k) {
         const a = wrAim(k);
         if (!a) return false;
         if (a.part == "pin") wrTogglePin(a.m);
-        else {
+        else if (a.part == "pan") {
+          /* etapa 87: clique nos botões da aba Config do punho */
+          if (a.m.id == "cfg" && a.uv) {
+            const PD = WR_PDEF.cfg,
+              f = a.m.ph / PD.hmax,
+              lx = a.uv.x * PD.w,
+              ly = (1 - a.uv.y) * f * PD.hmax;
+            const hb = a.m.hits.find((b) => lx >= b.x && lx <= b.x + b.w && ly >= b.y && ly <= b.y + b.h);
+            if (hb) {
+              try { hb.fn(); } catch (e) { console.error("wrist cfg", e); }
+              a.m.psig = "";
+              draw();
+              tex.needsUpdate = true;
+            }
+          }
+        } else {
           a.m.act();
           if (a.m.id != "inf") {
             draw();
@@ -8588,7 +8635,8 @@
       /* garra: pega um módulo SOLTO */
       function wristGrab(k) {
         const a = wrAim(k);
-        if (!a || a.m.pinned) return false;
+        if (!a) return false;
+        if (a.m.pinned) wrTogglePin(a.m); // etapa 87: a garra em QUALQUER parte (botão, alfinete ou aba) solta e pega
         for (const m of wrMods) if (m.grab === k) m.grab = null;
         k.attach(a.m.g);
         a.m.grab = k;
@@ -8714,8 +8762,76 @@
         parts.push((G.cards[vp] || []).map((k) => (k.joker ? "J" : k.t)).join(","), tkTot(vp));
         return parts.join("|");
       }
+      /* etapa 87: desenha OBJ/Config/Dicas no canvas próprio do módulo, reaproveitando as funções da tela */
+      function wrDrawExtra(m) {
+        const PD = WR_PDEF[m.id],
+          g = m.pc.g,
+          c0 = c,
+          ovr0 = OVR,
+          btns0 = btns,
+          area0 = SCAREA,
+          sk = m.id == "obj" ? null : m.id,
+          scr0 = sk ? SCR[sk] : 0,
+          mx0 = sk ? SCMAX[sk] : 0;
+        c = g;
+        OVR = [];
+        btns = [];
+        SCAREA = {};
+        if (sk) SCR[sk] = SCR[PD.key] || 0;
+        try {
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, m.pc.cv.width, m.pc.cv.height);
+          g.setTransform(VR_WR_D2, 0, 0, VR_WR_D2, -PD.x * VR_WR_D2, -PD.y * VR_WR_D2);
+          if (m.id == "obj") drawObjectivePanel();
+          else if (m.id == "cfg") drawConfigPanel();
+          else drawTipsPanel();
+          let H = 40;
+          for (const r of OVR) H = Math.max(H, r.y + r.h - PD.y + 4);
+          H = Math.min(PD.hmax, H);
+          m.ph = H;
+          m.hits = btns.map((b) => ({ x: b.x - PD.x, y: b.y - PD.y, w: b.w, h: b.h, fn: b.fn }));
+          if (sk) {
+            SCR[PD.key] = SCR[sk];
+            SCMAX[PD.key] = SCMAX[sk];
+          }
+          const f = H / PD.hmax,
+            hm = PD.hmax * VR_WR_MPX2;
+          m.pc.t.repeat.set(1, f);
+          m.pc.t.offset.set(0, 1 - f);
+          m.pan.scale.y = f;
+          m.pan.position.y = VR_WR_BW2 / 2 + 0.012 + (hm * f) / 2;
+        } catch (e) {
+          console.error("wrDrawExtra", m.id, e);
+        } finally {
+          c = c0;
+          OVR = ovr0;
+          btns = btns0;
+          SCAREA = area0;
+          if (sk) {
+            SCR[sk] = scr0;
+            SCMAX[sk] = mx0;
+          }
+        }
+      }
+      function wrExtraSig(m) {
+        if (!G || scr != "game") return "off";
+        const vp = G.bot[G.cur] ? 0 : G.cur,
+          base = [cfg.lang, SCR[WR_PDEF[m.id].key] | 0];
+        if (m.id == "obj") base.push(vp, (G.ob[vp] || []).map((o) => (o.win ? 1 : 0) + String(o.txt || "")).join("#"));
+        if (m.id == "cfg")
+          base.push(audioOn, terrNames, factorySize, tankSize, planeSize, cfg.stageZoom, showLog, cfg.walk, cfg.pose, !!document.fullscreenElement);
+        return base.join("|");
+      }
       let wrT = -1e9;
       function vrWristSync() {
+        for (const m of wrMods) {
+          if (m.id == "inf" || !m.open || !m.pan.visible) continue;
+          const sg = wrExtraSig(m);
+          if (sg === m.psig) continue;
+          m.psig = sg;
+          wrDrawExtra(m);
+          m.pc.t.needsUpdate = true;
+        }
         for (const m of wrMods) {
           if (!m.btn.visible) continue;
           const sb = m.hover + "|" + (m.on() ? 1 : 0) + "|" + (m.pinned ? 1 : 0) + "|" + (G ? G.cur : 0);
@@ -11712,13 +11828,13 @@
             if (src.handedness == "right") {
               const kr = ctl.find((k) => k.userData.hand == "right"),
                 h = kr && aim(kr),
-                pointingAtTips = h ? scrollAt(h.x, h.y) : kr && wristPanelAim(kr) ? "wrist" : null; // etapa 74: "wrist" = rolagem do painel do punho
+                pointingAtTips = h ? scrollAt(h.x, h.y) : (kr && wristPanKey(kr)) || null; // etapa 74: "wrist" = rolagem do painel do punho
               if (Math.abs(y) > 0.35 && Math.abs(y) > Math.abs(x) && pointingAtTips) {
                 zAcc -= dt;
                 if (zAcc <= 0) {
                   zAcc = 0.12;
                   SCR[pointingAtTips] = THREE.MathUtils.clamp(SCR[pointingAtTips] + y * 48, 0, SCMAX[pointingAtTips]);
-                  if (pointingAtTips !== "wrist") {
+                  if (!String(pointingAtTips).startsWith("wr")) {
                     draw();
                     tex.needsUpdate = true;
                   }
