@@ -3346,6 +3346,7 @@
                 decided: false,
               };
         }
+        SCR.intro = 0; // cada novo turno abre a lista de etapas no começo
         G.lastCard = "";
         G.csel = [];
         G.ai = null;
@@ -4666,8 +4667,8 @@
       const RY = "#ffdd00",
         RG = "#44ff44";
       let SCAREA = {};
-      const SCR = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0, wr_obj: 0, wr_cfg: 0, wr_tips: 0 },
-        SCMAX = { tips: 0, cfg: 0, info: 0, log: 0, wrist: 0 };
+      const SCR = { tips: 0, cfg: 0, info: 0, log: 0, intro: 0, wrist: 0, wr_obj: 0, wr_cfg: 0, wr_tips: 0 },
+        SCMAX = { tips: 0, cfg: 0, info: 0, log: 0, intro: 0, wrist: 0 };
       const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
       function scrollAt(x, y) {
         for (const k in SCAREA) {
@@ -5739,9 +5740,19 @@
         }
         const bh = (b) => 24 + 40 + b.lines.length * lh + (b.trade ? 0 : 0),
           gap = 14,
-          total = 150 + boxes.reduce((a, b) => a + bh(b) + gap, 0) + (trOk ? 96 : 20),
-          y0 = Math.max(10, (1080 - total) / 2);
-        PANEL(bx - 30, y0, bw + 60, total);
+          contentH = boxes.reduce((a, b) => a + bh(b) + gap, 0),
+          footerH = trOk ? 96 : 20,
+          total = 150 + contentH + footerH,
+          panelH = Math.min(total, 1000),
+          y0 = (1080 - panelH) / 2,
+          contentY = y0 + 124,
+          contentBottom = y0 + panelH - footerH - 16,
+          viewH = Math.max(0, contentBottom - contentY);
+        // Com muitos continentes, só a lista rola: título e OK continuam visíveis.
+        SCAREA.intro = { x: bx - 30, y: y0, w: bw + 60, h: panelH };
+        SCMAX.intro = Math.max(0, contentH - viewH);
+        SCR.intro = clampN(SCR.intro, 0, SCMAX.intro);
+        PANEL(bx - 30, y0, bw + 60, panelH);
         TX("Seu Turno de Jogar - " + G.round + "ª Rodada", 960, y0 + 38, 40, "#ff6a00", "center", 1);
         TX("Siga as Etapas de Distribuição que você tem direito:", 960, y0 + 86, 28, "#fff", "center", 1);
         const RUN = (parts, x, y, z) => {
@@ -5752,7 +5763,11 @@
             cx += c.measureText(translateCanvasText(t).toUpperCase()).width;
           }
         };
-        let y = y0 + 124;
+        c.save();
+        c.beginPath();
+        c.rect(bx - 4, contentY - 4, bw + 8, viewH + 8);
+        c.clip();
+        let y = contentY - SCR.intro;
         for (const b of boxes) {
           const h = bh(b);
           rr(bx, y, bw, h, 8);
@@ -5762,16 +5777,22 @@
           RUN(b.head, bx + 20, y + 28, zh);
           b.lines.forEach((ln, i) => RUN(ln, bx + 20, y + 74 + i * lh, zb));
           if (b.trade) {
-            const by = y + h / 2 - 8;
             if (I.must) ACTBTN(bx + bw - 290, y + h - 66, 130, 52, "NÃO", null, "#555", "tr-no");
-            else
+            else {
               B(bx + bw - 290, y + h - 66, 130, 52, "NÃO", () => (I.decided = true), { z: 28, bg: "#a32020", k: "tr-no" });
+              btns.pop();
+              btnVis(bx + bw - 290, y + h - 66, 130, 52, "tr-no", () => (I.decided = true), contentY - 4, contentBottom + 4);
+            }
             B(bx + bw - 140, y + h - 66, 120, 52, "SIM", () => (showCards = 1), { z: 28, bg: "#1a8f3a", k: "tr-yes" });
+            btns.pop();
+            btnVis(bx + bw - 140, y + h - 66, 120, 52, "tr-yes", () => (showCards = 1), contentY - 4, contentBottom + 4);
           }
           y += h + gap;
         }
+        c.restore();
+        SBAR(bx - 30, y0, bw + 60, panelH, SCR.intro, SCMAX.intro);
         if (trOk)
-          B(860, y + 10, 200, 70, "OK", () => {
+          B(860, contentBottom + 10, 200, 70, "OK", () => {
             G.intro = null;
             G.t0 = performance.now();
           }, { z: 34, bg: "#1a8f3a", k: "intro-ok" });
@@ -7934,7 +7955,8 @@
             );
           } else B(960 - 150, btnY, 300, 66, "Fechar", closeFn, { z: 19, bg: "#c0392b", k: "tr-close" });
         }
-        SCAREA = {};
+        const introArea = G && G.intro && !G.hand && !G.p1intro && !showCards && !G.missileTrade && scr == "game" ? SCAREA.intro : null;
+        SCAREA = introArea ? { intro: introArea } : {};
         if (!vrModalUp) vrDrawSidePanels();
       }
       function pick(x, y, noTerr) {
@@ -11436,6 +11458,25 @@
         /* etapa 43: tela de peças aberta (reforço / conquista / reagrupamento): segurar o território = segurar a setinha.
            Cobre também o caso em que ESTE clique acabou de conquistar o território (G.mv aberto com o gatilho ainda segurado). */
         if (vChooserHoldStart(t)) return;
+        /* pedido: segurar o alvo no Modo de Ataque com Aviões = ataca de novo automaticamente (igual aos soldados):
+           após 1 s, a cada 260 ms, enquanto o alvo continuar selecionado e houver pontos de Avião (>1) e no alvo (>1). */
+        if (G.ph == "A" && G.airMode) {
+          const airOk = () =>
+            scr == "game" && G && G.ph == "A" && G.airMode && !G.bot[G.cur] && !G.rch && !G.hand && !G.fortify && !G.mv &&
+            G.own[t] !== G.cur && (G.pl[G.cur] || 0) > 0 && ptsOf(t) > 1 &&
+            Math.max(0, (G.pl[G.cur] || 0) * evoLv() - (G.planeDmg[G.cur] || 0)) > 1;
+          const tick = () => {
+            if (!airOk()) return vHoldStop();
+            if (G.airTarget !== t) G.airTarget = t;
+            vHoldFired = true;
+            resolvePlaneAttack(t, G.cur);
+            checkWin();
+            vHoldRefresh();
+            vHoldT = setTimeout(tick, 260);
+          };
+          vHoldT = setTimeout(tick, 1000);
+          return;
+        }
         if (G.ph == "A" && from && !G.airMode && !G.missileMode && !G.missileStrikeTarget) {
           const tick = () => {
             if (
