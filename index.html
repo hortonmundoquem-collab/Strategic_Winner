@@ -541,13 +541,11 @@
                   sem o título amarelo do topo (evita barra de rolagem), e letras maiores (14 -> 16); textos abaixo do Tanque e do Avião também maiores (15/17 -> 16/18). Vale para a tela e para o punho.
            [x] 85. FEITO (pedido): aba 3 de INFORMAÇÕES com as linhas curtas do jogo original (8 linhas de introdução), fonte 17 e entrelinha 21
                   (cabe sem rolagem); tamanho do painel do VR inalterado.
-           [x] 86. FEITO (pedido): MAPA NA MÃO ESQUERDA. Abaixo do botão INFORMAÇÕES (que continua igual) entraram o botão MAPA (desenho de mapa dobrado)
-                  e o botão PINO (alfinete: fixado = verde/em pé; desafixado = laranja/riscado). MAPA liga/desliga o JOGO INTEIRO (mapa + HUD, igual ao do cinema)
-                  num painel de 0,5 m, desenhado por uma 2ª câmera ortográfica em textura 1920x1080 (mmRT/mmRender; não duplica nada do jogo, só renderiza
-                  com o painel visível, a cada VR_MM_EVERY quadros). Fixado = em cima da mão esquerda; desafixado = fica parado ao lado (filho do rig) e
-                  pode ser pego com a GARRA apontando para ele (mmGripStart/mmGrabTick) e levado para qualquer lugar; PINO de novo = volta para a mão.
-                  O gatilho apontado para o mapa da mão clica no jogo (onClick, igual ao mouse). Interruptor: VR_MM_ON. TESTAR no Quest: textura aparece
-                  (se vier preta/torta, ver mmRender), cores iguais às do cinema, desempenho (VR_MM_EVERY 3 se pesar), posição na mão (VR_MM_POS/TILT).
+           [x] 86. FEITO (pedido): BOTÃO DO MAPA no punho esquerdo, ao lado do INFORMAÇÕES (que continua igual). O botão tem um símbolo de mapa
+                  (desenhado em canvas). Apertar (gatilho da mão DIREITA) abre/fecha o MAPA INTEIRO (mundo todo, sem zoom: mar, dono de cada território,
+                  bordas, soldados, território selecionado em amarelo) em cima da mão esquerda. Abrir o mapa fecha as abas e vice-versa. Estado próprio
+                  (wr.map); o mini-mapa só é redesenhado quando muda (wrMapSig, a cada 150 ms). Constantes: VR_WR_MAP_W, VR_WR_MAPBTN_X.
+                  TESTAR no Quest: posição/lado do botão e tamanho do mapa; se os números ficarem pequenos, aumente VR_WR_MAP_W.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -8436,7 +8434,16 @@
         VR_WR_TILT = 0.45, // inclinação (rad) para o painel "olhar" para o jogador
         VR_WR_POS = [0, 0.07, 0.04]; // posição no controle esquerdo: x, y (para cima), z (para trás)
       const VR_WR_H = (VR_WR_W * VR_WR_HMAX) / VR_WR_LW; // etapa 77: altura do plano cheio (o desenho usa só a parte de cima)
-      const wr = { open: 0, tab: 1, hover: false, sig: "", sigB: "" };
+      const wr = { open: 0, tab: 1, hover: false, sig: "", sigB: "", map: 0, hoverM: false, sigM: "", sigMB: "" };
+      /* ETAPA 86 (pedido do dono): BOTÃO DO MAPA (símbolo de mapa) AO LADO DO BOTÃO INFORMAÇÕES, NO PUNHO ESQUERDO.
+         Apertar (gatilho da mão DIREITA apontando para ele) abre/fecha o MAPA INTEIRO (mundo todo, sem zoom) em cima da mão esquerda:
+         mar, cor do dono de cada território, bordas e o número de soldados (igual ao da tela). Estado PRÓPRIO (wr.map): independe do zoom da tela.
+         Abrir o mapa fecha as abas de Informações e vice-versa (ocupam o mesmo lugar). Ajustes: VR_WR_MAP_W (largura em m), VR_WR_MAPBTN_X (lado/posição do botão). */
+      const VR_WR_MAP_W = 0.46, // largura do mini-mapa em metros (altura = W x 9/16)
+        VR_WR_MAP_CW = 1280, // canvas do mini-mapa (16:9)
+        VR_WR_MAP_CH = 720,
+        VR_WR_MAPBTN = 0.06, // botão do mapa (quadrado, m)
+        VR_WR_MAPBTN_X = 0.135; // posição do botão do mapa ao lado do INFORMAÇÕES (m, no plano do punho)
       function wrMk(w, h) {
         const cv = document.createElement("canvas");
         cv.width = w;
@@ -8466,13 +8473,23 @@
       vrWrist.rotation.x = -Math.PI / 2 + VR_WR_TILT; // deitado em cima da mão, inclinado para o jogador (topo aponta para frente)
       const wrBtnMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_BW, VR_WR_BH), wrMat(wrB.t));
       const wrPanMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_W, VR_WR_H), wrMat(wrP.t));
+      const wrMB = wrMk(160, 160),
+        wrMP = wrMk(VR_WR_MAP_CW, VR_WR_MAP_CH),
+        VR_WR_MAP_H = (VR_WR_MAP_W * VR_WR_MAP_CH) / VR_WR_MAP_CW;
+      const wrMapBtnMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_MAPBTN, VR_WR_MAPBTN), wrMat(wrMB.t));
+      const wrMapMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_WR_MAP_W, VR_WR_MAP_H), wrMat(wrMP.t));
+      wrMapBtnMesh.position.x = VR_WR_MAPBTN_X;
+      wrMapMesh.position.y = VR_WR_BH / 2 + 0.012 + VR_WR_MAP_H / 2;
+      wrMapBtnMesh.renderOrder = 1300;
+      wrMapMesh.renderOrder = 1301;
+      wrMapBtnMesh.visible = wrMapMesh.visible = false;
       wrPanMesh.position.y = VR_WR_BH / 2 + 0.012 + VR_WR_H / 2;
       wrBtnMesh.renderOrder = 1300;
       wrPanMesh.renderOrder = 1301;
       wrBtnMesh.visible = wrPanMesh.visible = false;
       const vrWristRot = new THREE.Group(); // etapa 77: gira botão + abas 90° no plano da mão
       vrWristRot.rotation.z = VR_WR_ROT;
-      vrWristRot.add(wrBtnMesh, wrPanMesh);
+      vrWristRot.add(wrBtnMesh, wrPanMesh, wrMapBtnMesh, wrMapMesh);
       vrWrist.add(vrWristRot);
       let wrHost = null;
       /* cola o grupo no controle esquerdo (todo quadro; barato) e liga/desliga a visibilidade */
@@ -8486,10 +8503,13 @@
         const on = !!G && scr == "game" && !!wrHost && R.xr.isPresenting;
         wrBtnMesh.visible = on;
         wrPanMesh.visible = on && !!wr.open;
+        wrMapBtnMesh.visible = on; // etapa 86
+        wrMapMesh.visible = on && !!wr.map;
       }
       /* toque no botão do punho: 1 -> 2 -> 3 -> fecha (igual ao cycleInfo da tela, mas com estado próprio) */
       function wristCycle() {
         const last = hasThirdTab() ? 3 : 2;
+        wr.map = 0; // etapa 86: Informações e Mapa ocupam o mesmo lugar
         if (!wr.open) {
           wr.open = 1;
           wr.tab = 1;
@@ -8510,7 +8530,120 @@
         return ray.intersectObject(mesh, false)[0] || null;
       }
       const wristBtnAim = (k) => !!wrHit(k, wrBtnMesh),
-        wristPanelAim = (k) => !!wrHit(k, wrPanMesh);
+        wristPanelAim = (k) => !!wrHit(k, wrPanMesh) || !!wrHit(k, wrMapMesh), // etapa 86: o mini-mapa também não deixa o clique passar
+        wristMapBtnAim = (k) => !!wrHit(k, wrMapBtnMesh);
+      /* etapa 86: toque no botão do mapa = abre/fecha o mapa inteiro (fecha as abas de Informações) */
+      function wristMapToggle() {
+        wr.map = wr.map ? 0 : 1;
+        if (wr.map) {
+          wr.open = 0;
+          wr.tab = 1;
+        }
+        wr.sigM = "";
+        wr.sig = "";
+      }
+      /* botão com SÍMBOLO de mapa (desenhado, sem emoji: o Quest pode não ter a fonte) */
+      function wrDrawMapBtn() {
+        const g = wrMB.g,
+          c0 = c;
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, 160, 160);
+        c = g;
+        try {
+          rr(6, 6, 148, 148, 22);
+          c.fillStyle = wr.map ? "#2f6fd6" : wr.hoverM ? "#25b34a" : "#1a8f3a";
+          c.fill();
+          c.lineWidth = 7;
+          c.strokeStyle = "#fff";
+          c.stroke();
+          /* mapa dobrado em 3 faixas */
+          const x0 = 32, x1 = 128, y0 = 40, y1 = 120, w3 = (x1 - x0) / 3;
+          g.lineJoin = "round";
+          for (let i = 0; i < 3; i++) {
+            const d = i % 2 ? 7 : 0; // faixas alternadas sobem/descem (dobras)
+            g.beginPath();
+            g.moveTo(x0 + i * w3, y0 + 7 - d);
+            g.lineTo(x0 + (i + 1) * w3, y0 + d);
+            g.lineTo(x0 + (i + 1) * w3, y1 - 7 + d);
+            g.lineTo(x0 + i * w3, y1 - d);
+            g.closePath();
+            g.fillStyle = i == 1 ? "#d9ecff" : "#f4efd2";
+            g.fill();
+            g.lineWidth = 4;
+            g.strokeStyle = "#0d3b1a";
+            g.stroke();
+          }
+          /* rota pontilhada + alvo (X) */
+          g.setLineDash([6, 6]);
+          g.lineWidth = 4;
+          g.strokeStyle = "#d62828";
+          g.beginPath();
+          g.moveTo(44, 98);
+          g.quadraticCurveTo(70, 60, 96, 84);
+          g.stroke();
+          g.setLineDash([]);
+          g.beginPath();
+          g.moveTo(92, 74);
+          g.lineTo(104, 90);
+          g.moveTo(104, 74);
+          g.lineTo(92, 90);
+          g.stroke();
+        } finally {
+          c = c0;
+        }
+      }
+      /* mini-mapa: o mundo INTEIRO (coords 1920x1080 sem zoom/pan) com cor do dono, bordas e soldados */
+      function wrMapSig() {
+        if (!G || scr != "game" || !G.M) return "off";
+        const a = [cfg.lang, G.cur, G.fillHid ? G.fillHid.size : 0, G.sel || ""];
+        for (const t of G.T) a.push(G.own[t] + ":" + vrDispN(t));
+        return a.join("|");
+      }
+      function wrDrawMapPanel() {
+        const g = wrMP.g,
+          c0 = c,
+          M = G.M,
+          K = VR_WR_MAP_CW / 1920;
+        c = g;
+        try {
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.clearRect(0, 0, VR_WR_MAP_CW, VR_WR_MAP_CH);
+          g.setTransform(K, 0, 0, K, 0, 0);
+          g.save();
+          rr(0, 0, 1920, 1080, 30);
+          g.clip();
+          g.fillStyle = "#5bbcd8";
+          g.fillRect(0, 0, 1920, 1080);
+          g.lineJoin = "round";
+          for (const t of G.T) {
+            if (!P2[t]) continue;
+            g.fillStyle = G.fillHid && G.fillHid.has(t) ? "rgba(160,170,180,.85)" : COL[G.own[t]];
+            g.fill(P2[t], "evenodd");
+            g.lineWidth = 3;
+            g.strokeStyle = "#111";
+            g.stroke(P2[t]);
+          }
+          if (G.sel && P2[G.sel]) {
+            g.lineWidth = 8;
+            g.strokeStyle = "#ffdd00";
+            g.stroke(P2[G.sel]);
+          }
+          for (const t of G.T) {
+            if (!M.C[t] || (G.fillHid && G.fillHid.has(t))) continue;
+            TK(String(vrDispN(t)), M.C[t][0], M.C[t][1], 46, "#fff", 9);
+          }
+          g.restore();
+          g.setTransform(K, 0, 0, K, 0, 0);
+          rr(2.5, 2.5, 1915, 1075, 28);
+          g.lineWidth = 8;
+          g.strokeStyle = "#fff";
+          g.stroke();
+        } catch (e) {
+          console.error("wrDrawMapPanel", e);
+        } finally {
+          c = c0;
+        }
+      }
       function wrDrawBtn() {
         const g = wrB.g,
           c0 = c;
@@ -8588,306 +8721,27 @@
           wrDrawBtn();
           wrB.t.needsUpdate = true;
         }
+        /* etapa 86: botão do mapa + mini-mapa */
+        const sm = "m" + (wr.hoverM ? 1 : 0) + (wr.map ? 1 : 0);
+        if (sm !== wr.sigMB) {
+          wr.sigMB = sm;
+          wrDrawMapBtn();
+          wrMB.t.needsUpdate = true;
+        }
+        if (wr.map) {
+          const sq = wrMapSig();
+          if (sq !== wr.sigM) {
+            wr.sigM = sq;
+            wrDrawMapPanel();
+            wrMP.t.needsUpdate = true;
+          }
+        }
         if (!wr.open) return;
         const sg = wrSig();
         if (sg === wr.sig) return;
         wr.sig = sg;
         wrDrawPanel();
         wrP.t.needsUpdate = true;
-      }
-
-
-      /* =====================================================================================
-         ETAPA 86 (pedido do dono): MAPA (O JOGO INTEIRO) NA MÃO ESQUERDA, COM FIXAR / DESAFIXAR.
-         Na mão esquerda, abaixo do botão INFORMAÇÕES, ficam 2 botões novos:
-           [ MAPA ]  desenho de um mapa dobrado. Aperta = o jogo inteiro (mapa + HUD, igual à tela do cinema) aparece / some.
-           [ PINO ]  só aparece com o mapa aberto. Fixado (verde) = o mapa fica em cima da mão esquerda.
-                     Desafixado (laranja, pino riscado) = o mapa fica PARADO no ar ao seu lado (acompanha você ao andar/teleportar,
-                     pois vive dentro do rig). Aponte para ele e segure a GARRA (grip) de qualquer mão para pegar e levar para onde quiser;
-                     soltou = fica ali. Apertar o pino de novo = o mapa volta para a mão.
-         COMO É FEITO: uma 2ª câmera (ortográfica, só olha para a tela do cinema) desenha a tela inteira (mar, territórios, bordas, rótulos,
-         HUD, tudo que já está no palco vrStage) numa textura (mmRT, 1920x1080 = mesma nitidez do canvas lógico da HUD). Nada do jogo é
-         duplicado nem alterado; a textura é só mostrada num plano. Só renderiza com o mapa visível (custo zero fechado).
-         O gatilho apontado para o mapa da mão CLICA no jogo (mesmo onClick do mouse: botões e territórios).
-         Ajustes: VR_MM_W (largura em m), VR_MM_EVERY (1 = redesenha todo quadro; 2 = a cada 2 quadros, mais leve), VR_MM_POS/TILT (posição na mão),
-         VR_MM_ON (false = desliga tudo). */
-      const VR_MM_ON = true,
-        VR_MM_W = 0.5, // largura do mapa em metros (altura = 9/16 disso)
-        VR_MM_EVERY = 2, // redesenha a textura a cada N quadros
-        VR_MM_POS = [0, 0.2, -0.1], // posição quando fixado na mão esquerda (x, y para cima, z -frente)
-        VR_MM_TILT = -0.6; // inclinação (rad) para o painel olhar para o jogador
-      const VR_MM_H = (VR_MM_W * 9) / 16;
-      const mm = { open: 0, pinned: 1, hMap: false, hPin: false, sigM: "", sigP: "", grab: null, fr: 0, W: 1920, H: 1080 };
-      const mmRT = new THREE.WebGLRenderTarget(mm.W, mm.H, {
-        samples: 4,
-        generateMipmaps: true,
-        minFilter: THREE.LinearMipmapLinearFilter,
-        magFilter: THREE.LinearFilter,
-        depthBuffer: true,
-      });
-      mmRT.texture.anisotropy = 8;
-      const mmCam = new THREE.OrthographicCamera(-4.8, 4.8, 2.7, -2.7, 0.05, 2);
-      const mmB = wrMk(280, 120),
-        mmP = wrMk(110, 120);
-      const mmBtnMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.14, VR_WR_BH), wrMat(mmB.t)),
-        mmPinMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.055, VR_WR_BH), wrMat(mmP.t));
-      mmBtnMesh.position.set(-0.03, -(VR_WR_BH + 0.012), 0);
-      mmPinMesh.position.set(0.0725, -(VR_WR_BH + 0.012), 0);
-      mmBtnMesh.renderOrder = mmPinMesh.renderOrder = 1300;
-      mmBtnMesh.visible = mmPinMesh.visible = false;
-      vrWristRot.add(mmBtnMesh, mmPinMesh); // mesmo grupo do botão INFORMAÇÕES (gira junto)
-      const vrMM = new THREE.Group(),
-        mmMesh = new THREE.Mesh(new THREE.PlaneGeometry(VR_MM_W, VR_MM_H), new THREE.MeshBasicMaterial({ map: mmRT.texture, toneMapped: false })),
-        mmFrame = new THREE.Mesh(new THREE.PlaneGeometry(VR_MM_W + 0.014, VR_MM_H + 0.014), new THREE.MeshBasicMaterial({ color: 0x0c1118, toneMapped: false }));
-      mmFrame.position.z = -0.002;
-      mmMesh.renderOrder = 1302;
-      mmFrame.renderOrder = 1301;
-      vrMM.add(mmFrame, mmMesh);
-      vrMM.visible = false;
-      const mmM = new THREE.Matrix4(),
-        mmM2 = new THREE.Matrix4(),
-        mmS = new THREE.Vector3(),
-        mmClr = new THREE.Color();
-      function mmDrawBtn() {
-        const g = mmB.g;
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, 280, 120);
-        g.beginPath();
-        g.roundRect(6, 6, 268, 108, 16);
-        g.fillStyle = mm.open ? (mm.hMap ? "#e08a25" : "#c9731a") : mm.hMap ? "#2f78d4" : "#1a5fb4";
-        g.fill();
-        g.lineWidth = 6;
-        g.strokeStyle = "#fff";
-        g.stroke();
-        /* desenho: mapa dobrado em 3 faixas + trilha pontilhada com marcador */
-        const xs = [22, 49, 75, 102],
-          top = [32, 22, 32, 22],
-          bot = [98, 88, 98, 88],
-          col = ["#f5e6a8", "#e3c97a", "#f5e6a8"];
-        for (let i = 0; i < 3; i++) {
-          g.beginPath();
-          g.moveTo(xs[i], top[i]);
-          g.lineTo(xs[i + 1], top[i + 1]);
-          g.lineTo(xs[i + 1], bot[i + 1]);
-          g.lineTo(xs[i], bot[i]);
-          g.closePath();
-          g.fillStyle = col[i];
-          g.fill();
-          g.lineWidth = 3;
-          g.strokeStyle = "#3a2a10";
-          g.stroke();
-        }
-        g.setLineDash([5, 5]);
-        g.lineWidth = 3;
-        g.strokeStyle = "#7a3b10";
-        g.beginPath();
-        g.moveTo(32, 80);
-        g.lineTo(55, 52);
-        g.lineTo(84, 66);
-        g.stroke();
-        g.setLineDash([]);
-        g.beginPath();
-        g.arc(84, 58, 8, 0, Math.PI * 2);
-        g.fillStyle = "#e02020";
-        g.fill();
-        g.lineWidth = 2;
-        g.strokeStyle = "#fff";
-        g.stroke();
-        g.font = "bold 44px Arial, sans-serif";
-        g.textAlign = "center";
-        g.textBaseline = "middle";
-        g.fillStyle = "#fff";
-        g.fillText("MAPA", 196, 62);
-      }
-      function mmDrawPin() {
-        const g = mmP.g;
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.clearRect(0, 0, 110, 120);
-        g.beginPath();
-        g.roundRect(6, 6, 98, 108, 16);
-        g.fillStyle = mm.pinned ? (mm.hPin ? "#25b34a" : "#1a8f3a") : mm.hPin ? "#d98a24" : "#a8650f";
-        g.fill();
-        g.lineWidth = 6;
-        g.strokeStyle = "#fff";
-        g.stroke();
-        /* símbolo de alfinete (pushpin): fixado = em pé; desafixado = inclinado e riscado */
-        g.save();
-        g.translate(55, 52);
-        g.rotate(mm.pinned ? 0 : 0.75);
-        g.fillStyle = "#fff";
-        g.strokeStyle = "#1c1c1c";
-        g.lineWidth = 3;
-        g.lineJoin = "round";
-        g.beginPath();
-        g.roundRect(-11, -36, 22, 9, 3);
-        g.fill();
-        g.stroke();
-        g.beginPath();
-        g.moveTo(-7, -27);
-        g.lineTo(7, -27);
-        g.lineTo(9, -10);
-        g.lineTo(-9, -10);
-        g.closePath();
-        g.fill();
-        g.stroke();
-        g.beginPath();
-        g.roundRect(-18, -10, 36, 7, 3);
-        g.fill();
-        g.stroke();
-        g.lineCap = "round";
-        g.lineWidth = 4;
-        g.beginPath();
-        g.moveTo(0, -3);
-        g.lineTo(0, 20);
-        g.stroke();
-        g.restore();
-        if (!mm.pinned) {
-          g.lineCap = "round";
-          g.lineWidth = 8;
-          g.strokeStyle = "#ff3b3b";
-          g.beginPath();
-          g.moveTo(20, 16);
-          g.lineTo(90, 82);
-          g.stroke();
-        }
-        g.font = "bold 22px Arial, sans-serif";
-        g.textAlign = "center";
-        g.textBaseline = "middle";
-        g.fillStyle = "#fff";
-        g.fillText(mm.pinned ? "FIXO" : "SOLTO", 55, 99);
-      }
-      /* só a mão DIREITA aponta para os botões do punho esquerdo (como o botão INFORMAÇÕES) */
-      const mmBtnHit = (k, m) => wrHit(k, m);
-      function mmMapHit(k) {
-        if (!vrMM.visible) return null;
-        if (mm.pinned && k.userData.hand == "left") return null; // a esquerda está segurando o mapa fixado
-        tm.identity().extractRotation(k.matrixWorld);
-        ray.ray.origin.setFromMatrixPosition(k.matrixWorld);
-        ray.ray.direction.set(0, 0, -1).applyMatrix4(tm);
-        return ray.intersectObject(mmMesh, false)[0] || null;
-      }
-      /* chamado no início do gatilho: devolve true se consumiu o clique */
-      function mmTrigger(k) {
-        if (!VR_MM_ON) return false;
-        if (mmBtnHit(k, mmBtnMesh)) {
-          mm.open = mm.open ? 0 : 1;
-          if (!mm.open) mm.grab = null;
-          mm.fr = 0;
-          return true;
-        }
-        if (mmBtnHit(k, mmPinMesh)) {
-          mm.pinned = mm.pinned ? 0 : 1;
-          mm.grab = null;
-          if (!mm.pinned) rig.attach(vrMM); // fica parado onde está (no mundo), dentro do rig
-          return true;
-        }
-        const h = mmMapHit(k);
-        if (h && h.uv) {
-          onClick(h.uv.x * 1920, (1 - h.uv.y) * 1080); // mesmo clique do mouse na tela do cinema
-          return true;
-        }
-        return false;
-      }
-      /* garra apontando para o mapa DESAFIXADO = pega e leva */
-      function mmGripStart(k) {
-        if (!VR_MM_ON || mm.pinned || !vrMM.visible || !mmMapHit(k)) return false;
-        k.updateWorldMatrix(true, false);
-        vrMM.updateWorldMatrix(true, false);
-        mm.grab = { k, off: new THREE.Matrix4().copy(k.matrixWorld).invert().multiply(vrMM.matrixWorld) };
-        return true;
-      }
-      function mmGripEnd(k) {
-        if (mm.grab && mm.grab.k === k) mm.grab = null;
-      }
-      function mmGrabTick() {
-        const gb = mm.grab;
-        if (!gb) return;
-        if (mm.pinned || !vrMM.visible) {
-          mm.grab = null;
-          return;
-        }
-        gb.k.updateWorldMatrix(true, false);
-        rig.updateWorldMatrix(true, false);
-        mmM.copy(gb.k.matrixWorld).multiply(gb.off);
-        mmM2.copy(rig.matrixWorld).invert().multiply(mmM);
-        mmM2.decompose(vrMM.position, vrMM.quaternion, mmS);
-      }
-      /* todo quadro: visibilidade, onde o mapa está preso (mão ou rig), realce dos botões */
-      function mmSync() {
-        const wOn = VR_MM_ON && wrBtnMesh.visible; // mesmas condições do botão INFORMAÇÕES (jogo aberto, VR, mão esquerda)
-        mmBtnMesh.visible = wOn;
-        mmPinMesh.visible = wOn && !!mm.open;
-        const show = wOn && !!mm.open;
-        vrMM.visible = show;
-        if (!show) return;
-        if (mm.pinned) {
-          if (vrMM.parent !== wrHost) {
-            if (vrMM.parent) vrMM.parent.remove(vrMM);
-            wrHost.add(vrMM);
-            vrMM.position.set(VR_MM_POS[0], VR_MM_POS[1], VR_MM_POS[2]);
-            vrMM.rotation.set(VR_MM_TILT, 0, 0);
-            vrMM.scale.set(1, 1, 1);
-          }
-        } else if (vrMM.parent !== rig) rig.attach(vrMM);
-        let hm = false,
-          hp2 = false;
-        for (const k of ctl) {
-          if (mmBtnHit(k, mmBtnMesh)) hm = true;
-          if (mmPinMesh.visible && mmBtnHit(k, mmPinMesh)) hp2 = true;
-        }
-        mm.hMap = hm;
-        mm.hPin = hp2;
-        const sm = "m" + mm.open + (mm.hMap ? 1 : 0),
-          sp = "p" + mm.pinned + (mm.hPin ? 1 : 0);
-        if (sm !== mm.sigM) {
-          mm.sigM = sm;
-          mmDrawBtn();
-          mmB.t.needsUpdate = true;
-        }
-        if (sp !== mm.sigP) {
-          mm.sigP = sp;
-          mmDrawPin();
-          mmP.t.needsUpdate = true;
-        }
-      }
-      /* o laser acaba no mapa da mão (em vez de atravessar) */
-      function mmPointerTick() {
-        if (!vrMM.visible) return;
-        for (const k of ctl) {
-          const h = mmMapHit(k);
-          if (h && h.distance < k.userData.ln.scale.z) k.userData.ln.scale.z = h.distance;
-        }
-      }
-      /* desenha a tela do cinema inteira na textura do mapa (2ª passada, só com o mapa visível) */
-      function mmRender() {
-        if (!VR_MM_ON || !vrMM.visible) return;
-        if (mm.fr++ % VR_MM_EVERY) return;
-        const kz = vrStageK,
-          cy = 3.15 * kz + VR_STAGE_BOTTOM * (1 - kz);
-        mmCam.left = -4.8 * kz;
-        mmCam.right = 4.8 * kz;
-        mmCam.top = 2.7 * kz;
-        mmCam.bottom = -2.7 * kz;
-        mmCam.position.set(0, cy, -8.0);
-        mmCam.updateProjectionMatrix();
-        mmCam.updateMatrixWorld(true);
-        const xrOn = R.xr.enabled,
-          prevRT = R.getRenderTarget(),
-          prevA = R.getClearAlpha();
-        R.getClearColor(mmClr);
-        vrMM.visible = false; // nunca desenhar o próprio mapa dentro dele
-        R.xr.enabled = false; // senão o three troca a câmera pela do óculos
-        try {
-          R.setRenderTarget(mmRT);
-          R.setClearColor(0x000000, 1);
-          R.clear();
-          R.render(scene, mmCam);
-        } finally {
-          R.xr.enabled = xrOn;
-          R.setRenderTarget(prevRT);
-          R.setClearColor(mmClr, prevA);
-          vrMM.visible = true;
-        }
       }
 
       /* etapa 44 (9d): mini-plano 3D do relógio do turno. Coordenadas em px de 1920x1080 (mesmas do BADGE). Região coberta:
@@ -11512,8 +11366,12 @@
             vrWristSync();
             return;
           }
+          if (wristMapBtnAim(k)) {
+            wristMapToggle(); // etapa 86: botão do mapa (punho esquerdo)
+            vrWristSync();
+            return;
+          }
           if (wristPanelAim(k)) return; // clicar no painel do punho não clica no mapa
-          if (mmTrigger(k)) return; // etapa 86: botões MAPA/PINO e clique no mapa da mão
           const h = aim(k);
           if (!h) return;
           const pb = pickScreenButton(h.x, h.y);
@@ -11571,10 +11429,8 @@
           k.userData.hand = null;
           if (vGrab && vGrab.k === k) vGrab = null;
           if (vTrig && vTrig.k === k) vTrig = null;
-          mmGripEnd(k);
         });
         k.addEventListener("squeezestart", () => {
-          if (mmGripStart(k)) return; // etapa 86: pegar o mapa desafixado
           vGripOn.add(k);
           /* etapa 63: duas garras NÃO dão mais zoom (só o analógico direito). Com 2 garras, nenhuma arrasta. */
           if (vGripOn.size >= 2) {
@@ -11588,7 +11444,6 @@
           }
         });
         k.addEventListener("squeezeend", () => {
-          mmGripEnd(k);
           vGripOn.delete(k);
           if (vGrab && vGrab.k === k) vGrab = null;
         });
@@ -11781,7 +11636,6 @@
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
         vrWristAttach(); // etapa 74: botão/abas INFORMAÇÕES em cima do punho esquerdo
-        try { mmSync(); } catch (e) { console.error("mmSync", e); } // etapa 86: mapa na mão
         if (performance.now() - wrT > 150 || wr.sig === "") {
           wrT = performance.now();
           try { vrWristSync(); } catch (e) { console.error("vrWristSync", e); }
@@ -11930,7 +11784,6 @@
               if (ox != VB.x || oy != VB.y) redrawPan();
             }
           }
-          mmGrabTick(); // etapa 86
           let hk = null,
             hkR = null,
             hkK = null,
@@ -11954,7 +11807,9 @@
           let whv = false;
           for (const k of ctl) if (wristBtnAim(k)) whv = true;
           if (whv !== wr.hover) wr.hover = whv;
-          mmPointerTick(); // etapa 86
+          let whm = false;
+          for (const k of ctl) if (wristMapBtnAim(k)) whm = true;
+          if (whm !== wr.hoverM) wr.hoverM = whm; // etapa 86
           if (hk) {
             /* etapa 21: onHover (pick = isPointInPath em todos os territórios + draw() + textura) só roda
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
@@ -11975,7 +11830,6 @@
             vrHoverT(null);
           }
         }
-        try { mmRender(); } catch (e) { console.error("mmRender", e); } // etapa 86: textura do mapa da mão
         R.render(scene, cam);
       });
       draw();
