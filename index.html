@@ -4812,12 +4812,13 @@
       let tipsDocCache = null;
       function buildTipsDoc(cw) {
         const doc = [],
-          main = (lines) => doc.push({ z: 15, lh: 20.25, ml: 0, lines }),
-          sub = (lh, lines) => doc.push({ z: 13, lh, ml: 14, lines }),
-          gap = (h) => doc.push({ gap: h }),
+          TF = 1.25, // pedido: fonte dos textos de Dicas e Truques maior
+          main = (lines) => doc.push({ z: 15 * TF, lh: 20.25 * TF, ml: 0, lines }),
+          sub = (lh, lines) => doc.push({ z: 13 * TF, lh: lh * TF, ml: 14, lines }),
+          gap = (h) => doc.push({ gap: h * TF }),
           hdr = (z, lh, ml, t) => {
             gap(6);
-            doc.push({ z, lh, ml, lines: ["[y]" + t + "[/]"] });
+            doc.push({ z: z * TF, lh: lh * TF, ml, lines: ["[y]" + t + "[/]"] });
             gap(2);
           },
           E = EVO_STEP;
@@ -8342,8 +8343,8 @@
          de frente para a tela (e o botão "Centralizar" das Configurações volta para cá). */
       const vrHome = {
         x: 0,
-        z: VR_TIERS ? VR_ROW_Z[2] : 4.4,
-        y: VR_TIERS ? 3 * VR_TIER_STEP : 0,
+        z: VR_TIERS ? VR_ROW_Z[4] : 4.4, // pedido: 2 degraus acima (era a 3ª fileira, agora a 5ª)
+        y: VR_TIERS ? 5 * VR_TIER_STEP : 0,
       };
       rig.position.set(vrHome.x, vrHome.y, vrHome.z);
       vrBaseY = vrHome.y;
@@ -9397,7 +9398,8 @@
               ly = L.mesh.userData.base[1] + dy;
             L.mesh.position.set(lx, ly, dz);
             L.mesh.userData.lb = [lx, ly, dz];
-            L.mesh.renderOrder = up ? 900 : 450; // etapa 39: rótulo de território NÃO suspenso fica ABAIXO dos suspensos (lote B = 500)
+            L.mesh.renderOrder = up ? 900 : 450;
+            if (L.mesh2) L.mesh2.renderOrder = up ? 902 : 452; // etapa 80: número acima das fábricas // etapa 39: rótulo de território NÃO suspenso fica ABAIXO dos suspensos (lote B = 500)
           }
           const sh = up ? vrLiftShadowFor(t) : vrLiftShadow[t];
           if (sh) {
@@ -9758,17 +9760,27 @@
           DN = Math.ceil(lm.ls * 3),
           W = Math.ceil(2 * HW * dens),
           H = Math.ceil((UP + DN) * dens),
-          cv = L.cv;
+          cv = L.cv,
+          cv2 = L.cv2;
         if (cv.width !== W || cv.height !== H) {
           cv.width = W;
           cv.height = H;
           L.tex.dispose(); // tamanho mudou (zoom): textura recriada
         }
+        if (cv2.width !== W || cv2.height !== H) {
+          cv2.width = W;
+          cv2.height = H;
+          L.tex2.dispose();
+        }
         const g = cv.getContext("2d"),
+          g2n = cv2.getContext("2d"),
           c0 = c;
         g.setTransform(1, 0, 0, 1, 0, 0);
         g.clearRect(0, 0, W, H);
         g.setTransform(dens, 0, 0, dens, HW * dens, UP * dens);
+        g2n.setTransform(1, 0, 0, 1, 0, 0);
+        g2n.clearRect(0, 0, W, H);
+        g2n.setTransform(dens, 0, 0, dens, HW * dens, UP * dens);
         c = g;
         try {
          for (let pass = 0; pass < VR_TEXT_PASSES; pass++) {
@@ -9784,16 +9796,22 @@
           }
           if (!(G.fillHid && G.fillHid.has(t))) {
             drawTankIcons(t, 0, 0, lm);
-            if (!vrPopActive(t)) TC(vrDispN(t), 0, 0, lm); // prévia (setPreviewArmies); na bolha o número é outro plano
+            /* etapa 80 (pedido): o número de soldados fica num PLANO PRÓPRIO, mais alto que as fábricas (de todos os territórios) */
+            g2n.filter = g.filter;
+            c = g2n;
+            if (!vrPopActive(t)) TC(vrDispN(t), 0, 0, lm);
+            c = g; // prévia (setPreviewArmies); na bolha o número é outro plano
             /* etapa 65: o AVIÃO suspenso saiu daqui e virou um plano 3D próprio (vrAirSuspSync), MAIS ALTO que o levante. */
             if (G.missileStrikeTarget === t) vrDrawMissileSusp(lm); // etapa 13
           }
           g.filter = "none";
+          g2n.filter = "none";
          }
         } finally {
           c = c0;
         }
         L.tex.needsUpdate = true;
+        L.tex2.needsUpdate = true;
         L.mesh.scale.set(2 * HW, -(UP + DN), 1); // y negativo: o grupo do mapa já tem y invertido
         const _bx = G.M.C[t][0],
           _by = G.M.C[t][1] + (DN - UP) / 2;
@@ -9952,6 +9970,7 @@
           const f = vrDimK > 0 && !(lf && lf.has(t)) ? 1 - VR_DARK_TERR * vrDimK : 1,
             m = L.mesh.material;
           if (m.color.r !== f) m.color.setScalar(f);
+          if (L.mesh2 && L.mesh2.material.color.r !== f) L.mesh2.material.color.setScalar(f);
         }
       }
       let vrLblT = 0, vrLblMore = false, vrLblDq = 0;
@@ -10036,7 +10055,23 @@
             mesh.renderOrder = 900;
             mesh.frustumCulled = false;
             vrLabelGroup.add(mesh);
-            L = vrLabels[t] = { cv, tex: tx, mesh, sig: "" };
+            // etapa 80: plano do número de soldados, filho do rótulo (segue posição, levante e tremor), desenhado depois
+            const cv2 = document.createElement("canvas");
+            cv2.width = cv2.height = 2;
+            const tx2 = new THREE.CanvasTexture(cv2);
+            tx2.colorSpace = THREE.SRGBColorSpace;
+            tx2.generateMipmaps = true;
+            tx2.minFilter = THREE.LinearMipmapLinearFilter;
+            tx2.anisotropy = 8;
+            const mesh2 = new THREE.Mesh(
+              new THREE.PlaneGeometry(1, 1),
+              new THREE.MeshBasicMaterial({ map: tx2, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, clippingPlanes: vrClip }),
+            );
+            mesh2.renderOrder = 902;
+            mesh2.frustumCulled = false;
+            mesh2.position.z = 0.01;
+            mesh.add(mesh2);
+            L = vrLabels[t] = { cv, tex: tx, mesh, cv2, tex2: tx2, mesh2, sig: "" };
           }
           if (L.sig !== sig) {
             if (budget <= 0) { vrLblMore = true; continue; } // fica para o próximo quadro
