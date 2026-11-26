@@ -551,6 +551,19 @@
                   Config do punho é clicável (gatilho da mão direita). Rolagem: analógico direito apontando para a aba (SCR.wr_*).
                   TODAS as abas giradas 90° para a DIREITA (VR_WR_ROT = -PI/2). GARRA em qualquer parte (botão, alfinete ou aba) pega e
                   move; se estava fixado, solta da mão automaticamente. Tamanho: VR_WR_MPX2. TESTAR no Quest.
+           [x] 88. FEITO (v10 leveza — sem mexer em resolução, VR_CANVAS_K/VR_BAND_D/VR_INFO_D/VR_XR_SCALE nem VR_FOVEATION):
+                  (a) PASSO 2 (VR_SCROLL_3D = true): cada lista rolável da tela (tips = Dicas e Regras, log = Histórico/LOG,
+                      info = Informações 3 abas, cfg = Configurações, intro = Seu Turno) agora desenha o conteúdo rolável num
+                      mini-canvas + plano 3D próprio (vrScrollState / vrScrollRender / vrScrollRedraw / vrScrollSync), com a
+                      MESMA densidade original (VR_INFO_D para info, VR_BAND_D para tips/log/cfg, VR_CANVAS_K para intro).
+                      Ao rolar com o analógico direito (ou roda do mouse), só o mini-canvas daquela lista é redesenhado e enviado
+                      à GPU (zero draw(), zero reenvio da tela grande ou das outras faixas), atualizando também os botões visíveis
+                      (cfg-*, info-plane, tr-no/tr-yes) e o destaque 3D (vrBtnHLCheck). Também preservado SCAREA.log no fim de draw()
+                      para a rolagem do LOG funcionar. Os painéis do punho (wrDrawExtra) seguem isolados via vrInWristDraw.
+                  (b) PASSO 3 (VR_TOAST_3D = true): o aviso temporário (showToast/drawToast) virou um plano 3D independente
+                      gerenciado por vrToastSync() no loop (mesmo padrão de vrClockSync). Quando o tempo acaba, só esconde a
+                      malha (mesh.visible = false) — zero draw(), zero envio à GPU. Em draw(), faixas 3 (chooser) e 4 (toast)
+                      também passaram a ser puladas quando fechadas. Ver bloco "ETAPA v9 / v10" perto de vrBtnHL para próximos passos.
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -1531,6 +1544,17 @@
       /* etapa 52: o AVISO temporário (toast: eliminação / carta bônus) também sai do canvas grande -> faixa 4. false = canvas grande. */
       const VR_TOAST_BAND = true;
       let vrToastBandOn = false;
+      /* v10 passo 2: listas roláveis da tela (tips, log, cfg, info, intro) em mini-planos 3D próprios.
+         Ao rolar com o analógico/roda, só o mini-canvas daquela lista é redesenhado e enviado à GPU (mesma nitidez).
+         Interruptor de segurança: false = volta a desenhar dentro das faixas / canvas grande. */
+      const VR_SCROLL_3D = true;
+      /* v10 passo 3: aviso temporário (toast) em plano 3D independente gerenciado por vrToastSync().
+         Aparece desenhando só seu mini-canvas 1x e some apenas com mesh.visible = false (zero draw()).
+         Interruptor de segurança: false = volta à faixa 4 / canvas grande. */
+      const VR_TOAST_3D = true;
+      let vrInWristDraw = false, // true enquanto wrDrawExtra desenha nos painéis do punho
+        vrToastSeq = 0, // id crescente para detectar novos avisos em vrToastSync()
+        vrLogSeq = 0; // id crescente para assinatura do LOG mesmo após o teto de 300 itens
       let vrBands = null, // criado junto da tela (mais abaixo)
         vrBandsOn = false, // true = a HUD deste draw() foi para as faixas
         vrMainInk = true, // true = o canvas grande tem algo desenhado neste draw()
@@ -2219,6 +2243,7 @@
         if (!G.log) G.log = [];
         G.log.push({ r: G.round, c: G.cur, s: x });
         if (G.log.length > 300) G.log.shift();
+        vrLogSeq++;
       }
       /* etapa 78 (pedido): igual ao original (G.localMP = modos A, B e C; só o online "D" não tem): o aviso "JOGADOR X / JOGAR" aparece SEMPRE que
            começa a vez de um jogador humano: 1ª rodada (p1Turn), 1º turno normal e a cada passagem de vez (newTurn), inclusive na Partida Solo
@@ -3076,7 +3101,7 @@
         soundExplosion();
         vrShake(t, "fast");
         const C = G.M && G.M.C && G.M.C[t];
-        if (C) for (let k = 0; k < Math.min(ptsTotal, 3); k++) vrBurstStart(C[0], C[1]);
+        if (C) for (let k = 0; k < Math.min(ptsTotal, 2); k++) vrBurstStart(C[0], C[1]);
       }
       function toggleMissileMode() {
         if (G.ph !== "A") {
@@ -4937,18 +4962,23 @@
         SCAREA.tips = { x, y, w, h };
         SCMAX.tips = Math.max(0, 32 + tipsDocCache.total - (h - 6));
         SCR.tips = clampN(SCR.tips, 0, SCMAX.tips);
-        clipPad(x, y, w, h);
-        let yy = y + 19 - SCR.tips;
-        for (const it of tipsDocCache.doc) {
-          if (it.gap != null) {
-            yy += it.gap;
-            continue;
+        const drawBody = () => {
+          clipPad(x, y, w, h);
+          let yy = y + 19 - SCR.tips;
+          for (const it of tipsDocCache.doc) {
+            if (it.gap != null) {
+              yy += it.gap;
+              continue;
+            }
+            rtDraw(it.wrapped, x + 19 + it.ml, yy, it.z, it.lh, cw - it.ml, false, y, y + h);
+            yy += it.wrapped.length * it.lh;
           }
-          rtDraw(it.wrapped, x + 19 + it.ml, yy, it.z, it.lh, cw - it.ml, false, y, y + h);
-          yy += it.wrapped.length * it.lh;
-        }
-        c.restore();
-        SBAR(x, y, w, h, SCR.tips, SCMAX.tips);
+          c.restore();
+          SBAR(x, y, w, h, SCR.tips, SCMAX.tips);
+        };
+        if (vrUseScroll3D("tips")) {
+          vrScrollRender("tips", drawBody, () => [cfg.lang, h | 0, SCR.tips | 0, SCMAX.tips | 0].join("|"));
+        } else drawBody();
       }
 
       /* ---------------- CONFIGURAÇÕES ---------------- */
@@ -5065,52 +5095,77 @@
         SCR.cfg = clampN(SCR.cfg, 0, SCMAX.cfg);
         const vy0 = y + 3,
           vy1 = y + h - 3;
-        clipPad(x, y, w, h);
-        const cx = x + 19;
-        let yy = y + 19 - SCR.cfg;
-        TX("Configurações:", cx + cw / 2, yy + 11.5, 20, "#fff", "center", 1);
-        yy += 35;
-        rows.forEach(([label, opts, id]) => {
-          TX(label, cx, yy + 10.5, 18, "#fff", "left", 1);
-          const n = opts.length,
-            all = n * 64 + (n - 1) * 8,
-            sx = cx + (cw - all) / 2;
-          opts.forEach(([lb, act, fn], i) =>
-            cfgBtn(sx + i * 72, yy + 29, 64, lb, act, fn, "cfg-" + id + "-" + i, vy0, vy1),
-          );
+        const drawBody = () => {
+          clipPad(x, y, w, h);
+          const cx = x + 19;
+          let yy = y + 19 - SCR.cfg;
+          TX("Configurações:", cx + cw / 2, yy + 11.5, 20, "#fff", "center", 1);
+          yy += 35;
+          rows.forEach(([label, opts, id]) => {
+            TX(label, cx, yy + 10.5, 18, "#fff", "left", 1);
+            const n = opts.length,
+              all = n * 64 + (n - 1) * 8,
+              sx = cx + (cw - all) / 2;
+            opts.forEach(([lb, act, fn], i) =>
+              cfgBtn(sx + i * 72, yy + 29, 64, lb, act, fn, "cfg-" + id + "-" + i, vy0, vy1),
+            );
+            yy += 109;
+          });
+          /* etapa 58 (pedido): Está Jogando: Sentado / Em Pé */
+          TX("Está Jogando:", cx, yy + 10.5, 18, "#fff", "left", 1);
+          cfgBtn(cx + (cw - 248) / 2, yy + 29, 120, "Sentado", cfg.pose !== "stand", () => {
+            cfg.pose = "sit";
+            vrCalibSit();
+          }, "cfg-pose-0", vy0, vy1, 16);
+          cfgBtn(cx + (cw - 248) / 2 + 128, yy + 29, 120, "Em Pé", cfg.pose === "stand", () => {
+            cfg.pose = "stand";
+          }, "cfg-pose-1", vy0, vy1, 16);
           yy += 109;
-        });
-        /* etapa 58 (pedido): Está Jogando: Sentado / Em Pé */
-        TX("Está Jogando:", cx, yy + 10.5, 18, "#fff", "left", 1);
-        cfgBtn(cx + (cw - 248) / 2, yy + 29, 120, "Sentado", cfg.pose !== "stand", () => {
-          cfg.pose = "sit";
-          vrCalibSit();
-        }, "cfg-pose-0", vy0, vy1, 16);
-        cfgBtn(cx + (cw - 248) / 2 + 128, yy + 29, 120, "Em Pé", cfg.pose === "stand", () => {
-          cfg.pose = "stand";
-        }, "cfg-pose-1", vy0, vy1, 16);
-        yy += 109;
-        TX("Posição no VR:", cx, yy + 10.5, 18, "#fff", "left", 1);
-        cfgBtn(
-          cx + (cw - 136) / 2,
-          yy + 29,
-          136,
-          "Centralizar",
-          false,
-          () => {
-            rig.position.set(vrHome.x, vrHome.y, vrHome.z); // etapa 68: volta para a 3ª fileira, cadeira do meio
-            vrBaseY = vrHome.y;
-            vrJumpY = vrJumpV = 0;
-            rig.rotation.y = 0;
-            vrCalibSit(); // etapa 58: recalibra também a altura de Sentado
-          },
-          "cfg-vr-recenter",
-          vy0,
-          vy1,
-          15,
-        );
-        c.restore();
-        SBAR(x, y, w, h, SCR.cfg, SCMAX.cfg);
+          TX("Posição no VR:", cx, yy + 10.5, 18, "#fff", "left", 1);
+          cfgBtn(
+            cx + (cw - 136) / 2,
+            yy + 29,
+            136,
+            "Centralizar",
+            false,
+            () => {
+              rig.position.set(vrHome.x, vrHome.y, vrHome.z); // etapa 68: volta para a 3ª fileira, cadeira do meio
+              vrBaseY = vrHome.y;
+              vrJumpY = vrJumpV = 0;
+              rig.rotation.y = 0;
+              vrCalibSit(); // etapa 58: recalibra também a altura de Sentado
+            },
+            "cfg-vr-recenter",
+            vy0,
+            vy1,
+            15,
+          );
+          c.restore();
+          SBAR(x, y, w, h, SCR.cfg, SCMAX.cfg);
+        };
+        if (vrUseScroll3D("cfg")) {
+          vrScrollRender(
+            "cfg",
+            drawBody,
+            () =>
+              [
+                cfg.lang,
+                audioOn,
+                terrNames,
+                !!document.fullscreenElement,
+                factorySize,
+                tankSize,
+                planeSize,
+                cfg.stageZoom,
+                showLog,
+                cfg.walk,
+                cfg.pose,
+                h | 0,
+                SCR.cfg | 0,
+                SCMAX.cfg | 0,
+              ].join("|"),
+          );
+        } else drawBody();
       }
 
       /* ---------------- LOG ---------------- */
@@ -5166,19 +5221,24 @@
         SCAREA.log = { x, y: yy, w, h: viewH };
         SCMAX.log = Math.max(0, listH - viewH);
         SCR.log = clampN(SCR.log, 0, SCMAX.log);
-        c.save();
-        c.beginPath();
-        c.rect(cx, yy, cw, viewH);
-        c.clip();
-        let ly = yy - SCR.log;
-        if (!entries.length) TX("Sem registros ainda.", cx + 8, ly + 17, 12, "#555", "left");
-        for (const e of entries) {
-          rtDraw(e.ln, cx, ly + 2, 12, 18, cw, false, yy, yy + viewH);
-          c.fillStyle = "rgba(74,138,74,.15)";
-          c.fillRect(cx, ly + e.h - 1, cw, 1);
-          ly += e.h;
-        }
-        c.restore();
+        const drawBody = () => {
+          c.save();
+          c.beginPath();
+          c.rect(cx, yy, cw, viewH);
+          c.clip();
+          let ly = yy - SCR.log;
+          if (!entries.length) TX("Sem registros ainda.", cx + 8, ly + 17, 12, "#555", "left");
+          for (const e of entries) {
+            rtDraw(e.ln, cx, ly + 2, 12, 18, cw, false, yy, yy + viewH);
+            c.fillStyle = "rgba(74,138,74,.15)";
+            c.fillRect(cx, ly + e.h - 1, cw, 1);
+            ly += e.h;
+          }
+          c.restore();
+        };
+        if (vrUseScroll3D("log")) {
+          vrScrollRender("log", drawBody, () => [cfg.lang, vrLogSeq, yy | 0, viewH | 0, SCR.log | 0, SCMAX.log | 0].join("|"));
+        } else drawBody();
       }
 
       /* ---------------- OBJETIVO ---------------- */
@@ -5543,15 +5603,48 @@
           lh = PH / sc,
           tab = infoTab === 3 && !hasThirdTab() ? 1 : infoTab;
         FRAME(PX, PY, PW, PH);
-        c.save();
-        c.translate(PX, PY);
-        c.scale(sc, sc);
-        const total = drawInfoBody(tab, 0, 0, 320, lh, SCR.info, true, { s: sc, ox: PX, oy: PY });
-        c.restore();
         SCAREA.info = { x: PX, y: PY, w: PW, h: PH };
-        SCMAX.info = Math.max(0, total - (lh - 6));
-        SCR.info = clampN(SCR.info, 0, SCMAX.info);
-        SBAR(PX, PY, PW, PH, SCR.info, SCMAX.info);
+        const drawBody = () => {
+          c.save();
+          c.translate(PX, PY);
+          c.scale(sc, sc);
+          const total = drawInfoBody(tab, 0, 0, 320, lh, SCR.info, true, { s: sc, ox: PX, oy: PY });
+          c.restore();
+          SCMAX.info = Math.max(0, total - (lh - 6));
+          SCR.info = clampN(SCR.info, 0, SCMAX.info);
+          SBAR(PX, PY, PW, PH, SCR.info, SCMAX.info);
+          return total;
+        };
+        if (vrUseScroll3D("info")) {
+          const sigFn = () => {
+            const vp = G.bot[G.cur] ? 0 : G.cur,
+              parts = [
+                tab,
+                G.cur,
+                G.round || 1,
+                G.tc || 0,
+                evoLv(),
+                cfg.lang,
+                cfg.n,
+                tanksOn() ? 1 : 0,
+                planesOn() ? 1 : 0,
+                missilesOn() ? 1 : 0,
+                G.bot[G.cur] ? 1 : 0,
+                ICO.v[vp] ? 1 : 0,
+                ICO.p[vp] ? 1 : 0,
+                SCR.info | 0,
+              ];
+            for (let i = 0; i < cfg.n; i++)
+              parts.push(cnt(i), solOf(i), (G.cards[i] || []).length, G.pl[i] || 0, G.planeDmg[i] || 0, G.bot[i] ? 1 : 0);
+            parts.push((G.cards[vp] || []).map((k) => (k.joker ? "J" : k.t)).join(","), tkTot(vp));
+            return parts.join("|");
+          };
+          const st = vrScrollRender("info", drawBody, sigFn);
+          if (st && st.lastRet != null) {
+            SCMAX.info = Math.max(0, st.lastRet - (lh - 6));
+            SCR.info = clampN(SCR.info, 0, SCMAX.info);
+          }
+        } else drawBody();
       }
       const anyOv = () =>
         (G && G.mv) ||
@@ -5763,34 +5856,56 @@
             cx += c.measureText(translateCanvasText(t).toUpperCase()).width;
           }
         };
-        c.save();
-        c.beginPath();
-        c.rect(bx - 4, contentY - 4, bw + 8, viewH + 8);
-        c.clip();
-        let y = contentY - SCR.intro;
-        for (const b of boxes) {
-          const h = bh(b);
-          rr(bx, y, bw, h, 8);
-          c.lineWidth = 3;
-          c.strokeStyle = b.col;
-          c.stroke();
-          RUN(b.head, bx + 20, y + 28, zh);
-          b.lines.forEach((ln, i) => RUN(ln, bx + 20, y + 74 + i * lh, zb));
-          if (b.trade) {
-            if (I.must) ACTBTN(bx + bw - 290, y + h - 66, 130, 52, "NÃO", null, "#555", "tr-no");
-            else {
-              B(bx + bw - 290, y + h - 66, 130, 52, "NÃO", () => (I.decided = true), { z: 28, bg: "#a32020", k: "tr-no" });
+        const drawBody = () => {
+          c.save();
+          c.beginPath();
+          c.rect(bx - 4, contentY - 4, bw + 8, viewH + 8);
+          c.clip();
+          let y = contentY - SCR.intro;
+          for (const b of boxes) {
+            const h = bh(b);
+            rr(bx, y, bw, h, 8);
+            c.lineWidth = 3;
+            c.strokeStyle = b.col;
+            c.stroke();
+            RUN(b.head, bx + 20, y + 28, zh);
+            b.lines.forEach((ln, i) => RUN(ln, bx + 20, y + 74 + i * lh, zb));
+            if (b.trade) {
+              if (I.must) ACTBTN(bx + bw - 290, y + h - 66, 130, 52, "NÃO", null, "#555", "tr-no");
+              else {
+                B(bx + bw - 290, y + h - 66, 130, 52, "NÃO", () => (I.decided = true), { z: 28, bg: "#a32020", k: "tr-no" });
+                btns.pop();
+                btnVis(bx + bw - 290, y + h - 66, 130, 52, "tr-no", () => (I.decided = true), contentY - 4, contentBottom + 4);
+              }
+              B(bx + bw - 140, y + h - 66, 120, 52, "SIM", () => (showCards = 1), { z: 28, bg: "#1a8f3a", k: "tr-yes" });
               btns.pop();
-              btnVis(bx + bw - 290, y + h - 66, 130, 52, "tr-no", () => (I.decided = true), contentY - 4, contentBottom + 4);
+              btnVis(bx + bw - 140, y + h - 66, 120, 52, "tr-yes", () => (showCards = 1), contentY - 4, contentBottom + 4);
             }
-            B(bx + bw - 140, y + h - 66, 120, 52, "SIM", () => (showCards = 1), { z: 28, bg: "#1a8f3a", k: "tr-yes" });
-            btns.pop();
-            btnVis(bx + bw - 140, y + h - 66, 120, 52, "tr-yes", () => (showCards = 1), contentY - 4, contentBottom + 4);
+            y += h + gap;
           }
-          y += h + gap;
-        }
-        c.restore();
-        SBAR(bx - 30, y0, bw + 60, panelH, SCR.intro, SCMAX.intro);
+          c.restore();
+          SBAR(bx - 30, y0, bw + 60, panelH, SCR.intro, SCMAX.intro);
+        };
+        if (vrUseScroll3D("intro") && SCMAX.intro > 0) {
+          vrScrollRender(
+            "intro",
+            drawBody,
+            () =>
+              [
+                cfg.lang,
+                G.round,
+                G.cur,
+                G.tc,
+                G.pend,
+                I.decided ? 1 : 0,
+                I.must ? 1 : 0,
+                boxes.length,
+                contentH | 0,
+                SCR.intro | 0,
+                SCMAX.intro | 0,
+              ].join("|"),
+          );
+        } else drawBody();
         if (trOk)
           B(860, contentBottom + 10, 200, 70, "OK", () => {
             G.intro = null;
@@ -5799,7 +5914,7 @@
       }
       /* Aviso temporário no mapa (original: #cardBonusMsg — eliminação / carta bônus) */
       function showToast(lines, ms) {
-        G.toast = { lines, until: performance.now() + ms };
+        G.toast = { lines, until: performance.now() + ms, id: ++vrToastSeq };
       }
       function drawToast() {
         const T0 = G.toast;
@@ -6767,12 +6882,14 @@
         } else G.fx = null;
       }
       function draw() {
+        if (typeof vrPerf !== "undefined") vrPerf.draws++;
         btns = [];
         OVR = [];
         vrClockOn = false; // etapa 44: só o trecho do relógio (mais abaixo) a liga
         c = vrMainCtx; // etapa 49: segurança (se um desenho anterior parou no meio de uma faixa)
         vrBandsOn = false;
         vrMainInk = true;
+        if (typeof vrScrollBeginFrame === "function") vrScrollBeginFrame();
         if (G && scr != "menu") {
           stUpd();
           if (scr == "win" && !G.gEnd) G.gEnd = Date.now();
@@ -6965,7 +7082,7 @@
         c.setTransform(VR_CANVAS_K, 0, 0, VR_CANVAS_K, 0, 0);
         /* etapa 49: o canvas grande só tem tinta quando há painel/aviso/modal (tudo que é desenhado DEPOIS da HUD fixa, abaixo). */
         const vrChB = VR_CHOOSER_BAND && !!vrBands && !!vrBands[3],
-          vrToB = VR_TOAST_BAND && !!vrBands && !!vrBands[4],
+          vrToB = !VR_TOAST_3D && VR_TOAST_BAND && !!vrBands && !!vrBands[4],
           vrPaB = VR_PANEL_BANDS && !!vrBands && !!vrBands[6],
           vrOvX = (!vrPaB && (showLog || showObj || showRules || showInfo || showCfg)) || (G && G.hand) || showCards; // etapa 73: showInfo voltou // anyOv() sem conquista/reagrupamento e (etapa 53) sem os 5 painéis
         vrMainInk = !(
@@ -6973,7 +7090,7 @@
           vrBands &&
           scr == "game" &&
           (vrChB ? !vrOvX : !anyOv()) &&
-          (vrToB || !G.toast) &&
+          (VR_TOAST_3D || vrToB || !G.toast) &&
           !G.intro &&
           !G.p1intro &&
           (vrChB || !G.rch) &&
@@ -6981,14 +7098,20 @@
           !G.hand
         );
         vrChooserBandOn = !vrMainInk && vrChB && !!(G.mv || G.fortify || G.rch);
-        vrToastBandOn = !vrMainInk && vrToB && !!G.toast;
+        vrToastBandOn = !VR_TOAST_3D && !vrMainInk && vrToB && !!G.toast;
         vrPanelLOn = !vrMainInk && vrPaB && !!showRules; // etapa 75: Informações saiu daqui (faixa 7)
         vrInfoBandOn = !vrMainInk && vrPaB && !!showInfo;
         vrPanelROn = !vrMainInk && vrPaB && !!(showLog || showObj || showCfg);
         vrBandsOn = !vrMainInk;
         if (vrBandsOn)
           for (const [bi, b] of vrBands.entries()) {
-            if ((bi === 5 && !vrPanelLOn) || (bi === 6 && !vrPanelROn) || (bi === 7 && !vrInfoBandOn)) continue; // etapas 75/76: faixas grandes só são limpas/enviadas com o painel aberto
+            if (
+              (bi === 3 && !vrChooserBandOn) ||
+              (bi === 4 && (VR_TOAST_3D || !vrToastBandOn)) ||
+              (bi === 5 && !vrPanelLOn) ||
+              (bi === 6 && !vrPanelROn) ||
+              (bi === 7 && !vrInfoBandOn)
+            ) continue; // etapas 75/76/v10: faixas só são limpas/enviadas quando abertas
             b.g.setTransform(1, 0, 0, 1, 0, 0);
             b.g.clearRect(0, 0, b.cv.width, b.cv.height);
             b.t.needsUpdate = true;
@@ -7157,9 +7280,11 @@
             bg: G.airMode ? "#ff6a00" : (G.pl[G.cur] || 0) > 0 ? "#1a8f3a" : "#333",
           });
         vrBandEnd();
-        vrBandBegin(4); // etapa 52: aviso na faixa 4 (se ativa)
-        if (scr == "game" && G.toast && !G.intro) drawToast();
-        vrBandEnd();
+        if (!VR_TOAST_3D) {
+          vrBandBegin(4); // etapa 52: aviso na faixa 4 (se ativa)
+          if (scr == "game" && G.toast && !G.intro) drawToast();
+          vrBandEnd();
+        }
         /* etapa 55 (pedido): com a tela de direitos do turno / cartas / troca / míssil / "passe a vez" abertas, os painéis que já estavam abertos
            NÃO fecham: são desenhados ANTES, e o véu escuro (PANEL) os escurece e os deixa por trás da tela nova (como o original).
            Sem tela nova, continuam por cima, como antes. */
@@ -7956,7 +8081,10 @@
           } else B(960 - 150, btnY, 300, 66, "Fechar", closeFn, { z: 19, bg: "#c0392b", k: "tr-close" });
         }
         const introArea = G && G.intro && !G.hand && !G.p1intro && !showCards && !G.missileTrade && scr == "game" ? SCAREA.intro : null;
-        SCAREA = introArea ? { intro: introArea } : {};
+        const logArea = !vrModalUp && showLog && !showObj && scr == "game" ? SCAREA.log : null;
+        SCAREA = {};
+        if (introArea) SCAREA.intro = introArea;
+        if (logArea) SCAREA.log = logArea;
         if (!vrModalUp) vrDrawSidePanels();
       }
       function pick(x, y, noTerr) {
@@ -7992,6 +8120,11 @@
           vrHoverT(h.t);
           k = "";
         } else vrHoverT(null);
+        /* v9 passo 1: botão apontado = destaque 3D (vrBtnHover); o canvas NÃO é redesenhado por causa do hover */
+        if (VR_BTN_HOVER_3D) {
+          vrBtnHover(h && h.b ? h.b : null);
+          if (h && h.b) k = "";
+        }
         if (k != hover) {
           hover = k;
           draw();
@@ -8252,7 +8385,7 @@
       }
       /* ===== SALA 3D ===== */
       /* ===== QUALIDADE VR: FOVEAÇÃO FIXA DESLIGADA ===== */
-      const R = new THREE.WebGLRenderer({ antialias: true });
+      const R = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance", stencil: false }); // leveza: sem stencil (não usado), GPU de alto desempenho
       R.setPixelRatio(Math.min(devicePixelRatio, 2));
       R.setSize(innerWidth, innerHeight);
       R.xr.enabled = true;
@@ -8284,14 +8417,24 @@
       const VR_ROOM_H = 10; // etapa 57: altura da sala = VR_TIERS*VR_TIER_STEP + 4 (6*1,0+4). Se mudar os degraus, ajuste aqui.
       box(16, 0.1, 20, 0, -0.05, 1, M_(0x3a0f1a));
       box(16, 0.1, 20, 0, VR_ROOM_H, 1, M_(0x15151f));
-      box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, -9, M_(0x1a1a2a));
-      box(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, 11, M_(0x1a1a2a));
-      box(0.1, VR_ROOM_H, 20, -8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
-      box(0.1, VR_ROOM_H, 20, 8, VR_ROOM_H / 2, 1, M_(0x1a1a2a));
+      /* v8 leveza: as 4 paredes (mesma cor) FUNDIDAS em 1 peça = 3 draw calls a menos por olho. Mesmo tamanho/posição. */
+      {
+        const bx = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+        scene.add(new THREE.Mesh(mergeGeometries([
+          bx(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, -9),
+          bx(16, VR_ROOM_H, 0.1, 0, VR_ROOM_H / 2, 11),
+          bx(0.1, VR_ROOM_H, 20, -8, VR_ROOM_H / 2, 1),
+          bx(0.1, VR_ROOM_H, 20, 8, VR_ROOM_H / 2, 1),
+        ]), M_(0x1a1a2a)));
+      }
       /* etapa 68 (pedido do dono): os 2 pilares vermelhos ao lado da tela foram REMOVIDOS — no tamanho G a tela
          ocupa a parede da frente de ponta a ponta (parede a parede), encostando nas paredes laterais. */
-      for (let i = -3; i <= 3; i += 2)
-        box(0.6, 0.05, 0.6, i * 2, VR_ROOM_H - 0.05, 2, new THREE.MeshBasicMaterial({ color: 0xffe9b0 }));
+      /* v8 leveza: as 4 luminárias do teto fundidas em 1 peça (eram 4 draw calls) */
+      {
+        const lg = [];
+        for (let i = -3; i <= 3; i += 2) lg.push(new THREE.BoxGeometry(0.6, 0.05, 0.6).translate(i * 2, VR_ROOM_H - 0.05, 2));
+        scene.add(new THREE.Mesh(mergeGeometries(lg), new THREE.MeshBasicMaterial({ color: 0xffe9b0 })));
+      }
       /* etapa 35: poltronas/cadeiras FUNDIDAS por cor (eram 80 caixas = 80 draw calls; agora 2). Mesma geometria/posição. */
       const seatParts = {};
       function seat(x, z, w, col, y0 = 0) {
@@ -8368,6 +8511,13 @@
         z: VR_TIERS ? VR_ROW_Z[4] : 4.4, // pedido: 2 degraus acima (era a 3ª fileira, agora a 5ª)
         y: VR_TIERS ? 5 * VR_TIER_STEP : 0,
       };
+      /* leveza: a sala (paredes, chão, teto, luminárias, poltronas) é estática — não recalcula matrizes a cada quadro */
+      scene.children.forEach((o) => {
+        if (o.isMesh) {
+          o.updateMatrix();
+          o.matrixAutoUpdate = false;
+        }
+      });
       rig.position.set(vrHome.x, vrHome.y, vrHome.z);
       vrBaseY = vrHome.y;
       rig.updateMatrixWorld(true);
@@ -8444,6 +8594,122 @@
       screen.renderOrder = 1000;
       screen.position.set(0, 3.15, -8.85);
       vrStage.add(screen); // etapa 67: a tela entra no palco (zoom geral)
+      /* =====================================================================================
+         ETAPA v9 / v10 (pedido do dono: deixar o jogo mais leve SEM mexer em resolução nem foveation) — NOTAS PARA QUEM CONTINUAR
+         REGRA INVIOLÁVEL DO DONO: NÃO reduzir VR_CANVAS_K (2), VR_BAND_D (2.5), VR_INFO_D (3), VR_XR_SCALE (1.5),
+         VR_LABEL_DENS_MIN (3), VR_LOD_BIAS (-0.5) nem aumentar VR_FOVEATION (0). Toda otimização deve manter a nitidez.
+
+         PASSO 1 [x] FEITO AQUI: DESTAQUE DOS BOTÕES (HOVER) EM 3D.
+           Problema: ao passar o laser sobre um botão, onHover() trocava `hover`, chamava draw() e reenviava a textura
+           inteira do canvas (1920x1080 x VR_CANVAS_K=2 = 3840x2160 = 8,3 Mpix) para a GPU — o maior pico que sobrou.
+           Solução: com VR_BTN_HOVER_3D = true a variável `hover` NUNCA recebe chaves de botão ("b:..."); o canvas desenha
+           os botões sempre no estado normal e o destaque vira UMA malha 3D (vrBtnHL: retângulo arredondado branco,
+           opacidade VR_BTN_HL_OP, igual ao "rgba(255,255,255,.2)" dos botões B()/DD()) posta por cima do botão, na frente
+           da tela e das faixas da HUD (z -8.846, renderOrder 2600). Coordenadas: as mesmas dos btns (tela 1920x1080),
+           convertidas com SC = 9,6 m / 1920 px. A geometria só é refeita quando muda o botão apontado (barato).
+           Depois de cada draw() o destaque é revalidado (vrBtnHLCheck): se o botão sumiu/mudou de lugar, esconde.
+           Diferença visual: botões que no canvas trocavam de COR no hover (chooserButton, chooserArrow, SEL, lista 4509,
+           7126/7663/7855) agora recebem o véu branco em vez da troca de cor. Para voltar ao jeito antigo: VR_BTN_HOVER_3D = false.
+
+         PASSO 2 [x] FEITO (v10): LISTAS COM ROLAGEM (tips, log, cfg, info, intro) EM JANELA 3D PRÓPRIA.
+           Interruptor: const VR_SCROLL_3D = true (false = volta a desenhar dentro das faixas/canvas grande).
+           Como funciona:
+             - VR_SCROLL_DEFS define a caixa lógica, densidade (VR_INFO_D=3 em info, VR_BAND_D=2.5 em tips/log/cfg,
+               VR_CANVAS_K=2 em intro), z (-8.8479..-8.8476) e renderOrder (1000.81..1000.90) de cada lista.
+             - O canvas/textura/malha de cada lista é criado sob demanda (lazy) em ensureVrScroll(k), dentro de vrStage.
+             - Em draw(): FRAME/moldura continua na faixa da HUD (ou tela, no caso de intro); o corpo rolável + SBAR vão
+               para vrScrollRender(k, drawBody, sigFn). Se a assinatura (sig) não mudou, pula o redesenho e reenvia só os
+               botões salvos (st.savedBtns). Se algum modal (vrModalUp) está aberto, painéis laterais voltam ao canvas atrás
+               do véu; se showObj está sobre o LOG, log volta à faixa 6. Painéis do punho (wrDrawExtra) setam vrInWristDraw=true
+               para não interferir.
+             - Ao rolar (analógico direito em setAnimationLoop OU roda do mouse em "wheel"): se SCR[k] mudou, chama
+               vrScrollRedraw(k), que redesenha e envia à GPU APENAS o mini-canvas daquela lista, atualiza em `btns` só os
+               botões pertencentes a ela (cfg-*, info-plane, tr-no/tr-yes) e chama vrBtnHLCheck(). Zero draw() completo.
+             - Corrigido também: SCAREA.log era apagado no final de draw(); agora é preservado quando !vrModalUp && !showObj.
+
+         PASSO 3 [x] FEITO (v10): AVISO TEMPORÁRIO (TOAST) EM PLANO 3D INDEPENDENTE.
+           Interruptor: const VR_TOAST_3D = true (false = volta à faixa 4 / canvas grande).
+           Como funciona:
+             - showToast() gera um id único (++vrToastSeq). draw() não desenha o toast nem limpa/envia vrBands[4].
+             - vrToastSync() (chamado todo quadro no loop, igual a vrClockSync) cria vrToast3D sob demanda na mesma posição
+               e densidade (VR_BAND_D) da faixa 4 (z -8.8480, renderOrder 1000.75). Desenha e envia 1x quando muda o id/idioma.
+             - Quando performance.now() > G.toast.until, o loop só limpa G.toast = null e vrToastSync() faz mesh.visible = false:
+               ZERO draw(), ZERO limpeza de faixas, ZERO upload de textura na GPU.
+             - Bônus em draw(): faixas 3 (chooser) e 4 (toast) agora são puladas no clear/upload quando não estão visíveis.
+
+         PRÓXIMOS PASSOS SUGERIDOS PARA OUTRA IA CONTINUAR (sem mexer em resolução nem foveation):
+           PASSO 4 [ ] CACHE POR ASSINATURA NAS FAIXAS FIXAS DA HUD (vrBands[0] barra topo, vrBands[1] barra baixo,
+                       vrBands[2] zoom, vrBands[5..7] molduras): hoje cada draw() limpa e reenvia vrBands[0..2] (~2,6 Mpix)
+                       mesmo quando só mudou o texto da barra de baixo ou o zoom. Guardar assinatura por faixa e só limpar/
+                       enviar a faixa que realmente mudou (mantendo os btns salvos por faixa, mesmo padrão de st.savedBtns).
+           PASSO 5 [ ] CACHE DAS LINHAS QUEBRADAS DO LOG (drawLogPanel): hoje drawLogPanel() roda rtLines() em TODAS as
+                       entradas de G.log (até 300) a cada draw(). Guardar `e._ln` / `e._lang` em cada entrada do log para
+                       quebrar o texto só 1 vez por mensagem nova (ou quando mudar cfg.lang).
+           PASSO 6 [ ] MOLDURA/TEXTO FIXO DOS BOTÕES EM CACHE NO CHOOSER (vrBands[3]): ao segurar território (+1 a cada
+                       120 ms), só o número central muda; pode virar assinatura ou mini-plano só do número se ainda houver
+                       engasgo no Quest.
+           DEPURAÇÃO: window.__vrPerf expõe contadores ao vivo (draws, mainUploads, scrollRedraws, scrollSkips, toastDraws,
+                      toastHides) para validar no navegador que rolar listas e sumir avisos não disparam draw()/mainUploads.
+         ===================================================================================== */
+      const VR_BTN_HOVER_3D = true,
+        VR_BTN_HL_OP = 0.2;
+      const vrBtnHL = new THREE.Mesh(
+        new THREE.BufferGeometry(),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: VR_BTN_HL_OP, depthWrite: false, toneMapped: false }),
+      );
+      vrBtnHL.renderOrder = 2600;
+      vrBtnHL.visible = false;
+      vrStage.add(vrBtnHL);
+      let vrBtnHLKey = "",
+        vrBtnHLRect = null;
+      function vrBtnHover(b) {
+        if (!VR_BTN_HOVER_3D) return;
+        if (!b) {
+          vrBtnHL.visible = false;
+          vrBtnHLKey = "";
+          vrBtnHLRect = null;
+          return;
+        }
+        const sig = b.k + "|" + b.x + "|" + b.y + "|" + b.w + "|" + b.h;
+        if (sig !== vrBtnHLKey) {
+          vrBtnHLKey = sig;
+          vrBtnHLRect = b;
+          const SCb = 9.6 / 1920,
+            w = b.w * SCb,
+            h = b.h * SCb,
+            rad = Math.min(8 * SCb, w / 2, h / 2),
+            sh = new THREE.Shape(),
+            x0 = -w / 2,
+            y0 = -h / 2;
+          sh.moveTo(x0 + rad, y0);
+          sh.lineTo(x0 + w - rad, y0);
+          sh.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + rad);
+          sh.lineTo(x0 + w, y0 + h - rad);
+          sh.quadraticCurveTo(x0 + w, y0 + h, x0 + w - rad, y0 + h);
+          sh.lineTo(x0 + rad, y0 + h);
+          sh.quadraticCurveTo(x0, y0 + h, x0, y0 + h - rad);
+          sh.lineTo(x0, y0 + rad);
+          sh.quadraticCurveTo(x0, y0, x0 + rad, y0);
+          vrBtnHL.geometry.dispose();
+          vrBtnHL.geometry = new THREE.ShapeGeometry(sh, 4);
+          vrBtnHL.position.set((b.x + b.w / 2 - 960) * SCb, 3.15 + (540 - (b.y + b.h / 2)) * SCb, -8.846);
+        }
+        vrBtnHL.visible = true;
+      }
+      function vrBtnHLCheck() {
+        if (!vrBtnHLRect) return;
+        const o = vrBtnHLRect;
+        if (!btns.some((b) => b.k === o.k && b.x === o.x && b.y === o.y && b.w === o.w && b.h === o.h)) vrBtnHover(null);
+      }
+      {
+        const draw0 = draw;
+        draw = function () {
+          const rv = draw0.apply(this, arguments);
+          vrBtnHLCheck();
+          if (typeof vrScrollSync === "function") vrScrollSync();
+          return rv;
+        };
+      }
       /* =====================================================================================
          ETAPA 74 (pedido do dono): BOTÃO INFORMAÇÕES NO PUNHO ESQUERDO (OPCIONAL, INDEPENDENTE DA TELA).
          Em cima do punho/mão esquerda fica um botão verde "INFORMAÇÕES". Ao apertar (gatilho da mão DIREITA apontando para ele),
@@ -8796,6 +9062,7 @@
           sk = m.id == "obj" ? null : m.id,
           scr0 = sk ? SCR[sk] : 0,
           mx0 = sk ? SCMAX[sk] : 0;
+        vrInWristDraw = true;
         c = g;
         OVR = [];
         btns = [];
@@ -8826,6 +9093,7 @@
         } catch (e) {
           console.error("wrDrawExtra", m.id, e);
         } finally {
+          vrInWristDraw = false;
           c = c0;
           OVR = ovr0;
           btns = btns0;
@@ -8931,7 +9199,8 @@
             blendDst: THREE.OneMinusSrcAlphaFactor,
           }),
         );
-        mesh.renderOrder = 1000.5 + (d.x0 == 760 ? 0.1 : d.x0 == 300 ? 0.2 : d.h == 960 ? 0.3 : 0); // faixa 3 (tela de peças) por cima das barras, como no canvas
+        mesh.renderOrder =
+          1000.5 + (d.x0 == 760 ? 0.1 : d.x0 == 300 ? 0.2 : d.h == 960 ? (d.D === VR_INFO_D ? 0.35 : 0.3) : 0); // faixa 7 (info) acima da faixa 5 (tips); faixa 3 acima das barras
         mesh.position.set((d.x0 + d.w / 2 - 960) * SC, 3.15 + (540 - (d.y0 + d.h / 2)) * SC, -8.8485);
         mesh.visible = false;
         vrStage.add(mesh); // etapa 67: faixas da HUD no palco
@@ -8944,6 +9213,163 @@
           if (b.mesh.visible !== v) b.mesh.visible = v;
         });
       }
+      /* ===== v10 PASSO 2 & PASSO 3: JANELAS 3D DE LISTAS ROLÁVEIS (VR_SCROLL_3D) + AVISO 3D (VR_TOAST_3D) ===== */
+      const vrPerf = { draws: 0, mainUploads: 0, scrollRedraws: 0, scrollSkips: 0, toastDraws: 0, toastHides: 0 };
+      window.__vrPerf = vrPerf;
+      function vrMakeOverlayPlane(d, D, z, ro) {
+        const SC = 9.6 / 1920,
+          cv = document.createElement("canvas");
+        cv.width = Math.ceil(d.w * D);
+        cv.height = Math.ceil(d.h * D);
+        const t = new THREE.CanvasTexture(cv);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.premultiplyAlpha = true;
+        t.generateMipmaps = true;
+        t.minFilter = THREE.LinearMipmapLinearFilter;
+        t.anisotropy = 16;
+        const mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(d.w * SC, d.h * SC),
+          new THREE.MeshBasicMaterial({
+            map: t,
+            toneMapped: false,
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.CustomBlending,
+            blendSrc: THREE.OneFactor,
+            blendDst: THREE.OneMinusSrcAlphaFactor,
+          }),
+        );
+        mesh.renderOrder = ro;
+        mesh.position.set((d.x0 + d.w / 2 - 960) * SC, 3.15 + (540 - (d.y0 + d.h / 2)) * SC, z);
+        mesh.visible = false;
+        vrStage.add(mesh);
+        return { d, D, cv, g: cv.getContext("2d"), t, mesh };
+      }
+      const VR_SCROLL_DEFS = {
+        tips: { x0: 13, y0: 87, w: 754, h: 836, D: VR_BAND_D, z: -8.8479, ro: 1000.81, btnMatch: null },
+        log: { x0: 1218, y0: 155, w: 366, h: 470, D: VR_BAND_D, z: -8.8479, ro: 1000.81, btnMatch: null },
+        cfg: { x0: 1613, y0: 87, w: 294, h: 836, D: VR_BAND_D, z: -8.8478, ro: 1000.82, btnMatch: (k) => String(k).startsWith("cfg-") },
+        info: { x0: 13, y0: 91, w: 405, h: 886, D: VR_INFO_D, z: -8.8477, ro: 1000.86, btnMatch: (k) => k === "info-plane" },
+        intro: { x0: 354, y0: 40, w: 1238, h: 1000, D: VR_CANVAS_K, z: -8.8476, ro: 1000.9, btnMatch: (k) => k === "tr-no" || k === "tr-yes" },
+      };
+      const vrScrollState = {};
+      function ensureVrScroll(k) {
+        let st = vrScrollState[k];
+        if (st) return st;
+        const def = VR_SCROLL_DEFS[k];
+        if (!def) return null;
+        const pl = vrMakeOverlayPlane(def, def.D, def.z, def.ro);
+        st = { ...pl, def, active: false, ready: false, sig: "", sigFn: null, drawBody: null, savedBtns: [], lastRet: undefined };
+        vrScrollState[k] = st;
+        return st;
+      }
+      function vrUseScroll3D(k) {
+        if (!VR_SCROLL_3D || vrInWristDraw || !G || scr !== "game" || !VR_SCROLL_DEFS[k]) return false;
+        if (k === "intro") return !!(G.intro && !G.hand && !G.p1intro && !showCards && !G.missileTrade);
+        if (G.intro || showCards || G.missileTrade || G.hand || G.p1intro) return false; // atrás do véu modal
+        if (k === "log" && showObj) return false; // Objetivo cobre o LOG na faixa 6
+        return true;
+      }
+      function vrScrollBeginFrame() {
+        for (const k in vrScrollState) vrScrollState[k].active = false;
+      }
+      function vrScrollPaint(st) {
+        const c0 = c,
+          prevBtns = btns;
+        st.g.setTransform(1, 0, 0, 1, 0, 0);
+        st.g.clearRect(0, 0, st.cv.width, st.cv.height);
+        st.g.setTransform(st.D, 0, 0, st.D, -st.d.x0 * st.D, -st.d.y0 * st.D);
+        c = st.g;
+        btns = [];
+        try {
+          st.lastRet = st.drawBody();
+          st.savedBtns = btns;
+          st.ready = true;
+          st.t.needsUpdate = true;
+        } finally {
+          c = c0;
+          btns = prevBtns;
+        }
+        if (st.savedBtns.length) btns.push(...st.savedBtns);
+      }
+      function vrScrollRender(k, drawBody, sigFn) {
+        const st = ensureVrScroll(k);
+        if (!st) {
+          drawBody();
+          return null;
+        }
+        st.active = true;
+        st.drawBody = drawBody;
+        st.sigFn = sigFn;
+        const sg = sigFn ? sigFn() : null;
+        if (sg !== null && sg === st.sig && st.ready) {
+          vrPerf.scrollSkips++;
+          if (st.savedBtns.length) btns.push(...st.savedBtns);
+          return st;
+        }
+        vrScrollPaint(st);
+        st.sig = sigFn ? sigFn() : "";
+        return st;
+      }
+      function vrScrollRedraw(k) {
+        if (!VR_SCROLL_3D) return false;
+        const st = vrScrollState[k];
+        if (!st || !st.active || !st.drawBody) return false;
+        if (st.def.btnMatch) btns = btns.filter((b) => !st.def.btnMatch(b.k));
+        vrScrollPaint(st);
+        st.sig = st.sigFn ? st.sigFn() : "";
+        vrPerf.scrollRedraws++;
+        vrBtnHLCheck();
+        return true;
+      }
+      function vrScrollSync() {
+        const ok = VR_SCROLL_3D && !!G && scr == "game";
+        for (const k in vrScrollState) {
+          const st = vrScrollState[k],
+            v = ok && st.active;
+          if (st.mesh.visible !== v) st.mesh.visible = v;
+        }
+      }
+      let vrToast3D = null;
+      function ensureVrToast3D() {
+        if (vrToast3D) return vrToast3D;
+        const pl = vrMakeOverlayPlane({ x0: 300, y0: 740, w: 1320, h: 245 }, VR_BAND_D, -8.848, 1000.75);
+        vrToast3D = { ...pl, sig: "" };
+        return vrToast3D;
+      }
+      function vrToastSync() {
+        if (!VR_TOAST_3D) {
+          if (vrToast3D && vrToast3D.mesh.visible) vrToast3D.mesh.visible = false;
+          return;
+        }
+        const T0 = G && G.toast,
+          show = !!(T0 && scr == "game" && !G.intro && !G.hand && !G.p1intro && !showCards && !G.missileTrade && performance.now() <= T0.until);
+        if (!show) {
+          if (vrToast3D && vrToast3D.mesh.visible) {
+            vrToast3D.mesh.visible = false;
+            vrPerf.toastHides++;
+          }
+          return;
+        }
+        const vt = ensureVrToast3D(),
+          sig = (T0.id || 0) + "|" + cfg.lang;
+        if (sig !== vt.sig) {
+          const c0 = c;
+          vt.g.setTransform(1, 0, 0, 1, 0, 0);
+          vt.g.clearRect(0, 0, vt.cv.width, vt.cv.height);
+          vt.g.setTransform(vt.D, 0, 0, vt.D, -vt.d.x0 * vt.D, -vt.d.y0 * vt.D);
+          c = vt.g;
+          try {
+            drawToast();
+            vt.sig = sig;
+            vt.t.needsUpdate = true;
+            vrPerf.toastDraws++;
+          } finally {
+            c = c0;
+          }
+        }
+        if (!vt.mesh.visible) vt.mesh.visible = true;
+      }
       /* Só reenvia o canvas grande à GPU se ele tem tinta agora OU tinha na última vez (para apagar o que sobrou). */
       {
         const proto = Object.getOwnPropertyDescriptor(THREE.Texture.prototype, "needsUpdate");
@@ -8954,7 +9380,10 @@
           },
           set(v) {
             if (v && VR_HUD_BANDS && !vrMainInk && !vrMainLastInk) return; // nada no canvas grande e já estava limpo na GPU
-            if (v) vrMainLastInk = vrMainInk;
+            if (v) {
+              vrMainLastInk = vrMainInk;
+              vrPerf.mainUploads++;
+            }
             proto.set.call(this, v);
           },
         });
@@ -9768,11 +10197,62 @@
          ícones + número + marcadores), desenhado com as MESMAS funções do original (T, TN, TK,
          drawTankIcons) trocando temporariamente `c`. O mini-canvas só é redesenhado quando muda algo
          (número, dono, ícones, zoom...), no máximo VR_LABEL_BUDGET por quadro. Pan não redesenha nada. */
-      const VR_LABEL_BUDGET = 12;
+      const VR_LABEL_BUDGET = 6; // leveza: 12 -> 6 rótulos redesenhados por quadro (espalha o trabalho, sem perder nitidez)
       /* etapa 40: antes da etapa 36 os rótulos (DoubleSide transparente) eram desenhados em 2 passadas, o que deixava as bordas
          suavizadas das letras mais firmes (alfa 1-(1-a)^2). Com passada única o texto ficou fino e 'esfumaçado'. Desenhar o texto 2x
          no mini-canvas dá o MESMO resultado sem custo na GPU. 1 = como na etapa 36 (mais fino). */
       const VR_TEXT_PASSES = 2;
+      /* v11 leveza: recorte do rótulo. Acha a caixa com conteúdo (alfa > 0) amostrando 1 a cada 2 pixels, arredonda para
+         blocos de 16 px alinhados (os níveis de mipmap ficam idênticos aos do canvas cheio), copia os pixels SEM reescalar
+         e ajusta os 4 vértices do plano para cobrir só essa área. Mesmos pixels por metro = mesma nitidez. */
+      const VR_LBL_CROP = true; // false = volta ao jeito antigo (textura do tamanho cheio)
+      function vrCropLbl(src, dst, tx, geo, W, H) {
+        let x0 = 0, y0 = 0, x1 = W, y1 = H;
+        if (VR_LBL_CROP) {
+          const d = new Uint32Array(src.getContext("2d").getImageData(0, 0, W, H).data.buffer);
+          x0 = W; y0 = H; x1 = -1; y1 = -1;
+          for (let y = 0; y < H; y += 2) {
+            const r = y * W;
+            let a = -1, b = -1;
+            for (let x = 0; x < W; x += 2) if (d[r + x] >>> 24) { a = x; break; }
+            if (a < 0) continue;
+            for (let x = W - 1 - ((W - 1) & 1); x >= a; x -= 2) if (d[r + x] >>> 24) { b = x; break; }
+            if (y < y0) y0 = y;
+            y1 = y;
+            if (a < x0) x0 = a;
+            if (b > x1) x1 = b;
+          }
+          if (x1 < 0) {
+            /* vazio: plano sem área (não pinta nenhum pixel) e nada a enviar */
+            const p = geo.attributes.position;
+            for (let i = 0; i < 4; i++) p.setXYZ(i, 0, 0, 0);
+            p.needsUpdate = true;
+            return;
+          }
+          x0 = Math.max(0, ((x0 - 4) >> 4) << 4);
+          y0 = Math.max(0, ((y0 - 4) >> 4) << 4);
+          x1 = Math.min(W, (((x1 + 4) >> 4) + 1) << 4);
+          y1 = Math.min(H, (((y1 + 4) >> 4) + 1) << 4);
+        }
+        const w = x1 - x0, h = y1 - y0;
+        if (dst.width !== w || dst.height !== h) {
+          dst.width = w;
+          dst.height = h;
+          tx.dispose(); // tamanho mudou: textura recriada
+        }
+        const g = dst.getContext("2d");
+        g.clearRect(0, 0, w, h);
+        g.drawImage(src, x0, y0, w, h, 0, 0, w, h);
+        tx.needsUpdate = true;
+        const L_ = -0.5 + x0 / W, R_ = -0.5 + x1 / W, T_ = 0.5 - y0 / H, B_ = 0.5 - y1 / H,
+          p = geo.attributes.position;
+        p.setXYZ(0, L_, T_, 0);
+        p.setXYZ(1, R_, T_, 0);
+        p.setXYZ(2, L_, B_, 0);
+        p.setXYZ(3, R_, B_, 0);
+        p.needsUpdate = true;
+        geo.computeBoundingSphere();
+      }
       function vrDrawLabel(L, t, lm, sn, dens) {
         const gap = Math.round(lm.ls * 0.85),
           HW = Math.ceil(lm.ls * 6),
@@ -9832,8 +10312,8 @@
         } finally {
           c = c0;
         }
-        L.tex.needsUpdate = true;
-        L.tex2.needsUpdate = true;
+        vrCropLbl(cv, L.cc, L.tex, L.mesh.geometry, W, H);
+        vrCropLbl(cv2, L.cc2, L.tex2, L.mesh2.geometry, W, H);
         L.mesh.scale.set(2 * HW, -(UP + DN), 1); // y negativo: o grupo do mapa já tem y invertido
         const _bx = G.M.C[t][0],
           _by = G.M.C[t][1] + (DN - UP) / 2;
@@ -10093,7 +10573,17 @@
             mesh2.frustumCulled = false;
             mesh2.position.z = 0.01;
             mesh.add(mesh2);
-            L = vrLabels[t] = { cv, tex: tx, mesh, cv2, tex2: tx2, mesh2, sig: "" };
+            /* v11 leveza: os canvases cv/cv2 continuam do tamanho cheio (mesma densidade = mesma nitidez), mas a GPU recebe só o
+               RECORTE com conteúdo (cc/cc2) e o plano encolhe para esse recorte. Antes: 82 texturas 828x522 quase vazias
+               (~190 MB de memória de vídeo) e 82 planos transparentes enormes por cima do mapa. */
+            cv.getContext("2d", { willReadFrequently: true });
+            cv2.getContext("2d", { willReadFrequently: true });
+            const cc = document.createElement("canvas"),
+              cc2 = document.createElement("canvas");
+            cc.width = cc.height = cc2.width = cc2.height = 1;
+            tx.image = cc;
+            tx2.image = cc2;
+            L = vrLabels[t] = { cv, tex: tx, mesh, cv2, tex2: tx2, mesh2, cc, cc2, sig: "" };
           }
           if (L.sig !== sig) {
             if (budget <= 0) { vrLblMore = true; continue; } // fica para o próximo quadro
@@ -10355,21 +10845,23 @@
         for (let k = 0; k < 3; k++) vrBurstInit1(group, mk, glowTex);
         vrBurst = vrBursts[0];
       }
+      /* v7 leveza: menos partículas por explosão (mesmo desenho, tempos e cores; ~25% menos peças) */
+      const VR_BN = { sp: 26, db: 14, fl: 19, sm: 11 };
       function vrBurstInit1(group, mk, glowTex) {
         const g = new THREE.Group();
         g.position.z = 0.004;
         g.visible = false;
-        const circ = new THREE.CircleGeometry(1, 20),
+        const circ = new THREE.CircleGeometry(1, 16), // v7: 20 -> 16 lados (peças pequenas, diferença invisível)
           core = new THREE.Mesh(circ, mk(0xfff8c0)),
           coreGlow = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mk(0xff9800, { map: glowTex })),
           ring1 = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), mk(0xff5520)),
           ring2 = new THREE.Mesh(new THREE.RingGeometry(0.9, 1, 48), mk(0xffd23a)),
-          sparks = new THREE.InstancedMesh(circ, mk(0xffd23a), 35),
-          debris = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.5), mk(0xffaa00), 18),
-          fly = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.6), mk(0xffffff), 25),
-          smoke = new THREE.InstancedMesh(circ, mk(0x646464, { opacity: 0.6 }), 15);
+          sparks = new THREE.InstancedMesh(circ, mk(0xffd23a), VR_BN.sp),
+          debris = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.5), mk(0xffaa00), VR_BN.db),
+          fly = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 0.6), mk(0xffffff), VR_BN.fl),
+          smoke = new THREE.InstancedMesh(circ, mk(0x646464, { opacity: 0.6 }), VR_BN.sm);
         const flyCols = ["#ff6600", "#ff8800", "#ffaa00", "#ffcc00", "#ff3300", "#666", "#888"];
-        for (let i = 0; i < 25; i++) fly.setColorAt(i, new THREE.Color(flyCols[i % flyCols.length]).convertSRGBToLinear());
+        for (let i = 0; i < VR_BN.fl; i++) fly.setColorAt(i, new THREE.Color(flyCols[i % flyCols.length]).convertSRGBToLinear());
         [smoke, fly, debris, sparks, ring1, ring2, coreGlow, core].forEach((m, i) => {
           m.renderOrder = 964 + i;
           m.frustumCulled = false;
@@ -10384,19 +10876,19 @@
         const B = vrBursts.find((b) => !b.on) || vrBursts.reduce((a, b) => (b.t0 < a.t0 ? b : a));
         const R = Math.random,
           P = { sp: [], db: [], fl: [], sm: [] };
-        for (let i = 0; i < 35; i++) {
-          const a = (i / 35) * Math.PI * 2 + (R() - 0.5) * 0.5, r = 60 + R() * 140;
+        for (let i = 0; i < VR_BN.sp; i++) {
+          const a = (i / VR_BN.sp) * Math.PI * 2 + (R() - 0.5) * 0.5, r = 60 + R() * 140;
           P.sp.push([Math.cos(a) * r, Math.sin(a) * r, 3 + R() * 6, R() * 0.15]);
         }
-        for (let i = 0; i < 18; i++) {
-          const a = (i / 18) * Math.PI * 2 + (R() - 0.5) * 0.4, r = 90 + R() * 170;
+        for (let i = 0; i < VR_BN.db; i++) {
+          const a = (i / VR_BN.db) * Math.PI * 2 + (R() - 0.5) * 0.4, r = 90 + R() * 170;
           P.db.push([Math.cos(a) * r, Math.sin(a) * r, 7 + R() * 12, R() * 0.2]);
         }
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < VR_BN.fl; i++) {
           const an = R() * Math.PI * 2, d = 200 + R() * 600;
           P.fl.push([(R() - 0.5) * 100, (R() - 0.5) * 100, Math.cos(an) * d, Math.sin(an) * d, 4 + R() * 10, R() * 1080, R() * 0.3]);
         }
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < VR_BN.sm; i++) {
           const an = -Math.PI / 2 + (R() - 0.5) * 0.8, d = 150 + R() * 300;
           P.sm.push([(R() - 0.5) * 80, (R() - 0.5) * 80, Math.cos(an) * d, Math.sin(an) * d, 8 + R() * 15, 0.2 + R() * 0.4]);
         }
@@ -10440,29 +10932,40 @@
         [[B.ring1, 1.1, 0], [B.ring2, 0.9, 0.12]].forEach(([m, dur, dl]) => {
           const p = Math.max(0, Math.min(1, (t - dl) / dur)), k = vrEaseOut(p), r = 8 + 192 * k, w = 12 - 11 * k;
           m.visible = t >= dl && p < 1;
-          m.geometry.dispose();
-          m.geometry = new THREE.RingGeometry(Math.max(0.1, r - w / 2), r + w / 2, 48);
+          /* v5: antes recriava a RingGeometry (dispose + new) a cada quadro, 2 anéis x até 3 explosões = lixo de memória
+             e recriação de buffers na GPU (engasgo no Quest). Agora só reescreve os vértices do mesmo buffer. */
+          if (m.visible) { const pa = m.geometry.attributes.position, A = pa.array, ri = Math.max(0.1, r - w / 2), ro = r + w / 2, n = 48;
+            for (let i = 0; i <= n; i++) {
+              const a = (i / n) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+              A[i * 3] = ri * c; A[i * 3 + 1] = ri * sn;
+              A[(n + 1 + i) * 3] = ro * c; A[(n + 1 + i) * 3 + 1] = ro * sn;
+            }
+            pa.needsUpdate = true; }
           m.material.opacity = 0.9 * (1 - p);
         });
         // faíscas (1.2 s) e destroços giratórios (1.4 s, 720°)
         let os = 0;
-        P.sp.forEach(([dx, dy, sz, dl], i) => {
+        if (t < 1.4) P.sp.forEach(([dx, dy, sz, dl], i) => {
           const p = Math.max(0, Math.min(1, (t - dl) / 1.2)), k = vrEaseOut(p), s2 = sz * (1 - 0.85 * k);
           set(B.sparks, i, dx * k, dy * k, s2, s2, 0);
           os += 1 - p;
         });
-        B.sparks.material.opacity = os / P.sp.length;
+        if (t < 1.4) {
+          B.sparks.material.opacity = os / P.sp.length;
+          B.sparks.instanceMatrix.needsUpdate = true;
+        }
         B.sparks.visible = t < 1.4;
-        B.sparks.instanceMatrix.needsUpdate = true;
         let od = 0;
-        P.db.forEach(([dx, dy, sz, dl], i) => {
+        if (t < 1.6) P.db.forEach(([dx, dy, sz, dl], i) => {
           const p = Math.max(0, Math.min(1, (t - dl) / 1.4)), k = vrEaseOut(p), s2 = sz * (1 - 0.7 * k);
           set(B.debris, i, dx * k, dy * k, s2, s2, k * 4 * Math.PI);
           od += p < 0.5 ? 1 - 0.4 * p : 0.8 * (1 - (p - 0.5) / 0.5);
         });
-        B.debris.material.opacity = od / P.db.length;
+        if (t < 1.6) {
+          B.debris.material.opacity = od / P.db.length;
+          B.debris.instanceMatrix.needsUpdate = true;
+        }
         B.debris.visible = t < 1.6;
-        B.debris.instanceMatrix.needsUpdate = true;
         // 600 ms depois: destroços voando pelo mapa e fumaça subindo (3 s)
         const t2 = t - 0.6;
         B.fly.visible = B.smoke.visible = t2 >= 0;
@@ -11732,9 +12235,12 @@
           const sk = h && scrollAt(h.x, h.y);
           if (sk) {
             e.preventDefault();
-            SCR[sk] = THREE.MathUtils.clamp(SCR[sk] + e.deltaY, 0, SCMAX[sk]);
-            draw();
-            tex.needsUpdate = true;
+            const prev = SCR[sk];
+            SCR[sk] = THREE.MathUtils.clamp(prev + e.deltaY, 0, SCMAX[sk]);
+            if (SCR[sk] !== prev && !vrScrollRedraw(sk)) {
+              draw();
+              tex.needsUpdate = true;
+            }
             return;
           }
           if (!h || !mapOn() || inOvr(h.x, h.y)) return;
@@ -11775,8 +12281,50 @@
          Se quiser os pulsos de volta, use 250 (4 quadros/s = ~1/4 do custo antigo) ou 100 (custo antigo). */
       const VR_STATS_ANIM_MS = 0;
       let vrStatsT = 0;
+      /* v5: PRÉ-AQUECIMENTO. Antes, na 1ª vez que um território subia, as paredes/sombras eram criadas na hora (e a malha fundida
+         refazia o layout inteiro a cada uma); na 1ª explosão o three compilava shaders e enviava texturas. Era o engasgo de
+         "suspende + explode". Agora tudo isso é feito UMA vez, assim que o mapa existe, antes de você jogar. Visual idêntico. */
+      let vrWarmFill = null, vrWarmFx = null;
+      function vrPrewarm() {
+        if (!G || scr != "game" || !vrFillGroup) return;
+        if (vrWarmFill !== vrFillGroup && vrFillMesh[G.T[0]] && vrStrokePts[G.T[0]]) {
+          vrWarmFill = vrFillGroup;
+          try {
+            for (const t of G.T) {
+              vrLiftWallFor(t);
+              vrLiftShadowFor(t);
+            }
+          } catch (e) {
+            console.error("prewarm lift", e);
+          }
+        }
+        if (vrBursts.length && vrFx && vrWarmFx !== vrBursts[0]) {
+          vrWarmFx = vrBursts[0]; // refaz se o mapa foi recriado
+          try {
+            const sv = [];
+            const show = (o) => {
+              sv.push([o, o.visible]);
+              o.visible = true;
+            };
+            for (const B of vrBursts) {
+              show(B.g);
+              B.g.children.forEach(show);
+            }
+            [vrFx.arrow, vrFx.boom].forEach((o) => o && show(o));
+            R.compile(scene, cam);
+            if (R.initTexture) {
+              if (vrFx.boom.material.map) R.initTexture(vrFx.boom.material.map);
+              for (const B of vrBursts) if (B.coreGlow.material.map) R.initTexture(B.coreGlow.material.map);
+            }
+            for (const [o, v] of sv) o.visible = v;
+          } catch (e) {
+            console.error("prewarm fx", e);
+          }
+        }
+      }
       R.setAnimationLoop(() => {
         tick();
+        vrPrewarm();
         if (VR_STATS_ANIM_MS && scr == "win" && showStats && performance.now() - vrStatsT > VR_STATS_ANIM_MS) {
           vrStatsT = performance.now();
           draw();
@@ -11784,8 +12332,10 @@
         }
         if (G && G.toast && performance.now() > G.toast.until) {
           G.toast = null;
-          draw();
-          tex.needsUpdate = true;
+          if (!VR_TOAST_3D) {
+            draw();
+            tex.needsUpdate = true;
+          }
         }
         vrBurstTick(); // etapa 9i: explosão da conquista (continua depois que G.fx acaba)
         vrFlyTick(); // etapa 9n: pássaro/satélite voando e caindo
@@ -11810,8 +12360,10 @@
         vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
+        vrToastSync(); // v10 passo 3: aviso temporário em plano 3D próprio (aparece/some sem draw())
+        vrScrollSync(); // v10 passo 2: visibilidade das janelas 3D de listas roláveis
         vrWristAttach(); // etapa 74: botão/abas INFORMAÇÕES em cima do punho esquerdo
-        if (performance.now() - wrT > 150 || wr.sig === "") {
+        if (performance.now() - wrT > 250 || wr.sig === "") {
           wrT = performance.now();
           try { vrWristSync(); } catch (e) { console.error("vrWristSync", e); }
         }
@@ -11909,8 +12461,9 @@
                 zAcc -= dt;
                 if (zAcc <= 0) {
                   zAcc = 0.12;
-                  SCR[pointingAtTips] = THREE.MathUtils.clamp(SCR[pointingAtTips] + y * 48, 0, SCMAX[pointingAtTips]);
-                  if (!String(pointingAtTips).startsWith("wr")) {
+                  const prev = SCR[pointingAtTips];
+                  SCR[pointingAtTips] = THREE.MathUtils.clamp(prev + y * 48, 0, SCMAX[pointingAtTips]);
+                  if (SCR[pointingAtTips] !== prev && !String(pointingAtTips).startsWith("wr") && !vrScrollRedraw(pointingAtTips)) {
                     draw();
                     tex.needsUpdate = true;
                   }
@@ -11985,7 +12538,7 @@
                se o ponto mudou de fato, no máx. a cada 40 ms (ou a cada 250 ms para atualizar parado). */
             const nowH = performance.now();
             if (
-              (Math.abs(hk.x - vrHvX) + Math.abs(hk.y - vrHvY) > 1.5 && nowH - vrHvT0 >= (vrWalkNow ? 130 : 50)) ||
+              (Math.abs(hk.x - vrHvX) + Math.abs(hk.y - vrHvY) > 1.5 && nowH - vrHvT0 >= (vrWalkNow ? 160 : 70)) ||
               nowH - vrHvT0 > 700
             ) {
               vrHvX = hk.x;
@@ -11998,6 +12551,7 @@
           } else {
             vrHvX = vrHvY = -1e9;
             vrHoverT(null);
+            vrBtnHover(null); // v9: laser fora da tela apaga o destaque 3D do botão
           }
         }
         R.render(scene, cam);
