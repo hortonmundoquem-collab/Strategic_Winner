@@ -564,6 +564,57 @@
                       gerenciado por vrToastSync() no loop (mesmo padrão de vrClockSync). Quando o tempo acaba, só esconde a
                       malha (mesh.visible = false) — zero draw(), zero envio à GPU. Em draw(), faixas 3 (chooser) e 4 (toast)
                       também passaram a ser puladas quando fechadas. Ver bloco "ETAPA v9 / v10" perto de vrBtnHL para próximos passos.
+           [x] 89. FEITO (v12 leveza, pedido: nitidez/resolução/foveação INTOCADAS): (a) vrLabelCull: rótulos fora da janela do zoom ou vazios não são
+                  desenhados; (b) VR_LEAN_XR_FEATURES: sessão XR sem hand-tracking/bounded-floor; (c) VR_TARGET_FPS = 72;
+                  (d) ATLAS ÚNICO DE RÓTULOS (VR_LABEL_ATLAS) — ver o bloco grande "v12 — ATLAS ÚNICO DE RÓTULOS" logo depois de vrLabelCull
+                  (tem a explicação completa, os fallbacks e a checklist A/B/C/D para quem continuar).
+                  COMO TESTAR SEM ÓCULOS (foi assim que a etapa 89 foi validada): Python + Playwright, Chromium com
+                  --use-gl=swiftshader; rotear https://cdn.jsdelivr.net/npm/three@0.160.0/** para node_modules/three/ (npm i three@0.160.0);
+                  copiar o HTML trocando "R.setAnimationLoop(() => {" por uma linha que exponha {R, scene, cam, start, vrLabels...} em window.__T;
+                  chamar __T.start(), esperar ~3 s, ler R.info.render.calls e tirar screenshot. Comparar com VR_LABEL_ATLAS true/false.
+           ===== v13 — LEVEZA SEM PERDER NITIDEZ (pedido do dono: "mais leve, SEM mexer em resolução nem foveation, tudo 100% nítido") =====
+           REGRA INVIOLÁVEL: NÃO mexer em VR_CANVAS_K, VR_BAND_D, VR_INFO_D, VR_XR_SCALE, VR_LABEL_DENS_MIN, VR_LOD_BIAS nem VR_FOVEATION.
+           Só vale otimização que deixe os PIXELS idênticos (menos redesenho / menos reenvio à GPU). Trabalho feito POR PARTES, uma de cada vez,
+           para quem continuar caso os créditos acabem. Marque [x] ao concluir e atualize "PRÓXIMO PASSO".
+           DIAGNÓSTICO (da IA anterior, ainda NÃO confirmado no óculos): (1) na tela "Primeira Rodada" (G.p1intro) e na animação de entrada
+           (G.fillSeq) o canvas grande 3840x2160 seria redesenhado/reenviado em quase todo quadro; (2) nos turnos dos bots mais de 90% dos
+           reenvios das barras da HUD (faixas 0,1,2) eram de imagens IDÊNTICAS às anteriores.
+           [x] PARTE 1 (FEITA): dedupe exato das FAIXAS da HUD. Interruptor VR_BAND_DEDUP (perto de vrBandHash). Depois de cada draw(), hash dos
+               pixels de cada faixa marcada; se igual ao que já está na GPU, desfaz a marca (t.version volta) e não reenvia. Pixels idênticos.
+               Contadores para conferir no console: window.__vrBandStats = {skips (evitados), uploads (feitos)}.
+               Se algo da HUD ficar desatualizado: VR_BAND_DEDUP = false (também tira o willReadFrequently das faixas).
+           [x] PARTE 2 (FEITA): CAUSA ENCONTRADA em botTick(). Na fase G.ph == "P0" (animação de entrada G.fillSeq + tela "Primeira Rodada")
+               o jogador da vez é um bot e G.bt está indefinido, então botTick() passava no teste de tempo EM TODO QUADRO; botStep() saía com
+               "return" sem mudar nada, mas botTick() chamava draw() + tex.needsUpdate mesmo assim = reenvio do canvas grande (3840x2160 + mipmaps)
+               a cada quadro. O mesmo ocorria em G.ph == "P1w". Correção: botTick() sai antes nesses dois estados. Interruptor
+               VR_SKIP_IDLE_BOT_DRAW (logo acima de botTick; false = antigo). Nenhum pixel muda: o desenho de P0 continua sendo feito
+               nos eventos reais (fim de fillSeq em tick(), clique no OK, p1Next do setTimeout).
+               TESTAR: iniciar partida solo; window.__vrPerf.draws e .mainUploads NÃO devem mais subir sozinhos parado na tela Primeira Rodada.
+               Se a 1ª rodada dos bots travar, ponha VR_SKIP_IDLE_BOT_DRAW = false.
+           [x] PASSO 1 (FEITO): medidor __vrPerfStart() / ?perf=1 (ver comentário acima do R.setAnimationLoop, no fim do arquivo).
+           [x] PASSO 2a (FEITO, por leitura de código, sem óculos): revisados botTick/botStep inteiro. Todos os outros ramos do bot (R, A, F)
+               mudam estado de verdade (definem G.bt, G.msg, nextPhase...), então o draw() depois deles não é desperdício. Não há mais
+               botTick ocioso. tick() também está limpo: só desenha em eventos (fim de fillSeq, p1d, nextPhase automático, troca do relógio).
+           [ ] PASSO 2b (PRÓXIMO, precisa do óculos/navegador): rodar o medidor (?perf=1) e anotar AQUI os números: (a) parado na Primeira
+               Rodada; (b) parado no seu turno; (c) turno de bot. Esperado (a) e (b): draws/s ~0 e main/s ~0.
+           SUSPEITO CONHECIDO (não corrigido, só anotado): em tick(), quando o relógio 3D está desligado (vrClockOn=false: painel aberto
+               anyOv(), tela de vitória, intro do turno G.intro) e o turno tem tempo (TL), a cada 1 s roda draw()+tex.needsUpdate = reenvio do
+               canvas grande 1x/s. Só corrigir se o medidor mostrar main/s=1 com um painel aberto parado. Ideia: só redesenhar se o relógio
+               estiver visível por cima do painel (o painel cobre x346-476,y10-75?); senão pular.
+           [x] PASSO 2c (FEITO, leitura): analisado o relógio com painel aberto. Em draw(), se !vrClockOn o relógio é pintado por BADGE(346,10,...)
+               na faixa 0 (quando vrBandsOn) ou no canvas grande (quando há modal/painel/intro). Como o relógio muda visualmente a cada
+               segundo e pode estar visível ao lado do painel, NÃO existe pulo exato e seguro sem mudar a ordem de empilhamento (o relógio 3D
+               fica em renderOrder 1001, acima dos painéis). Decisão: NÃO mexer sem medição. Se o medidor mostrar main/s=1 com intro do turno
+               parada, a saída é pintar o relógio num mini-plano 3D também nesse caso (vrClockSync) e cobrir o trecho com o painel,
+               conferindo pixel a pixel que o painel continua por cima.
+           ==> Tudo o que dava para fazer SÓ LENDO O CÓDIGO foi feito. Os passos abaixo dependem de números reais do medidor.
+           [ ] PASSO 3: se main/s alto durante bots COM tela cheia aberta (cartas/intro/objetivo), mover UMA tela por vez do canvas grande para
+               plano 3D próprio (padrão: vrToastSync / vrScrollState). Ordem sugerida: Primeira Rodada, intro do turno, cartas.
+               Cada tela: mesma densidade VR_CANVAS_K, testar cliques (btns) e empilhamento (renderOrder) no óculos.
+           [ ] PASSO 4: se o CPU do Quest sofrer com o hash das faixas (vrBandHash), trocar por assinatura barata do estado.
+           [ ] PARTE 3 (PENDENTE): repetir o teste do passo 89 (Playwright + swiftshader, ver abaixo) comparando R.info.render.calls e a tela
+               (screenshots antes/depois da v13 devem ser pixel a pixel iguais) e conferir __vrBandStats.skips > 0 durante turnos de bots.
+           PRÓXIMO PASSO: PASSO 2b (medir com ?perf=1) e depois PASSO 3. Se sobrar crédito, procurar OUTROS botTick/loops que chamem draw() sem mudança de estado (ex.: fase "R"/"A" com G.bt vencido).
            [ ] 9. (opcional, resto) mais HUD em 3D: hoje o canvas é 1920x1080 (VR_CANVAS_K = 1, pedido de nitidez da etapa 19).
                   [x] 9a. FEITO: animação de ataque usa vrFxTick() (só objetos 3D) em vez de draw() completo a cada
                           quadro. Interruptor: VR_MAP_3D_LIGHT (false = comportamento antigo).
@@ -8375,8 +8426,13 @@
         }
         nextPhase();
       }
+      const VR_SKIP_IDLE_BOT_DRAW = true; // v13 parte 2 (false = comportamento antigo)
       function botTick() {
         if (scr != "game" || G.hand || !G.bot || !G.bot[G.cur] || performance.now() < G.bt) return;
+        /* v13 PARTE 2: em P0 (animação de entrada + tela "Primeira Rodada") e P1w (bot esperando o setTimeout) botStep() só faz "return"
+           sem mudar nada, mas como G.bt é undefined/vencido o botTick rodava TODO QUADRO e chamava draw() + tex.needsUpdate (reenvio do
+           canvas 3840x2160 + mipmaps ~72x/s). Agora sai antes. Se o bot parar de andar na 1ª rodada, apague estas 2 linhas para comparar. */
+        if (VR_SKIP_IDLE_BOT_DRAW && (G.ph == "P0" || G.ph == "P1w")) return;
         botStep();
         if (scr == "game" || scr == "win") {
           draw();
@@ -8394,6 +8450,37 @@
       R.localClippingEnabled = true; // permite recortar o destaque 3D dentro da área da tela do cinema
       R.xr.setFramebufferScaleFactor(VR_XR_SCALE); // etapa 19: mais pixels no óculos = texto mais nítido
       R.xr.setFoveation(VR_FOVEATION); // etapa 35: 0 = sem foveação (GPU no máximo, causava travadas); 0.5 = meio-termo; 1 = máxima economia
+      /* v12 leveza: o VRButton do three r160 pede sempre 'hand-tracking' e 'bounded-floor'. O jogo só usa os CONTROLES e 'local-floor',
+         então tiramos esses dois da lista: o Quest deixa de rodar o serviço de rastreio de mãos e de boundary durante a sessão.
+         Nada muda na imagem. false = pede tudo como antes. */
+      const VR_LEAN_XR_FEATURES = true;
+      if (VR_LEAN_XR_FEATURES) {
+        try {
+          for (const fn of ["requestSession", "offerSession"]) {
+            const orig = navigator.xr && navigator.xr[fn];
+            if (typeof orig !== "function") continue;
+            navigator.xr[fn] = function (mode, init) {
+              if (init && Array.isArray(init.optionalFeatures))
+                init = { ...init, optionalFeatures: init.optionalFeatures.filter((f) => f !== "hand-tracking" && f !== "bounded-floor") };
+              return orig.call(this, mode, init);
+            };
+          }
+        } catch (e) {
+          console.error("lean xr features", e);
+        }
+      }
+      /* v12: taxa de quadros alvo. O jogo é de estratégia (cena quase parada), 72 Hz basta e dá ~20% a menos de GPU que 90 Hz
+         (e 40% a menos que 120 Hz). Não mexe em resolução. 0 = não pede nada (usa o padrão do aparelho). Só vale se o óculos oferecer. */
+      const VR_TARGET_FPS = 72;
+      R.xr.addEventListener("sessionstart", () => {
+        try {
+          const ss = R.xr.getSession();
+          if (VR_TARGET_FPS && ss && ss.updateTargetFrameRate && ss.supportedFrameRates && Array.from(ss.supportedFrameRates).includes(VR_TARGET_FPS))
+            ss.updateTargetFrameRate(VR_TARGET_FPS).catch(() => {});
+        } catch (e) {
+          console.error("target fps", e);
+        }
+      });
       document.body.append(R.domElement, VRButton.createButton(R));
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x05060c);
@@ -8696,6 +8783,43 @@
         }
         vrBtnHL.visible = true;
       }
+      /* v13 PARTE 1 — barras da HUD (faixas 0,1,2 e painéis): draw() limpa e marca needsUpdate em TODA faixa ativa, mesmo quando o
+         desenho saiu IDÊNTICO ao anterior (nos turnos dos bots mais de 90% dos reenvios eram assim: ~1 Mpix + mipmaps cada, a cada ~0,5 s).
+         Agora, depois do draw(), calcula-se um hash EXATO dos pixels de cada faixa que foi marcada; se for igual ao que já está na GPU,
+         a marca é desfeita (t.version volta ao valor anterior ao draw) e nada é enviado. Pixels, resolução e nitidez: IDÊNTICOS.
+         Só mexe em faixas (nunca no canvas grande). false = comportamento antigo (reenvia sempre). */
+      const VR_BAND_DEDUP = true;
+      const vrBandStats = (window.__vrBandStats = { skips: 0, uploads: 0 }); // teste: reenvios evitados x feitos
+      function vrBandHash(b) {
+        const d = b.g.getImageData(0, 0, b.cv.width, b.cv.height).data,
+          u = new Uint32Array(d.buffer, d.byteOffset, d.byteLength >> 2);
+        let h1 = 2166136261 | 0,
+          h2 = 0x9e3779b9 | 0;
+        for (let i = 0; i < u.length; i++) {
+          const v = u[i];
+          h1 = Math.imul(h1 ^ v, 16777619);
+          h2 = (Math.imul(h2 + v, 2246822519) ^ (h2 >>> 15)) | 0;
+        }
+        return b.cv.width + "x" + b.cv.height + "|" + h1 + "|" + h2;
+      }
+      function vrBandDedup(v0) {
+        try {
+          vrBands.forEach((b, i) => {
+            if (b.t.version === v0[i]) return; // este draw() não marcou a faixa
+            const hs = vrBandHash(b);
+            if (hs === b.hash) {
+              b.t.version = v0[i]; // idêntica ao que já está (ou já pendente) na GPU: não reenviar
+              vrBandStats.skips++;
+            } else {
+              b.hash = hs;
+              vrBandStats.uploads++;
+            }
+          });
+        } catch (e) {
+          console.error("vrBandDedup (desligado)", e); // se getImageData falhar, volta a reenviar sempre
+          vrBands.forEach((b, i) => { b.hash = null; });
+        }
+      }
       function vrBtnHLCheck() {
         if (!vrBtnHLRect) return;
         const o = vrBtnHLRect;
@@ -8704,7 +8828,10 @@
       {
         const draw0 = draw;
         draw = function () {
+          /* v13 PARTE 1 (VR_BAND_DEDUP): ver bloco \"v13 — LEVEZA SEM PERDER NITIDEZ\" no topo do arquivo. */
+          const vb0 = VR_BAND_DEDUP && vrBands ? vrBands.map((b) => b.t.version) : null;
           const rv = draw0.apply(this, arguments);
+          if (vb0) vrBandDedup(vb0);
           vrBtnHLCheck();
           if (typeof vrScrollSync === "function") vrScrollSync();
           return rv;
@@ -9204,7 +9331,7 @@
         mesh.position.set((d.x0 + d.w / 2 - 960) * SC, 3.15 + (540 - (d.y0 + d.h / 2)) * SC, -8.8485);
         mesh.visible = false;
         vrStage.add(mesh); // etapa 67: faixas da HUD no palco
-        return { d, D, cv, g: cv.getContext("2d"), t, mesh };
+        return { d, D, cv, g: cv.getContext("2d", { willReadFrequently: VR_BAND_DEDUP }), t, mesh, hash: null }; // v13: willReadFrequently = leitura rápida p/ o hash
       });
       function vrBandsSync() {
         const on = VR_HUD_BANDS && vrBandsOn && !!G && scr == "game";
@@ -10227,7 +10354,7 @@
             const p = geo.attributes.position;
             for (let i = 0; i < 4; i++) p.setXYZ(i, 0, 0, 0);
             p.needsUpdate = true;
-            return;
+            return true; // v12: vazio (o plano não precisa nem ser desenhado)
           }
           x0 = Math.max(0, ((x0 - 4) >> 4) << 4);
           y0 = Math.max(0, ((y0 - 4) >> 4) << 4);
@@ -10252,6 +10379,7 @@
         p.setXYZ(3, R_, B_, 0);
         p.needsUpdate = true;
         geo.computeBoundingSphere();
+        return false;
       }
       function vrDrawLabel(L, t, lm, sn, dens) {
         const gap = Math.round(lm.ls * 0.85),
@@ -10312,8 +10440,9 @@
         } finally {
           c = c0;
         }
-        vrCropLbl(cv, L.cc, L.tex, L.mesh.geometry, W, H);
-        vrCropLbl(cv2, L.cc2, L.tex2, L.mesh2.geometry, W, H);
+        L.em1 = vrCropLbl(cv, L.cc, L.tex, L.mesh.geometry, W, H);
+        L.em2 = vrCropLbl(cv2, L.cc2, L.tex2, L.mesh2.geometry, W, H);
+        L.ad = true; // v12 atlas: conteúdo (cc/cc2) mudou -> vrAtlasSync() recopia para o atlas
         L.mesh.scale.set(2 * HW, -(UP + DN), 1); // y negativo: o grupo do mapa já tem y invertido
         const _bx = G.M.C[t][0],
           _by = G.M.C[t][1] + (DN - UP) / 2;
@@ -10476,6 +10605,430 @@
         }
       }
       let vrLblT = 0, vrLblMore = false, vrLblDq = 0;
+      /* v12 leveza: DESCARTE DE RÓTULOS. Cada território tem 2 planos (nome/ícones + número) = ~160 draw calls por olho, e antes
+         todos eram enviados à GPU mesmo com zoom (os de fora da tela só eram recortados no fragment, depois de custar a chamada)
+         ou vazios (nomes desligados, território escondido). Agora o plano só é desenhado se cai dentro da janela visível do mapa
+         (VB..VB+1920/zs x 1080/zs, com folga) e tem conteúdo. Nenhum pixel muda: só some o que já não aparecia.
+         false = volta a desenhar todos. */
+      const VR_LABEL_CULL = true;
+      function vrLabelCull() {
+        if (!vrLabelGroup || !G || !vrLabelGroup.visible) return;
+        const zs = zsc(),
+          x0 = VB.x,
+          y0 = VB.y,
+          x1 = VB.x + 1920 / zs,
+          y1 = VB.y + 1080 / zs;
+        for (const t in vrLabels) {
+          const L = vrLabels[t];
+          if (!L || !L.mesh) continue;
+          const m = L.mesh,
+            p = m.position,
+            hx = Math.abs(m.scale.x) / 2 + 60, // folga: bolha (1,8x), tremor e levante
+            hy = Math.abs(m.scale.y) / 2 + 60;
+          let v = !(L.em1 && L.em2);
+          if (v && VR_LABEL_CULL && (p.x + hx < x0 || p.x - hx > x1 || p.y + hy < y0 || p.y - hy > y1)) v = false;
+          if (m.visible !== v) m.visible = v;
+          if (L.mesh2) {
+            const v2 = !L.em2;
+            if (L.mesh2.visible !== v2) L.mesh2.visible = v2;
+          }
+        }
+      }
+
+      /* =====================================================================================
+         v12 — ATLAS ÚNICO DE RÓTULOS (VR_LABEL_ATLAS)   <<< LEIA SE FOR CONTINUAR ESTE TRABALHO >>>
+         -------------------------------------------------------------------------------------
+         PROBLEMA: cada território tem 2 planos de rótulo (L.mesh = nome/ícones, L.mesh2 = número), cada um com a SUA textura
+                   => até ~160 draw calls por olho. No Quest o custo é por objeto desenhado.
+         SOLUÇÃO:  uma textura-atlas (VR_ATLAS_W x VR_ATLAS_H) com o recorte (L.cc / L.cc2) de todos os rótulos, e 1 malha
+                   fundida POR renderOrder (normalmente 4: 450 nomes, 452 números, 900 nomes suspensos, 902 números suspensos)
+                   = ~4 draw calls no lugar de ~160. MESMOS pixels por metro (os recortes são copiados SEM reescalar) = mesma nitidez.
+         PADRÃO USADO (o mesmo do vrBatch da etapa 37): as malhas ORIGINAIS (L.mesh/L.mesh2) CONTINUAM existindo e mandando
+                   (posição, escala, renderOrder, visible, cor de escurecimento, geometria do recorte). Elas só são tiradas do render
+                   (layers.set(4)) e vrAtlasSync() copia o estado delas, todo quadro, para os vértices das malhas do atlas.
+                   Por isso NENHUMA outra função (vrDrawLabel, syncVRLift, vrShakeTick, vrPopTick, vrLabelDimTick, vrLabelCull) foi alterada,
+                   exceto: vrDrawLabel marca L.ad = true ao terminar (conteúdo novo); o laço chama vrAtlasSync() após vrShakeTick();
+                   a destruição do mapa chama vrAtlasReset().
+         FALLBACKS (tudo volta sozinho ao desenho antigo, nada quebra):
+                   - VR_LABEL_ATLAS = false  -> nunca adota nada (comportamento v12 sem atlas).
+                   - atlas cheio mesmo após compactar -> só AQUELE plano (e.ok = false) volta a ser desenhado pela malha original.
+                   - qualquer exceção em vrAtlasSync -> vrAtlasDisable(): devolve todas as malhas originais e desliga o atlas.
+         COMO FUNCIONA A CÓPIA: R.copyTextureToTexture (three r160: assinatura (position, srcTexture, dstTexture)) usa texSubImage2D só na
+                   área do recorte (não reenvia o atlas inteiro). Ela regenera os mipmaps do atlas a cada chamada, então fazemos todas as
+                   cópias do quadro com tex.generateMipmaps = false e só a ÚLTIMA com true (1 geração de mipmap por quadro). A textura é
+                   iniciada com R.initTexture (generateMipmaps = true) para alocar todos os níveis. Cada cópia passa por um canvas "stage"
+                   do tamanho do slot (recorte + VR_ATLAS_PAD px transparentes em volta) => o slot é sempre limpo (sem lixo de conteúdos
+                   antigos) e o mipmap não "vaza" cor do vizinho. flipY (padrão) => coordenadas GL com y de baixo para cima; as UVs do
+                   quad seguem a mesma convenção do PlaneGeometry (v=1 = topo da imagem).
+         ALOCAÇÃO: prateleiras (shelf packing) + lista de slots livres; slot reaproveitado se o novo recorte cabe nele. Se faltar espaço:
+                   vrAtlasCompact() reempacota TUDO (copia todos os recortes de novo, 1 mipmap) e tenta outra vez.
+         TESTE (sem óculos): Chromium headless + Playwright servindo three@0.160.0 de node_modules (ver rodapé da etapa 89 na lista).
+                   Comparar screenshot com VR_LABEL_ATLAS true/false e R.info.render.calls.
+         PROGRESSO DESTA ETAPA (marque aqui):
+           [x] A. estruturas + alocador + cópia incremental + 4 malhas fundidas (este bloco).
+           [x] B. adoção das malhas originais (layers 4), fallback por plano e global.
+           [ ] C. (se sobrar espaço) mover também os planos de BOLHA (vrPopMesh) e o avião suspenso (vrAirSusp) para o atlas.
+           [ ] D. (opcional) atlas de 2 níveis de densidade se o zoom mudar muito (hoje: realoca slot a cada redesenho).
+         ===================================================================================== */
+      const VR_LABEL_ATLAS = true;
+      const VR_ATLAS_W = 4096,
+        VR_ATLAS_H = 2048,
+        VR_ATLAS_PAD = 4,
+        VR_ATLAS_QCAP = 512; // máx. de planos (2 por território)
+      let vrAtl = null,
+        vrAtlOff = false,
+        vrAtlNext = 0;
+      const _atV2 = new THREE.Vector2();
+      function vrAtlasInit() {
+        const cv = document.createElement("canvas");
+        cv.width = VR_ATLAS_W;
+        cv.height = VR_ATLAS_H;
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.anisotropy = 8;
+        R.initTexture(tex); // aloca todos os níveis de mipmap (generateMipmaps = true)
+        const mat = new THREE.MeshBasicMaterial({
+          map: tex,
+          vertexColors: true,
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+          clippingPlanes: vrClip,
+        });
+        const pa = new THREE.BufferAttribute(new Float32Array(VR_ATLAS_QCAP * 4 * 3), 3),
+          ua = new THREE.BufferAttribute(new Float32Array(VR_ATLAS_QCAP * 4 * 2), 2),
+          ca = new THREE.BufferAttribute(new Float32Array(VR_ATLAS_QCAP * 4 * 3).fill(1), 3);
+        pa.setUsage(THREE.DynamicDrawUsage);
+        ua.setUsage(THREE.DynamicDrawUsage);
+        ca.setUsage(THREE.DynamicDrawUsage);
+        const st = document.createElement("canvas");
+        vrAtl = {
+          group: vrLabelGroup,
+          tex,
+          mat,
+          pa,
+          ua,
+          ca,
+          stage: st,
+          stTex: new THREE.Texture(st),
+          shelves: [],
+          nextY: 0,
+          free: [],
+          pend: [],
+          ents: [],
+          buckets: {},
+          memberDirty: true,
+          memberSig: "",
+        };
+      }
+      function vrAtlasBucket(ro) {
+        let b = vrAtl.buckets[ro];
+        if (b) return b;
+        const geo = new THREE.BufferGeometry(),
+          ia = new THREE.BufferAttribute(new Uint16Array(VR_ATLAS_QCAP * 6), 1);
+        ia.setUsage(THREE.DynamicDrawUsage);
+        geo.setAttribute("position", vrAtl.pa);
+        geo.setAttribute("uv", vrAtl.ua);
+        geo.setAttribute("color", vrAtl.ca);
+        geo.setIndex(ia);
+        geo.setDrawRange(0, 0);
+        const mesh = new THREE.Mesh(geo, vrAtl.mat);
+        mesh.renderOrder = +ro;
+        mesh.frustumCulled = false;
+        mesh.visible = false;
+        vrAtl.group.add(mesh);
+        b = vrAtl.buckets[ro] = { geo, ia, mesh, n: 0 };
+        return b;
+      }
+      /* alocador: devolve {x,y,w,h} (w,h múltiplos de 8, já com o PAD) ou null */
+      function vrAtlasAlloc(w, h) {
+        w = (w + 7) & ~7;
+        h = (h + 7) & ~7;
+        const A = vrAtl;
+        let bi = -1,
+          ba = 1e12;
+        for (let i = 0; i < A.free.length; i++) {
+          const s = A.free[i];
+          if (s.w >= w && s.h >= h) {
+            const a = s.w * s.h;
+            if (a <= w * h * 2.5 && a < ba) {
+              ba = a;
+              bi = i;
+            }
+          }
+        }
+        if (bi >= 0) return A.free.splice(bi, 1)[0];
+        let bs = null;
+        for (const s of A.shelves) if (s.h >= h && s.x + w <= VR_ATLAS_W && (!bs || s.h < bs.h)) bs = s;
+        if (bs) {
+          const r = { x: bs.x, y: bs.y, w, h };
+          bs.x += w;
+          return r;
+        }
+        if (A.nextY + h <= VR_ATLAS_H) {
+          const sh = { y: A.nextY, h, x: w };
+          A.shelves.push(sh);
+          A.nextY += h;
+          return { x: 0, y: sh.y, w, h };
+        }
+        return null;
+      }
+      function vrAtlasNeed(e) {
+        return [e.cv.width + 2 * VR_ATLAS_PAD, e.cv.height + 2 * VR_ATLAS_PAD];
+      }
+      /* reempacota todos os recortes (maiores primeiro). Devolve false se mesmo assim não coube tudo. */
+      function vrAtlasCompact() {
+        const A = vrAtl;
+        A.shelves = [];
+        A.free = [];
+        A.nextY = 0;
+        const act = A.ents.filter((e) => e.live && !e.empty).sort((a, b) => b.cv.height - a.cv.height);
+        let all = true;
+        for (const e of act) {
+          const [w, h] = vrAtlasNeed(e);
+          e.slot = vrAtlasAlloc(w, h);
+          e.dirty = true; // recopiar o recorte para o novo lugar
+          e.uvDirty = true;
+          if (!e.slot) {
+            e.ok = false;
+            all = false;
+          } else e.ok = true;
+        }
+        A.compacts = (A.compacts || 0) + 1;
+        return all;
+      }
+      function vrAtlasEntry(L, k) {
+        const key = k == 1 ? "a1" : "a2";
+        let e = L[key];
+        if (e) return e;
+        if (vrAtlNext + 1 > VR_ATLAS_QCAP) return null;
+        e = L[key] = {
+          q: vrAtlNext++,
+          k,
+          L,
+          src: k == 1 ? L.mesh : L.mesh2,
+          cv: k == 1 ? L.cc : L.cc2,
+          slot: null,
+          live: true,
+          empty: true,
+          ok: false,
+          adopted: false,
+          lm: 1,
+          dirty: true,
+          uvDirty: true,
+          gv: -1,
+          x: NaN, y: NaN, z: NaN, sx: NaN, sy: NaN,
+          dim: -1,
+          ro: -1,
+          vis: false,
+          inc: false,
+        };
+        vrAtl.ents.push(e);
+        return e;
+      }
+      function vrAtlasAdopt(e, on) {
+        if (on && !e.adopted) {
+          e.lm = e.src.layers.mask;
+          e.src.layers.set(4); // fora do render normal (o atlas desenha por ela)
+          e.adopted = true;
+        } else if (!on && e.adopted) {
+          e.src.layers.mask = e.lm;
+          e.adopted = false;
+        }
+      }
+      function vrAtlasDisable() {
+        vrAtlOff = true;
+        if (vrAtl) {
+          for (const e of vrAtl.ents) vrAtlasAdopt(e, false);
+          for (const k in vrAtl.buckets) {
+            const b = vrAtl.buckets[k];
+            if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+          }
+        }
+      }
+      function vrAtlasReset() {
+        if (!vrAtl) return;
+        for (const k in vrAtl.buckets) vrAtl.buckets[k].geo.dispose();
+        vrAtl.tex.dispose();
+        vrAtl.mat.dispose();
+        vrAtl.stTex.dispose();
+        vrAtl = null;
+        vrAtlNext = 0;
+      }
+      function vrAtlasFlush() {
+        const A = vrAtl,
+          pend = A.pend;
+        if (!pend.length) return;
+        const g = A.stage.getContext("2d");
+        for (let i = 0; i < pend.length; i++) {
+          const e = pend[i],
+            s = e.slot;
+          if (!s) continue;
+          A.stage.width = s.w; // (re)define o tamanho e limpa: slot sempre limpo
+          A.stage.height = s.h;
+          g.drawImage(e.cv, VR_ATLAS_PAD, VR_ATLAS_PAD);
+          A.tex.generateMipmaps = i === pend.length - 1; // 1 geração de mipmap por quadro (a última cópia)
+          R.copyTextureToTexture(_atV2.set(s.x, s.y), A.stTex, A.tex);
+        }
+        A.tex.generateMipmaps = true;
+        A.pend = [];
+      }
+      function vrAtlasSync() {
+        if (!VR_LABEL_ATLAS || vrAtlOff || !vrLabelGroup) return;
+        try {
+          vrAtlasSyncInner();
+        } catch (err) {
+          console.error("vrAtlasSync (volta ao desenho antigo)", err);
+          vrAtlasDisable();
+        }
+      }
+      function vrAtlasSyncInner() {
+        if (!vrAtl || vrAtl.group !== vrLabelGroup) {
+          vrAtlasReset();
+          vrAtlasInit();
+        }
+        const A = vrAtl;
+        if (!vrLabelGroup.visible) return;
+        /* 1) conteúdo novo / vazio / slot */
+        for (const t in vrLabels) {
+          const L = vrLabels[t];
+          if (!L || !L.mesh || !L.mesh.userData.base) continue; // ainda não desenhado uma vez
+          for (let k = 1; k <= 2; k++) {
+            const e = vrAtlasEntry(L, k);
+            if (!e) continue;
+            if (L.ad || e.dirty) {
+              if (L.ad) e.dirty = true;
+              const em = k == 1 ? L.em1 : L.em2;
+              e.cv = k == 1 ? L.cc : L.cc2;
+              if (em) {
+                if (e.slot) A.free.push(e.slot);
+                e.slot = null;
+                e.empty = true;
+                e.ok = true; // vazio: nada a desenhar (o plano original também não desenhava)
+                e.dirty = false;
+                e.uvDirty = true;
+              } else {
+                e.empty = false;
+                const [w, h] = vrAtlasNeed(e);
+                if (!(e.slot && e.slot.w >= w && e.slot.h >= h)) {
+                  if (e.slot) A.free.push(e.slot);
+                  e.slot = vrAtlasAlloc(w, h);
+                  if (!e.slot) {
+                    vrAtlasCompact(); // tenta de novo reempacotando tudo
+                    // (compactar já realoca TODOS os vivos, inclusive este: e.cv já está atualizado)
+                  }
+                }
+                if (e.slot) {
+                  e.ok = true;
+                  e.uvDirty = true;
+                  e.dirty = false;
+                  A.pend.push(e);
+                } else e.ok = false; // cheio: este plano fica com a malha original
+              }
+            }
+          }
+          L.ad = false;
+        }
+        /* entradas que a compactação marcou como sujas (e outras já com slot) */
+        for (const e of A.ents) {
+          if (e.dirty && !e.empty && e.slot) {
+            e.dirty = false;
+            if (A.pend.indexOf(e) < 0) A.pend.push(e);
+          }
+        }
+        vrAtlasFlush();
+        /* 2) adoção + vértices */
+        const pos = A.pa.array,
+          uv = A.ua.array,
+          col = A.ca.array;
+        let posDirty = false,
+          uvDirty = false,
+          colDirty = false,
+          sig = "";
+        for (const e of A.ents) {
+          vrAtlasAdopt(e, e.ok);
+          const src = e.src,
+            L = e.L;
+          const vis = e.k == 1 ? src.visible : L.mesh.visible && src.visible,
+            inc = e.ok && !e.empty && !!e.slot && vis,
+            ro = src.renderOrder;
+          if (inc !== e.inc || ro !== e.ro) {
+            e.inc = inc;
+            e.ro = ro;
+            A.memberDirty = true;
+          }
+          if (!inc) continue;
+          const m = L.mesh,
+            gp = (e.k == 1 ? L.mesh.geometry : L.mesh2.geometry).attributes.position,
+            gv = gp.version,
+            px = m.position.x,
+            py = m.position.y,
+            pz = m.position.z + (e.k == 2 ? src.position.z : 0),
+            sx = m.scale.x,
+            sy = m.scale.y;
+          if (e.uvDirty) {
+            const s = e.slot,
+              u0 = (s.x + VR_ATLAS_PAD) / VR_ATLAS_W,
+              u1 = (s.x + VR_ATLAS_PAD + e.cv.width) / VR_ATLAS_W,
+              /* flipY: o canvas "stage" (do tamanho do SLOT) é virado inteiro ao subir; o recorte fica a VR_ATLAS_PAD do TOPO do slot
+                 (= linha GL s.y + s.h - PAD), não da base. Só coincide com a base quando o slot reaproveitado é do tamanho exato. */
+              v0 = (s.y + s.h - VR_ATLAS_PAD - e.cv.height) / VR_ATLAS_H,
+              v1 = (s.y + s.h - VR_ATLAS_PAD) / VR_ATLAS_H,
+              o = e.q * 8;
+            uv[o] = u0; uv[o + 1] = v1; // TL
+            uv[o + 2] = u1; uv[o + 3] = v1; // TR
+            uv[o + 4] = u0; uv[o + 5] = v0; // BL
+            uv[o + 6] = u1; uv[o + 7] = v0; // BR
+            e.uvDirty = false;
+            uvDirty = true;
+          }
+          if (gv !== e.gv || px !== e.x || py !== e.y || pz !== e.z || sx !== e.sx || sy !== e.sy) {
+            e.gv = gv; e.x = px; e.y = py; e.z = pz; e.sx = sx; e.sy = sy;
+            const l = gp.getX(0), t = gp.getY(0), r = gp.getX(3), b = gp.getY(3),
+              o = e.q * 12;
+            pos[o] = px + sx * l; pos[o + 1] = py + sy * t; pos[o + 2] = pz; // TL
+            pos[o + 3] = px + sx * r; pos[o + 4] = py + sy * t; pos[o + 5] = pz; // TR
+            pos[o + 6] = px + sx * l; pos[o + 7] = py + sy * b; pos[o + 8] = pz; // BL
+            pos[o + 9] = px + sx * r; pos[o + 10] = py + sy * b; pos[o + 11] = pz; // BR
+            posDirty = true;
+          }
+          const dim = (e.k == 1 ? m : L.mesh2).material.color.r;
+          if (dim !== e.dim) {
+            e.dim = dim;
+            const o = e.q * 12;
+            for (let i = 0; i < 12; i++) col[o + i] = dim;
+            colDirty = true;
+          }
+        }
+        if (posDirty) A.pa.needsUpdate = true;
+        if (uvDirty) A.ua.needsUpdate = true;
+        if (colDirty) A.ca.needsUpdate = true;
+        /* 3) índices por renderOrder (só quando a lista de planos incluídos / renderOrder mudou) */
+        if (A.memberDirty) {
+          A.memberDirty = false;
+          for (const k in A.buckets) A.buckets[k].n = 0;
+          for (const e of A.ents) {
+            if (!e.inc) continue;
+            const b = vrAtlasBucket(e.ro),
+              q = e.q * 4,
+              i = b.n * 6,
+              a = b.ia.array;
+            a[i] = q; a[i + 1] = q + 2; a[i + 2] = q + 1;
+            a[i + 3] = q + 2; a[i + 4] = q + 3; a[i + 5] = q + 1;
+            b.n++;
+          }
+          for (const k in A.buckets) {
+            const b = A.buckets[k];
+            b.ia.needsUpdate = true;
+            b.geo.setDrawRange(0, b.n * 6);
+            b.mesh.visible = b.n > 0;
+          }
+        }
+      }
+
       function vrSyncLabels() {
         if (!vrLabelGroup) return;
         const on = !!G && scr != "menu";
@@ -11632,6 +12185,7 @@
             vrLabels[k].mesh.material.dispose();
           }
         }
+        vrAtlasReset(); // v12 atlas: solta textura/malhas do atlas junto com os rótulos
         vrLabels = {};
         vrLblT = 0;
         if (vrAirSusp) {
@@ -12322,6 +12876,25 @@
           }
         }
       }
+      /* v13 PASSO 1 (FEITO) — MEDIDOR. Abra o jogo com ?perf=1 no endereço (ou rode window.__vrPerfStart() no console).
+         A cada 2 s escreve no console: draws/s (draw() chamados), main/s (reenvios do canvas grande 3840x2160), bandas puladas/enviadas
+         (Parte 1), rolagem e toast. Parado e sem clicar, TUDO deve ser ~0. Se draws/s ou main/s ficarem > 0 parado, ainda há um
+         redesenho desnecessário: veja qual estado (G.ph, G.cur, scr) estava ativo e procure quem chama draw() (botTick, tick, onHover). */
+      window.__vrPerfStart = function (every = 2000) {
+        if (window.__vrPerfT) return;
+        let a = { ...vrPerf, bs: vrBandStats.skips, bu: vrBandStats.uploads };
+        window.__vrPerfT = setInterval(() => {
+          const b = { ...vrPerf, bs: vrBandStats.skips, bu: vrBandStats.uploads },
+            k = every / 1000,
+            f = (x) => ((b[x] - a[x]) / k).toFixed(1);
+          console.log(
+            `[perf] fase=${G && G.ph} tela=${scr} draws/s=${f("draws")} main/s=${f("mainUploads")} bandaPulada/s=${f("bs")} bandaEnviada/s=${f("bu")} rolagem/s=${f("scrollRedraws")} toast/s=${f("toastDraws")}`,
+          );
+          a = b;
+        }, every);
+      };
+      window.__vrPerfStop = () => (clearInterval(window.__vrPerfT), (window.__vrPerfT = 0));
+      if (/[?&]perf=1/.test(location.search)) window.__vrPerfStart();
       R.setAnimationLoop(() => {
         tick();
         vrPrewarm();
@@ -12357,6 +12930,7 @@
         syncVRFills();
         vrPopTick(); // etapa 11a: bolha nos números (antes dos rótulos: a assinatura depende dela)
         vrSyncLabels(); // etapa 7
+        vrLabelCull(); // v12: não desenha rótulos fora da janela do zoom nem vazios
         vrLabelDimTick(); // etapa 47
         vrClockSync(); // etapa 44 (9d): relógio do turno em mini-plano 3D
         vrBandsSync(); // etapa 49 (9): faixas da HUD em mini-planos 3D
@@ -12371,6 +12945,7 @@
         vrAirSuspSync(); // etapa 65: avião suspenso num plano mais alto que o levante
         vrArrowTick(); // etapa 10d: setinhas animadas de ataque/reagrupar
         vrShakeTick(); // etapa 9j: tremor SOMA em cima da base do levante (ordem importa)
+        vrAtlasSync(); // v12 atlas de rótulos: copia o estado final (posição/lift/tremor/cor) das malhas originais para as 4 malhas do atlas
         if (vrBatchOn) {
           try {
             vrBatchSync(); // etapa 37: funde as peças simples do mapa (depois de lift/shake, que mexem nas posições)
